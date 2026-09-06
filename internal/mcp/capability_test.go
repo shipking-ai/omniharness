@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"testing"
+	"time"
 
 	"omniharness/internal/tools"
 )
@@ -72,4 +73,36 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestAliveTracksTheServerProcess(t *testing.T) {
+	c := startFake(t)
+	if !c.Alive() {
+		t.Fatal("a freshly started server reports not alive")
+	}
+	select {
+	case <-c.Done():
+		t.Fatal("Done fired while the server was still running")
+	default:
+	}
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// Close ends the process; readLoop closes done when stdout closes.
+	select {
+	case <-c.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Done never fired after the server exited")
+	}
+	if c.Alive() {
+		t.Error("Alive is still true after the server exited")
+	}
+}
+
+// A client that was never started has no process to be alive.
+func TestUnstartedClientIsNotAlive(t *testing.T) {
+	if NewClient(Server{Name: "never", Command: "x"}).Alive() {
+		t.Error("an unstarted client reports alive")
+	}
 }

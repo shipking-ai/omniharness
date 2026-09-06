@@ -220,6 +220,29 @@ func (c *Client) notify(method string, params any) error {
 	return err
 }
 
+// Done is closed when the server's stdout closes — the process exited, was
+// killed, or crashed. Nothing else notices: every subsequent call would block
+// until its own context expired, so a caller that registered this server's
+// tools watches this channel to take them back out.
+func (c *Client) Done() <-chan struct{} { return c.done }
+
+// Alive reports whether the server is still running. A client that was never
+// started is not alive.
+func (c *Client) Alive() bool {
+	if c.done == nil {
+		return false
+	}
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
+}
+
+// Name returns the configured server name.
+func (c *Client) Name() string { return c.server.Name }
+
 // ListTools returns the tools exposed by the server.
 func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {
 	var result struct {

@@ -94,6 +94,40 @@ func (r *Registry) Register(t Tool) error {
 	return nil
 }
 
+// Unregister removes a tool by name, reporting whether it was present. A tool
+// whose provider has gone away must leave the registry: left in place it is
+// still offered to models, and every call to it fails.
+func (r *Registry) Unregister(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.tools[name]; !ok {
+		return false
+	}
+	delete(r.tools, name)
+	return true
+}
+
+// UnregisterProvider removes every tool from one provider (see Spec.Provider)
+// and returns the removed names, sorted. This is the whole-server case: an MCP
+// process that dies takes all of its tools with it, and the caller needs the
+// names to report what was lost.
+func (r *Registry) UnregisterProvider(provider string) []string {
+	if provider == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var removed []string
+	for name, t := range r.tools {
+		if t.Spec().Provider == provider {
+			removed = append(removed, name)
+			delete(r.tools, name)
+		}
+	}
+	sort.Strings(removed)
+	return removed
+}
+
 // Get returns a tool by name.
 func (r *Registry) Get(name string) (Tool, bool) {
 	r.mu.RLock()

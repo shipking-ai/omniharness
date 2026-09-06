@@ -53,6 +53,7 @@ func init() {
 	register(func() Payload { return &ApprovalDeniedData{} })
 	register(func() Payload { return &BudgetExceededData{} })
 	register(func() Payload { return &CheckpointSavedData{} })
+	register(func() Payload { return &ProviderLostData{} })
 	register(func() Payload { return &LogMessageData{} })
 }
 
@@ -376,3 +377,14 @@ type LogMessageData struct {
 }
 
 func (*LogMessageData) EventType() Type { return LogMessage }
+
+// ProviderLostData is published when a tool provider goes away mid-session
+// and its tools are removed from the registry. The agent loop keeps running:
+// losing a provider narrows what is possible, it does not fail the task.
+type ProviderLostData struct {
+	Provider string   `json:"provider"`
+	Reason   string   `json:"reason"`
+	Tools    []string `json:"tools,omitempty"`
+}
+
+func (*ProviderLostData) EventType() Type { return ProviderLost }

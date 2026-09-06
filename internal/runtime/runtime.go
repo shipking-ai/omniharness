@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -373,11 +374,41 @@ func (r *Runtime) LoadMCPServers(ctx context.Context, servers []mcp.Server) erro
 			}
 		}
 		r.MCPClients = append(r.MCPClients, c)
+		r.watchProvider(c)
 	}
 	if len(failures) > 0 {
 		return fmt.Errorf("MCP load issues: %s", strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+// watchProvider removes a provider's tools when its process goes away. An MCP
+// server that dies otherwise leaves its tools registered: they keep being
+// offered to every model, and every call to one fails with a timeout the agent
+// cannot interpret. Removing them narrows what the agent can do, which is
+// true, instead of leaving it reaching for something that is gone.
+func (r *Runtime) watchProvider(c *mcp.Client) {
+	provider := mcp.ProviderName(c.Name())
+	done := make(chan struct{})
+	// Close runs every stopSink, and nothing promises it runs only once, so
+	// closing this channel directly would panic on a second Close.
+	var once sync.Once
+	r.stopSinks = append(r.stopSinks, func() { once.Do(func() { close(done) }) })
+	go func() {
+		select {
+		case <-done:
+			// Runtime shutting down: Close() handles the process, and the
+			// registry is about to be discarded with it.
+			return
+		case <-c.Done():
+		}
+		removed := r.Tools.UnregisterProvider(provider)
+		r.Bus.Publish(event.New(&event.ProviderLostData{
+			Provider: provider,
+			Reason:   "the MCP server process ended",
+			Tools:    removed,
+		}))
+	}()
 }
 
 // ListSessions lists recent sessions.
