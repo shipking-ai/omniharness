@@ -149,6 +149,20 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   can contain them. The vocabulary is deliberately **open** — core validates a
   name's shape, never its membership in a list, so adding a Blender or Resolve
   adapter needs no change to `internal/tools`.
+- **Tool calls are validated at the boundary.** `tools.ValidateInput` checks
+  arguments against the tool's declared JSON schema before the tool runs, and
+  before policy asks a human to approve anything. It implements only the schema
+  subset tool definitions actually use (type, properties, required, enum, items,
+  additionalProperties) and ignores what it does not understand, so an unfamiliar
+  schema from an external server makes its tool permissive rather than unusable.
+  Output validation is *not* implemented: MCP at the negotiated protocol version
+  (2025-03-26) has no output schema to validate against, and inventing one would
+  be guessing at the server's contract.
+- **Tool failures carry a kind.** `tools.Error{Kind}` (invalid_input,
+  unavailable, timeout, failed) is matched with `errors.As`, the same way
+  `gateway.Error` is, so `repair.Classify` branches on structure rather than on
+  substring matches against message text. The kind also reaches the model as
+  guidance, which is what stops it retrying a tool whose provider has gone away.
 - **MCP is first-class**: native client over stdio JSON-RPC 2.0; tools registered into
   the same registry as native tools, so policy applies identically. MCP does not
   report capabilities, so `[[mcp.servers]] capabilities` is the operator's

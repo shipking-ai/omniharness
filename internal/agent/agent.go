@@ -635,6 +635,17 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 		Tool: name, Input: truncate(tc.Function.Arguments, 200), Risk: string(spec.Risk), AgentID: a.ID,
 	})
 
+	// Validate before policy, not after: a malformed call is the model's
+	// mistake to fix, and putting it in front of a human approver asks them
+	// to sanction an action that was never coherent. It also matters most for
+	// external tools, whose arguments otherwise reach a foreign process
+	// unchecked.
+	if err := tools.ValidateInput(spec, args); err != nil {
+		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Error: err.Error()})
+		_ = a.recordToolCall(name, "failed", spec.Risk, 0, err.Error())
+		return toolErrorMessage(name, err, "")
+	}
+
 	req := policy.Request{Tool: name, Input: args, Risk: spec.Risk, AgentID: a.ID}
 	decision, err := a.deps.Policy.EvaluateAndExecute(ctx, req)
 	if err != nil {
@@ -672,7 +683,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 	if runErr != nil {
 		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Duration: duration, Error: runErr.Error()})
 		_ = a.recordToolCall(name, "failed", spec.Risk, duration.Milliseconds(), runErr.Error())
-		return fmt.Sprintf("tool %s failed: %v\n%s", name, runErr, truncate(result.Output, 2000))
+		return toolErrorMessage(name, runErr, truncate(result.Output, 2000))
 	}
 	a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "completed", Duration: duration, OutputLen: len(result.Output)})
 	_ = a.recordToolCall(name, "completed", spec.Risk, duration.Milliseconds(), "")
@@ -762,4 +773,17 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// toolErrorMessage is what the model reads after a failed call. The kind
+// carries the one thing the raw message usually does not: whether calling
+// again could possibly work. Without it a model retries a tool whose provider
+// has gone away until it runs out of iterations.
+func toolErrorMessage(name string, err error, output string) string {
+	kind := tools.KindOf(err)
+	msg := fmt.Sprintf("tool %s failed (%s): %v\n%s", name, kind, err, kind.Guidance())
+	if output != "" {
+		msg += "\n" + output
+	}
+	return msg
 }

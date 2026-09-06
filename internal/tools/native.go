@@ -76,45 +76,45 @@ func (n *Native) Register(r *Registry) error {
 	tools := []Tool{
 		n.tool("read_file", "Read the contents of a text file. Use for inspecting source, configs and docs.", RiskLow, caps(CapReadFiles), schema(map[string]any{
 			"path": map[string]any{"type": "string", "description": "path to read"},
-		}), n.readFile),
+		}, "path"), n.readFile),
 		n.tool("write_file", "Write content to a file, creating or overwriting it.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":    map[string]any{"type": "string", "description": "path to write"},
 			"content": map[string]any{"type": "string", "description": "full file content"},
-		}), n.writeFile),
+		}, "path", "content"), n.writeFile),
 		n.tool("edit_file", "Replace one exact substring in a file with new text.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":     map[string]any{"type": "string", "description": "path to edit"},
 			"old_text": map[string]any{"type": "string", "description": "exact text to replace"},
 			"new_text": map[string]any{"type": "string", "description": "replacement text"},
-		}), n.editFile),
+		}, "path", "old_text", "new_text"), n.editFile),
 		n.tool("list_dir", "List entries in a directory.", RiskLow, caps(CapReadFiles), schema(map[string]any{
 			"path": map[string]any{"type": "string", "description": "directory to list"},
-		}), n.listDir),
+		}, "path"), n.listDir),
 		n.tool("find_files", "Find files by glob pattern under a directory.", RiskLow, caps(CapSearchCode), schema(map[string]any{
 			"path":  map[string]any{"type": "string", "description": "root directory"},
 			"glob":  map[string]any{"type": "string", "description": "glob pattern like **/*.go"},
 			"limit": map[string]any{"type": "integer", "description": "max results"},
-		}), n.findFiles),
+		}, "glob"), n.findFiles),
 		n.tool("search", "Regex search over file contents. Returns file:line matches.", RiskLow, caps(CapSearchCode), schema(map[string]any{
 			"pattern": map[string]any{"type": "string", "description": "regular expression"},
 			"path":    map[string]any{"type": "string", "description": "root directory"},
 			"limit":   map[string]any{"type": "integer", "description": "max matches"},
-		}), n.search),
+		}, "pattern"), n.search),
 		n.tool("shell", "Execute a shell command. Use sparingly; prefer specific tools.", RiskHigh, caps(CapExecuteCode), schema(map[string]any{
 			"command":     map[string]any{"type": "string", "description": "command to run"},
 			"timeout_sec": map[string]any{"type": "integer", "description": "timeout in seconds (max 300)"},
-		}), n.shell),
+		}, "command"), n.shell),
 		n.tool("git", "Run a git operation in the workspace. Subcommands: status, diff, log, add, commit, push, checkout, stash.", RiskHigh, caps(CapVersionControl), schema(map[string]any{
 			"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "git arguments"},
-		}), n.git),
+		}, "args"), n.git),
 		n.tool("process_list", "List running processes.", RiskLow, caps(CapInspectProcess), schema(map[string]any{}), n.processList),
 		n.tool("process_kill", "Terminate a process by PID.", RiskHigh, caps(CapInspectProcess), schema(map[string]any{
 			"pid": map[string]any{"type": "integer", "description": "process id"},
-		}), n.processKill),
+		}, "pid"), n.processKill),
 		n.tool("request_replan",
 			"Call this when you discover the task needs real structure the current plan doesn't have — not a bug, a scope change: the request turned out to need several distinct pieces of work, or touches something the plan never accounted for. Do not call it for routine difficulty, a failing test you can fix yourself, or anything you can just finish. This does not do the extra work itself; it tells the harness to restructure execution around what you found, once this step finishes.",
 			RiskLow, caps(CapPlanControl), schema(map[string]any{
 				"reason": map[string]any{"type": "string", "description": "specifically what you found that the current plan does not account for"},
-			}), n.requestReplan),
+			}, "reason"), n.requestReplan),
 	}
 	if n.Memory != nil {
 		tools = append(tools, n.tool("remember",
@@ -122,7 +122,7 @@ func (n *Native) Register(r *Registry) error {
 			RiskLow, caps(CapManageMemory), schema(map[string]any{
 				"kind":    map[string]any{"type": "string", "description": "short, specific slot name, e.g. \"test-setup\" or \"known-issue-flaky-ci\" — reusing a kind replaces its old content"},
 				"content": map[string]any{"type": "string", "description": "what to remember, in one or two sentences"},
-			}), n.remember))
+			}, "kind", "content"), n.remember))
 	}
 	for _, t := range tools {
 		if err := r.Register(t); err != nil {
@@ -154,12 +154,20 @@ func (n *Native) remember(ctx context.Context, in map[string]any) (Result, error
 	return Result{Output: fmt.Sprintf("remembered (%s): %s", kind, content)}, nil
 }
 
-func schema(props map[string]any) map[string]any {
-	return map[string]any{
+// schema builds a tool's JSON schema. required names the arguments the tool
+// cannot run without; it reaches the model in the tool definition, so omitting
+// it (as this did) tells the model every argument is optional and invites
+// calls with the mandatory one missing.
+func schema(props map[string]any, required ...string) map[string]any {
+	out := map[string]any{
 		"type":                 "object",
 		"properties":           props,
 		"additionalProperties": false,
 	}
+	if len(required) > 0 {
+		out["required"] = required
+	}
+	return out
 }
 
 // resolvePath confines a path to the workspace root. Relative paths resolve

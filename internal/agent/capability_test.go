@@ -2,8 +2,13 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"omniharness/internal/event"
+	"omniharness/internal/gateway"
+	"omniharness/internal/policy"
+	"omniharness/internal/session"
 	"omniharness/internal/task"
 	"omniharness/internal/tools"
 )
@@ -185,4 +190,57 @@ type fakeExternalTool struct{ spec tools.Spec }
 func (f *fakeExternalTool) Spec() tools.Spec { return f.spec }
 func (f *fakeExternalTool) Run(ctx context.Context, in map[string]any) (tools.Result, error) {
 	return tools.Result{}, nil
+}
+
+// A malformed call must be rejected before policy sees it: asking a human to
+// approve an action whose arguments are incoherent is asking them to sanction
+// something that was never going to happen.
+func TestInvalidToolCallIsRejectedBeforePolicy(t *testing.T) {
+	reg := tools.NewRegistry()
+	if err := tools.NewNative(t.TempDir()).Register(reg); err != nil {
+		t.Fatal(err)
+	}
+	asked := 0
+	pol := policy.NewEngine(policy.Config{
+		RiskAction: map[string]string{"low": "ask", "medium": "ask", "high": "ask", "critical": "block"},
+	}, policy.ApproverFunc(func(context.Context, policy.Request, string) (bool, error) {
+		asked++
+		return true, nil
+	}))
+
+	store, err := session.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	ag := New(Deps{Tools: reg, Roles: DefaultRoles(), Policy: pol, Store: store, Bus: event.NewBus()},
+		"s", "t", RoleImplementer, "", task.Spec{}, task.Profile{})
+
+	// read_file requires "path"; this call omits it.
+	var missing gateway.ToolCall
+	missing.Function.Name = "read_file"
+	missing.Function.Arguments = `{}`
+	out := ag.executeToolCall(context.Background(), missing, DefaultRoles()[RoleImplementer])
+
+	if asked != 0 {
+		t.Errorf("the approver was consulted %d time(s) for a call that could not run", asked)
+	}
+	if !strings.Contains(out, "path") {
+		t.Errorf("the model was told %q, which does not name the missing argument", out)
+	}
+	if !strings.Contains(out, string(tools.ErrInvalidInput)) {
+		t.Errorf("the model was told %q, which does not carry the error kind", out)
+	}
+	if !strings.Contains(out, tools.ErrInvalidInput.Guidance()) {
+		t.Errorf("the model was told %q, without guidance on what to do next", out)
+	}
+
+	// A well-formed call still reaches policy.
+	var valid gateway.ToolCall
+	valid.Function.Name = "list_dir"
+	valid.Function.Arguments = `{"path":"."}`
+	_ = ag.executeToolCall(context.Background(), valid, DefaultRoles()[RoleImplementer])
+	if asked == 0 {
+		t.Error("a valid call never reached the approver")
+	}
 }

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -104,5 +105,39 @@ func TestAliveTracksTheServerProcess(t *testing.T) {
 func TestUnstartedClientIsNotAlive(t *testing.T) {
 	if NewClient(Server{Name: "never", Command: "x"}).Alive() {
 		t.Error("an unstarted client reports alive")
+	}
+}
+
+// A dead server and a failed tool call are different situations: one is worth
+// retrying, the other never is.
+func TestAdapterReportsUnavailableWhenServerIsGone(t *testing.T) {
+	c := startFake(t)
+	infos, err := c.ListTools(context.Background())
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	a := &ToolAdapter{Client: c, Info: infos[0]}
+
+	// While alive, a tool the server rejects is an ordinary failure.
+	_, err = (&ToolAdapter{Client: c, Info: ToolInfo{Name: "boom"}}).Run(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("a server-reported tool error did not surface")
+	}
+	if got := tools.KindOf(err); got != tools.ErrFailed {
+		t.Errorf("a live server's tool failure has kind %s, want %s", got, tools.ErrFailed)
+	}
+
+	c.Close()
+	select {
+	case <-c.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not exit")
+	}
+	_, err = a.Run(context.Background(), map[string]any{})
+	if err == nil {
+		t.Fatal("a call to a dead server succeeded")
+	}
+	if got := tools.KindOf(err); got != tools.ErrUnavailable {
+		t.Errorf("a dead server's error has kind %s, want %s", got, tools.ErrUnavailable)
 	}
 }

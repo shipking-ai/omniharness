@@ -78,9 +78,24 @@ func ProviderName(server string) string { return "mcp:" + server }
 
 // Run invokes the MCP tool.
 func (a *ToolAdapter) Run(ctx context.Context, input map[string]any) (tools.Result, error) {
+	// A server that has gone away is a different situation from a tool that
+	// ran and failed: the model should stop calling it rather than retry.
+	if !a.Client.Alive() {
+		return tools.Result{}, &tools.Error{
+			Kind:    tools.ErrUnavailable,
+			Tool:    a.Spec().Name,
+			Message: "the MCP server is no longer running",
+		}
+	}
 	result, err := a.Client.CallTool(ctx, a.Info.Name, input)
 	if err != nil {
-		return tools.Result{}, err
+		kind := tools.ErrFailed
+		if !a.Client.Alive() {
+			kind = tools.ErrUnavailable
+		} else if ctx.Err() != nil {
+			kind = tools.ErrTimeout
+		}
+		return tools.Result{}, &tools.Error{Kind: kind, Tool: a.Spec().Name, Message: err.Error()}
 	}
 	var b strings.Builder
 	for _, c := range result.Content {
@@ -91,7 +106,11 @@ func (a *ToolAdapter) Run(ctx context.Context, input map[string]any) (tools.Resu
 	}
 	output := strings.TrimSuffix(b.String(), "\n")
 	if result.IsError {
-		return tools.Result{Output: output}, fmt.Errorf("mcp tool %s failed: %s", a.Info.Name, output)
+		// The server ran the tool and reported failure — ordinary, and the
+		// model can reasonably act on it.
+		return tools.Result{Output: output}, &tools.Error{
+			Kind: tools.ErrFailed, Tool: a.Spec().Name, Message: output,
+		}
 	}
 	return tools.Result{Output: output}, nil
 }
