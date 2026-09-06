@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -61,6 +62,12 @@ func (a *ToolAdapter) Spec() tools.Spec {
 // programmatically-constructed Server cannot inject a malformed capability.
 func (a *ToolAdapter) capabilities() []tools.Capability {
 	declared := a.Client.server.Capabilities
+	// A per-tool declaration replaces the server-level one rather than adding
+	// to it: naming a tool means saying what that tool does, and inheriting
+	// the whole server's list on top would put the imprecision straight back.
+	if specific, ok := a.Client.server.ToolCapabilities[a.Info.Name]; ok {
+		declared = specific
+	}
 	out := make([]tools.Capability, 0, len(declared)+1)
 	for _, raw := range declared {
 		c := tools.Capability(strings.TrimSpace(raw))
@@ -83,6 +90,21 @@ func ValidateCapabilities(s Server) error {
 		c := tools.Capability(strings.TrimSpace(raw))
 		if err := tools.ValidateCapability(c); err != nil {
 			return fmt.Errorf("mcp server %q: %w", s.Name, err)
+		}
+	}
+	// Sorted so the reported error is the same on every run; map order would
+	// otherwise pick an arbitrary one of several mistakes.
+	names := make([]string, 0, len(s.ToolCapabilities))
+	for name := range s.ToolCapabilities {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, raw := range s.ToolCapabilities[name] {
+			c := tools.Capability(strings.TrimSpace(raw))
+			if err := tools.ValidateCapability(c); err != nil {
+				return fmt.Errorf("mcp server %q, tool %q: %w", s.Name, name, err)
+			}
 		}
 	}
 	return nil

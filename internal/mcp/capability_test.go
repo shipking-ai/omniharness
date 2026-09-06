@@ -155,3 +155,56 @@ func TestAdapterReportsUnavailableWhenServerIsGone(t *testing.T) {
 		t.Errorf("a dead server's error has kind %s, want %s", got, tools.ErrUnavailable)
 	}
 }
+
+// blender-mcp exposes 28 tools covering scene inspection, rendering, telemetry
+// and third-party asset search. One server-level list gives every one of them
+// every capability, so "what can render a scene?" answers "all 28" and the
+// discovery index says nothing.
+func TestPerToolCapabilitiesOverrideTheServerList(t *testing.T) {
+	srv := Server{
+		Name: "blender", Command: "x",
+		Capabilities: []string{"execute_code"},
+		ToolCapabilities: map[string][]string{
+			"get_viewport_screenshot": {"render_scene", "inspect_3d_scene"},
+		},
+	}
+	shot := adapterFor(srv, ToolInfo{Name: "get_viewport_screenshot"}).Spec().Capabilities
+	want := []tools.Capability{"render_scene", "inspect_3d_scene", tools.CapExternalTool}
+	if len(shot) != len(want) {
+		t.Fatalf("screenshot capabilities = %v, want %v", shot, want)
+	}
+	for i := range want {
+		if shot[i] != want[i] {
+			t.Fatalf("screenshot capabilities = %v, want %v", shot, want)
+		}
+	}
+	// The per-tool list replaces the server list; it does not add to it, or
+	// the imprecision comes straight back.
+	for _, c := range shot {
+		if c == "execute_code" {
+			t.Error("a named tool inherited the server-level capability as well")
+		}
+	}
+	// An unnamed tool still falls back to the server list.
+	other := adapterFor(srv, ToolInfo{Name: "disable_telemetry"}).Spec().Capabilities
+	if len(other) != 2 || other[0] != "execute_code" || other[1] != tools.CapExternalTool {
+		t.Fatalf("unnamed tool capabilities = %v, want [execute_code external_tool]", other)
+	}
+}
+
+func TestValidateCapabilitiesChecksPerToolEntries(t *testing.T) {
+	err := ValidateCapabilities(Server{Name: "blender", ToolCapabilities: map[string][]string{
+		"get_viewport_screenshot": {"render_scene", "Bad Name"},
+	}})
+	if err == nil {
+		t.Fatal("a malformed per-tool capability was accepted")
+	}
+	if !contains(err.Error(), "get_viewport_screenshot") {
+		t.Errorf("error %q does not name the tool whose entry is wrong", err)
+	}
+	if err := ValidateCapabilities(Server{Name: "b", ToolCapabilities: map[string][]string{
+		"a": {"render_scene"},
+	}}); err != nil {
+		t.Errorf("a valid per-tool declaration was rejected: %v", err)
+	}
+}

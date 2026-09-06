@@ -381,7 +381,7 @@ func newPluginsCmd() *cobra.Command {
 
 			fmt.Println("\nregistered tools:")
 			for _, spec := range rt.Tools.List() {
-				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, spec.Description)
+				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, oneLine(spec.Description, 90))
 				if len(spec.Capabilities) > 0 {
 					fmt.Printf("  %-16s   provides: %s\n", "", strings.Join(capNames(spec.Capabilities), ", "))
 				}
@@ -396,7 +396,15 @@ func newPluginsCmd() *cobra.Command {
 				for _, p := range rt.Tools.WithCapability(c) {
 					providers = append(providers, p.Name)
 				}
-				fmt.Printf("  %-16s %s\n", string(c), strings.Join(providers, ", "))
+				// A server with many tools would otherwise print one
+				// unreadable line per capability.
+				shown := providers
+				suffix := ""
+				if len(shown) > 6 {
+					suffix = fmt.Sprintf(" (+%d more)", len(shown)-6)
+					shown = shown[:6]
+				}
+				fmt.Printf("  %-18s %d: %s%s\n", string(c), len(providers), strings.Join(shown, ", "), suffix)
 			}
 			return nil
 		},
@@ -410,4 +418,17 @@ func capNames(in []tools.Capability) []string {
 		out[i] = string(c)
 	}
 	return out
+}
+
+// oneLine flattens a tool description for a single-line listing. Descriptions
+// from an MCP server are the tool function's docstring: they routinely start
+// with a newline and run to several paragraphs, which printed straight into a
+// %s made every external tool look as though it had no description at all.
+// Only the listing is flattened; the model still receives the full text.
+func oneLine(s string, max int) string {
+	flat := strings.Join(strings.Fields(s), " ")
+	if max > 0 && len([]rune(flat)) > max {
+		flat = string([]rune(flat)[:max-1]) + "…"
+	}
+	return flat
 }

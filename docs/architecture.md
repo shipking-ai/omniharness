@@ -232,10 +232,17 @@ orchestrate any tool that exposes useful capabilities:
    cannot write files — a role that can overwrite the asset it is assessing is
    not an independent check.
 
+Verified against the real thing: `internal/runtime/live_mcp_test.go` runs the
+published `blender-mcp` server (28 tools) through `uvx`. It is opt-in
+(`OMNIHARNESS_LIVE_MCP=1`) so the rest of the suite stays hermetic. Running it
+found two more defects — a server-level capability list flattening the discovery
+index, and multi-line docstring descriptions breaking the `plugins` listing.
+
 Still open: Blender itself has never been driven. Its MCP addon drains commands
 through `bpy.app.timers` on Blender's main thread, which does not run under
-`--background`, so a live integration test needs the Blender GUI open with the
-addon's server started by hand.
+`--background`, so a live render test needs the Blender GUI open with the
+addon's server started by hand. Without it the server still answers `initialize`
+and `tools/list`, and reports the missing connection as text at call time.
 
 ## 6. Phases
 

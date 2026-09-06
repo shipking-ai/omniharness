@@ -29,6 +29,14 @@ type Server struct {
 	// — so this cannot be discovered and must be configured. Left empty, the
 	// adapter falls back to tools.CapExternalTool.
 	Capabilities []string `json:"capabilities,omitempty" toml:"capabilities,omitempty"`
+	// ToolCapabilities declares capabilities for individual tools, keyed by
+	// the tool's own name as the server reports it (no "mcp:server:" prefix).
+	// A server's tools are rarely homogeneous — blender-mcp exposes 28,
+	// covering scene inspection, rendering, telemetry and third-party asset
+	// search — and a single server-level list gives every one of them every
+	// capability, which makes "what can render a scene?" answer "all 28".
+	// Tools not named here fall back to Capabilities.
+	ToolCapabilities map[string][]string `json:"toolCapabilities,omitempty" toml:"tool_capabilities,omitempty"`
 }
 
 // ToolInfo is the metadata MCP returns for a tool.

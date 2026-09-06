@@ -45,6 +45,11 @@ type MCServer struct {
 	// Omitted, the server's tools get the generic "external_tool" capability,
 	// which is reachable by the acting roles but tells a planner nothing.
 	Capabilities []string `toml:"capabilities,omitempty"`
+	// ToolCapabilities declares capabilities per tool, keyed by the tool name
+	// the server reports. Tools not named here fall back to Capabilities.
+	// A server with many unrelated tools needs this: one server-level list
+	// gives every tool every capability and flattens the discovery index.
+	ToolCapabilities map[string][]string `toml:"tool_capabilities,omitempty"`
 }
 
 // OmniRoute configures the gateway connection.

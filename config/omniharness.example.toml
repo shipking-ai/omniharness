@@ -123,14 +123,31 @@ deep_analysis = false
 # policy.allowed_tools and the risk_action table, which is the layer that
 # exists for that.
 #
-# Example: Blender, via github.com/ahujasid/blender-mcp. This needs Blender
-# itself plus that project's addon running; the harness needs no code for it.
+# tool_capabilities declares capabilities per tool, keyed by the name the
+# server reports. A server rarely has one job: blender-mcp exposes 28 tools
+# spanning scene inspection, rendering, telemetry and third-party asset search,
+# and a single server-level list gives every one of them every capability, so
+# "what can render a scene?" answers "all 28". Name the tools that matter and
+# let the rest fall back to the server list.
+#
+# Example: Blender, via github.com/ahujasid/blender-mcp (verified against
+# v1.9.1 / server 1.29.1 — 28 tools, tool names below are the real ones).
+# Running it needs Blender itself with that project's addon started; the
+# harness needs no code either way.
 #
 # [[mcp.servers]]
 # name = "blender"
 # command = "uvx"
 # args = ["blender-mcp"]
-# capabilities = ["inspect_3d_scene", "modify_3d_scene", "render_scene", "execute_code"]
+# capabilities = ["execute_code"]
+#
+# [mcp.servers.tool_capabilities]
+# get_scene_info                  = ["inspect_3d_scene"]
+# get_object_info                 = ["inspect_3d_scene"]
+# get_viewport_screenshot         = ["inspect_3d_scene", "render_scene"]
+# execute_blender_code            = ["modify_3d_scene", "execute_code"]
+# set_texture                     = ["modify_3d_scene"]
+# generate_hyper3d_model_via_text = ["generate_3d_asset"]
 
 # Binary tool output (a viewport screenshot, a rendered frame) is written to
 # <workspace>/.omniharness/artifacts and referenced by path in the tool result.
