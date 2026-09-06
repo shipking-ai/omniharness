@@ -40,6 +40,10 @@ const (
 	DomainData     Domain = "DATA"
 	DomainOps      Domain = "OPS"
 	DomainWriting  Domain = "WRITING"
+	// DomainCreative is media work — 3D, image, video, audio — where the
+	// deliverable is an asset rather than code or prose, and "correct" is
+	// judged by looking at the result.
+	DomainCreative Domain = "CREATIVE"
 	DomainGeneral  Domain = "GENERAL"
 )
 

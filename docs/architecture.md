@@ -218,8 +218,24 @@ orchestrate any tool that exposes useful capabilities:
    is the whole claim: `internal/runtime`'s provider tests are where a future
    provider requiring a core change would show up.
 
-Still open: an image observation reaches disk but not the model. Feeding one to
-a vision model needs multimodal message content in `internal/gateway`.
+6. **Vision.** `gateway.Message.Images` marshals as OpenAI content parts. An
+   image cannot ride in a tool result, so it arrives as a following user
+   message. `[models] vision` declares which models accept images — OmniRoute's
+   catalog reports no modality, so this cannot be discovered — and exactly the
+   turn that looks at an image is routed to one of them, the run continuing on
+   its own model afterwards.
+7. **Creative roles.** `DomainCreative`, the `creative-iterate` strategy
+   (brief → make → judge), and two roles: creative-director and asset-producer.
+   Split by function, not medium: a "FilmAgent" or "MusicAgent" would bake the
+   medium into core, the same mistake as baking in an application. What medium a
+   run works in comes from the capabilities its tools provide. The director
+   cannot write files — a role that can overwrite the asset it is assessing is
+   not an independent check.
+
+Still open: Blender itself has never been driven. Its MCP addon drains commands
+through `bpy.app.timers` on Blender's main thread, which does not run under
+`--background`, so a live integration test needs the Blender GUI open with the
+addon's server started by hand.
 
 ## 6. Phases
 

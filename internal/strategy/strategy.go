@@ -27,6 +27,12 @@ const (
 	PlanImplementVerify Strategy = "plan-implement-verify"
 	// Debate: two agents produce competing answers, a reviewer picks.
 	Debate Strategy = "debate"
+	// CreativeIterate: brief the work, make it, look at the result, and
+	// decide whether it is good enough. Distinct from plan-implement-verify
+	// because "verify" there means an evaluator can run a build or a test;
+	// a rendered asset has no such check, and the judgement is a model
+	// looking at the output against a brief someone wrote first.
+	CreativeIterate Strategy = "creative-iterate"
 	// RepairLoop: direct execution with an evaluation/repair feedback loop.
 	RepairLoop Strategy = "repair-loop"
 	// MultiAgent: general multi-agent orchestration with dependency graph.
@@ -108,6 +114,13 @@ func (Selector) selectByProfile(in Input) (Plan, error) {
 	// misunderstanding after it is already in the diff.
 	if p.Ambiguity == task.LevelHigh {
 		return plan(in, PlanImplementVerify, "ambiguity is HIGH; a stated plan surfaces the agent's interpretation before it acts on it")
+	}
+
+	// Creative work has no build to run, so the check is a look at the
+	// result. Low complexity stays direct — "make the render brighter" does
+	// not need a director briefing a producer.
+	if p.Domain == task.DomainCreative && p.Complexity != task.ComplexityLow {
+		return plan(in, CreativeIterate, "creative domain; brief the work, make it, then judge the result against the brief")
 	}
 
 	// Research without a software deliverable.
@@ -252,6 +265,12 @@ func stepsFor(p task.Profile, s Strategy) []Step {
 			{ID: "r1", Role: "researcher", Task: "gather evidence", Parallel: true},
 			{ID: "r2", Role: "researcher", Task: "gather evidence", Parallel: true},
 			{ID: "synth", Role: "synthesizer", Depends: []string{"r1", "r2"}, Task: "synthesize findings"},
+		}
+	case CreativeIterate:
+		return []Step{
+			{ID: "brief", Role: "creative-director", Task: "state concretely what the piece has to achieve"},
+			{ID: "make", Role: "asset-producer", Depends: []string{"brief"}, Task: "produce the asset against the brief"},
+			{ID: "judge", Role: "creative-director", Depends: []string{"make"}, Task: "look at the result and judge it against the brief"},
 		}
 	case PlanImplementVerify:
 		return []Step{

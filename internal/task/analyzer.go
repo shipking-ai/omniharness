@@ -109,6 +109,17 @@ func detectDomain(text string, add func(string, ...any)) Domain {
 			{"migration", 2}, {"backup", 1}, {"monitor", 1}, {"incident", 2}, {"provision", 2}, {"terraform", 2},
 			{"production", 1},
 		}},
+		{DomainCreative, [][2]any{
+			// Terms for producing or judging a rendered artefact. Deliberately
+			// not tool names: "blender" or "resolve" would tie domain
+			// detection to the applications that happen to be installed, and
+			// a task is creative whether or not a given program exists.
+			{"render", 2}, {"3d scene", 2}, {"viewport", 2}, {"camera angle", 2}, {"lighting", 2},
+			{"composition", 2}, {"storyboard", 2}, {"cinematic", 2}, {"shot", 1}, {"footage", 2},
+			{"timeline", 1}, {"color grade", 2}, {"colour grade", 2}, {"soundtrack", 2},
+			{"instrumental", 2}, {"mixdown", 2}, {"animate", 2}, {"animation", 2},
+			{"texture", 2}, {"material", 1}, {"thumbnail", 1}, {"illustration", 2},
+		}},
 		{DomainWriting, [][2]any{
 			{"write a", 2}, {"draft", 1}, {"documentation", 1}, {"docs", 1}, {"readme", 1}, {"blog", 2},
 			{"article", 2}, {"report", 1}, {"proposal", 1}, {"email", 1},

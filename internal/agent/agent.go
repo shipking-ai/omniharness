@@ -39,12 +39,19 @@ const (
 	RoleSecurityAuditor Role = "security-auditor"
 	RoleOptimizer       Role = "optimizer"
 	RoleSynthesizer     Role = "synthesizer"
+	// Creative roles. They are split by function, not by medium: a
+	// "FilmAgent" or "MusicAgent" would bake the medium into core, which is
+	// the same mistake as baking in an application. What medium a run works
+	// in comes from the capabilities its tools provide.
+	RoleCreativeDirector Role = "creative-director"
+	RoleAssetProducer    Role = "asset-producer"
 )
 
 // AllRoles lists every role.
 func AllRoles() []Role {
 	return []Role{RoleArchitect, RoleImplementer, RoleResearcher, RoleDebugger, RoleReviewer,
-		RoleTester, RoleSecurityAuditor, RoleOptimizer, RoleSynthesizer}
+		RoleTester, RoleSecurityAuditor, RoleOptimizer, RoleSynthesizer,
+		RoleCreativeDirector, RoleAssetProducer}
 }
 
 // RoleConfig declares a role's system prompt, model intent and tool policy.
@@ -146,6 +153,24 @@ func DefaultRoles() map[Role]RoleConfig {
 			ModelIntent:  model.Intent{Capabilities: []string{model.CapCoding, model.CapReasoning}},
 			ToolAllow:    []string{"read_file", "edit_file", "search", "shell", "git", "remember", "request_replan"},
 			Capabilities: caps(tools.CapReadFiles, tools.CapWriteFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
+		},
+		RoleCreativeDirector: {
+			Role: RoleCreativeDirector,
+			Prompt: "You are the creative director. Establish what the piece has to achieve before anything is made, in concrete terms someone else could act on: subject, framing, mood, motion, duration. " +
+				"When work comes back, look at it and judge it against that brief — say specifically what is wrong and what to change, or say it is good enough and stop. " +
+				"You do not make assets yourself. Do not accept a result you have not actually inspected.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapVision, model.CapReasoning}},
+			ToolAllow:    []string{"read_file", "list_dir", "find_files", "search", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
+		},
+		RoleAssetProducer: {
+			Role: RoleAssetProducer,
+			Prompt: "You are the asset producer. Build what the brief asks for using the tools you have, and inspect the result before reporting it done. " +
+				"Work in small steps and check after each one: make a change, look at what it produced, then decide the next change. " +
+				"State plainly what you could not achieve with the tools available rather than describing an asset you did not make.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReasoning, model.CapVision}},
+			ToolAllow:    []string{"read_file", "write_file", "list_dir", "find_files", "search", "shell", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapWriteFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleSynthesizer: {
 			Role:         RoleSynthesizer,
