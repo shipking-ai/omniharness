@@ -133,6 +133,20 @@ func (r *Registry) UnregisterProvider(provider string) []string {
 	return removed
 }
 
+// WithProvider returns the specs registered by one provider, sorted by name.
+func (r *Registry) WithProvider(provider string) []Spec {
+	if provider == "" {
+		return nil
+	}
+	var out []Spec
+	for _, s := range r.List() {
+		if s.Provider == provider {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Get returns a tool by name.
 func (r *Registry) Get(name string) (Tool, bool) {
 	r.mu.RLock()

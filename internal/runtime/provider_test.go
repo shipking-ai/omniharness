@@ -9,11 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"omniharness/internal/agent"
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
 	"omniharness/internal/mcp"
 	"omniharness/internal/task"
 	"omniharness/internal/testutil"
+	"omniharness/internal/tools"
 )
 
 // mcpServerScript answers initialize and tools/list, then keeps running until
@@ -284,4 +286,112 @@ func TestExternalProviderRunsEndToEnd(t *testing.T) {
 	if ok != 1 {
 		t.Errorf("recorded %d successful calls, want 1", ok)
 	}
+}
+
+// A second provider of a completely different shape — a browser rather than a
+// 3D application, different tool names, different capabilities, running
+// alongside the first. Phase 5 of the capability work was "add more providers
+// only once the abstraction proves itself"; this is that proof, and the point
+// of the test is that adding it required no code. If a future provider needs a
+// change in internal/tools, internal/mcp or internal/agent to be usable, the
+// abstraction is wrong and this test is where that should show up.
+func TestTwoUnrelatedProvidersCoexist(t *testing.T) {
+	browser := writeScript(t, `
+import json, sys
+for line in sys.stdin:
+    try:
+        msg = json.loads(line)
+    except Exception:
+        continue
+    if "id" not in msg:
+        continue
+    m = msg.get("method")
+    if m == "initialize":
+        result = {"protocolVersion": "2025-03-26", "capabilities": {"tools": {}}, "serverInfo": {"name": "browser", "version": "1"}}
+    elif m == "tools/list":
+        result = {"tools": [
+            {"name": "navigate", "description": "Open a URL",
+             "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}},
+            {"name": "extract_text", "description": "Read the page",
+             "inputSchema": {"type": "object", "properties": {}}},
+        ]}
+    elif m == "tools/call":
+        result = {"content": [{"type": "text", "text": "ok"}], "isError": False}
+    else:
+        result = {}
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}) + "\n")
+    sys.stdout.flush()
+`)
+	blender := writeScript(t, blenderShapedServer)
+
+	fake := testutil.NewFakeOmniRoute(t, testutil.FakeStep{Content: "done"})
+	rt := testRuntime(t, fake, t.TempDir())
+	if err := rt.LoadMCPServers(context.Background(), []mcp.Server{
+		{Name: "blender", Command: "python", Args: []string{blender}, Capabilities: []string{"render_scene"}},
+		{Name: "browser", Command: "python", Args: []string{browser}, Capabilities: []string{"browse_web"}},
+	}); err != nil {
+		t.Fatalf("LoadMCPServers: %v", err)
+	}
+
+	// Both are discoverable by what they do, and neither shadows the other.
+	for capability, wantTool := range map[tools.Capability]string{
+		"render_scene": "mcp:blender:get_viewport_screenshot",
+		"browse_web":   "mcp:browser:navigate",
+	} {
+		specs := rt.Tools.WithCapability(capability)
+		if len(specs) == 0 {
+			t.Fatalf("nothing provides %s", capability)
+		}
+		found := false
+		for _, s := range specs {
+			if s.Name == wantTool {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("WithCapability(%s) = %v, missing %s", capability, specNames(specs), wantTool)
+		}
+	}
+	if len(rt.Tools.WithProvider("mcp:browser")) != 2 {
+		t.Error("the browser provider did not register both of its tools")
+	}
+
+	// Both reach the same role, and the role's native tools are intact.
+	roles := agent.DefaultRoles()
+	impl := roles[agent.RoleImplementer]
+	for _, name := range []string{"mcp:blender:get_viewport_screenshot", "mcp:browser:navigate", "read_file"} {
+		tool, ok := rt.Tools.Get(name)
+		if !ok {
+			t.Fatalf("%s is not registered", name)
+		}
+		if !impl.AllowsTool(tool.Spec()) {
+			t.Errorf("the implementer cannot reach %s", name)
+		}
+	}
+
+	// Losing one provider must not disturb the other.
+	for _, c := range rt.MCPClients {
+		if c.Name() == "browser" {
+			c.Close()
+		}
+	}
+	deadline := time.After(10 * time.Second)
+	for len(rt.Tools.WithProvider("mcp:browser")) > 0 {
+		select {
+		case <-deadline:
+			t.Fatal("the dead browser provider kept its tools")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if len(rt.Tools.WithProvider("mcp:blender")) != 2 {
+		t.Error("losing the browser provider disturbed the blender provider")
+	}
+}
+
+func specNames(in []tools.Spec) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = s.Name
+	}
+	return out
 }

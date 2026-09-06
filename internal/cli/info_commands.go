@@ -16,6 +16,7 @@ import (
 
 	"omniharness/internal/config"
 	"omniharness/internal/gateway"
+	"omniharness/internal/mcp"
 	"omniharness/internal/telemetry"
 	"omniharness/internal/tools"
 	"omniharness/internal/version"
@@ -354,14 +355,28 @@ func newPluginsCmd() *cobra.Command {
 			if len(cfg.MCP.Servers) == 0 {
 				fmt.Println("  (none — add [[mcp.servers]] entries to your config)")
 			}
+			// Status comes from the live client, not from the config: "it is
+			// in the file" and "it started and is answering" are different
+			// claims, and only the second one is worth printing.
+			live := map[string]*mcp.Client{}
+			for _, c := range rt.MCPClients {
+				live[c.Name()] = c
+			}
 			for _, s := range cfg.MCP.Servers {
-				line := fmt.Sprintf("  %s -> %s %s", s.Name, s.Command, s.Args)
-				if len(s.Capabilities) > 0 {
-					line += "  provides: " + strings.Join(s.Capabilities, ", ")
-				} else {
-					line += "  provides: external_tool (declare capabilities to narrow this)"
+				status := "did not start"
+				count := 0
+				if c, ok := live[s.Name]; ok {
+					count = len(rt.Tools.WithProvider(mcp.ProviderName(s.Name)))
+					if c.Alive() {
+						status = fmt.Sprintf("running, %d tool(s)", count)
+					} else {
+						status = "started, then exited"
+					}
 				}
-				fmt.Println(line)
+				fmt.Printf("  %-14s %-24s %s\n", s.Name, status, s.Command+" "+strings.Join(s.Args, " "))
+				if len(s.Capabilities) > 0 {
+					fmt.Printf("  %-14s   declares: %s\n", "", strings.Join(s.Capabilities, ", "))
+				}
 			}
 
 			fmt.Println("\nregistered tools:")

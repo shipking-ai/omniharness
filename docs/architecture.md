@@ -193,6 +193,34 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   TUI picker) scrubs the key before encoding, so an env-provided key can never leak
   into the config file on disk.
 
+## 5a. Capability phases
+
+A second phase line, run after the eleven below, to make the harness able to
+orchestrate any tool that exposes useful capabilities:
+
+1. **Capability vocabulary + registry discovery.** `tools.Spec.Capabilities`,
+   registry indexing, roles matching by capability. Fixed a live bug: MCP tools
+   registered under runtime-generated names and no role's name list could ever
+   contain them, so they were loaded and never offered to a model.
+2. **Provider lifecycle.** `Registry.Unregister`/`UnregisterProvider`,
+   `mcp.Client.Done`/`Alive`, and a runtime watcher that removes a dead
+   provider's tools and publishes `provider.lost`.
+3. **Input validation and structured errors.** `tools.ValidateInput` against the
+   declared schema, before policy; `tools.Error{Kind}` matched with `errors.As`
+   so `repair.Classify` stops matching substrings. No output validation — MCP at
+   the negotiated protocol version has no output schema.
+4. **First real external provider.** Verified against the published blender-mcp
+   1.9.1 surface. Found two defects: image content silently dropped, and
+   declared capabilities making a server *less* reachable than an undescribed
+   one. Both fixed. Blender itself was not driven — it is not installed — so the
+   integration is proven to the edge of the process boundary and no further.
+5. **Generality.** A second provider of an unrelated shape needed no code. That
+   is the whole claim: `internal/runtime`'s provider tests are where a future
+   provider requiring a core change would show up.
+
+Still open: an image observation reaches disk but not the model. Feeding one to
+a vision model needs multimodal message content in `internal/gateway`.
+
 ## 6. Phases
 
 All eleven landed; each maps to a package under `internal/` with its own tests.

@@ -55,3 +55,22 @@ func TestUnregisterProviderIgnoresTheEmptyProvider(t *testing.T) {
 		t.Fatal("an empty provider argument emptied the registry")
 	}
 }
+
+func TestWithProviderGroupsTools(t *testing.T) {
+	r := NewRegistry()
+	mustRegisterCap(t, r, &capStubTool{Spec{Name: "read_file", Provider: ProviderNative}})
+	mustRegisterCap(t, r, &capStubTool{Spec{Name: "mcp:b:z", Provider: "mcp:b"}})
+	mustRegisterCap(t, r, &capStubTool{Spec{Name: "mcp:b:a", Provider: "mcp:b"}})
+
+	got := r.WithProvider("mcp:b")
+	if len(got) != 2 || got[0].Name != "mcp:b:a" || got[1].Name != "mcp:b:z" {
+		t.Fatalf("WithProvider = %v, want both b tools in name order", specNames(got))
+	}
+	if len(r.WithProvider("mcp:absent")) != 0 {
+		t.Error("WithProvider invented tools for an unknown provider")
+	}
+	// The empty provider must not act as a wildcard.
+	if got := r.WithProvider(""); got != nil {
+		t.Errorf("WithProvider(\"\") = %v, want nothing", specNames(got))
+	}
+}
