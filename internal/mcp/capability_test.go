@@ -18,8 +18,17 @@ func TestAdapterUsesDeclaredCapabilities(t *testing.T) {
 		ToolInfo{Name: "render"},
 	)
 	spec := a.Spec()
-	if len(spec.Capabilities) != 2 || spec.Capabilities[0] != "create_3d_scene" || spec.Capabilities[1] != "render_scene" {
-		t.Fatalf("Spec().Capabilities = %v, want trimmed [create_3d_scene render_scene]", spec.Capabilities)
+	// Declared names first, for discovery; external_tool last, because that is
+	// what the acting roles actually match on. Describing a server must never
+	// make it less reachable than leaving it undescribed.
+	want := []tools.Capability{"create_3d_scene", "render_scene", tools.CapExternalTool}
+	if len(spec.Capabilities) != len(want) {
+		t.Fatalf("Spec().Capabilities = %v, want %v", spec.Capabilities, want)
+	}
+	for i, c := range want {
+		if spec.Capabilities[i] != c {
+			t.Fatalf("Spec().Capabilities = %v, want %v", spec.Capabilities, want)
+		}
 	}
 	if spec.Provider != "mcp:blender" {
 		t.Errorf("Spec().Provider = %q, want %q", spec.Provider, "mcp:blender")
@@ -42,12 +51,17 @@ func TestAdapterFallsBackToExternalTool(t *testing.T) {
 func TestAdapterDropsMalformedCapabilities(t *testing.T) {
 	a := adapterFor(Server{Name: "misc", Command: "x", Capabilities: []string{"Bad Name", "ok_name"}}, ToolInfo{Name: "do"})
 	got := a.Spec().Capabilities
-	if len(got) != 1 || got[0] != "ok_name" {
-		t.Fatalf("Spec().Capabilities = %v, want only [ok_name]", got)
+	if len(got) != 2 || got[0] != "ok_name" || got[1] != tools.CapExternalTool {
+		t.Fatalf("Spec().Capabilities = %v, want [ok_name external_tool]", got)
 	}
 	a = adapterFor(Server{Name: "misc", Command: "x", Capabilities: []string{"Bad Name"}}, ToolInfo{Name: "do"})
 	if got := a.Spec().Capabilities; len(got) != 1 || got[0] != tools.CapExternalTool {
-		t.Fatalf("all-invalid declaration gave %v, want the external_tool fallback", got)
+		t.Fatalf("all-invalid declaration gave %v, want just external_tool", got)
+	}
+	// external_tool must not be duplicated when an operator names it too.
+	a = adapterFor(Server{Name: "misc", Command: "x", Capabilities: []string{"external_tool", "ok_name"}}, ToolInfo{Name: "do"})
+	if got := a.Spec().Capabilities; len(got) != 2 {
+		t.Fatalf("Spec().Capabilities = %v, want no duplicate external_tool", got)
 	}
 }
 

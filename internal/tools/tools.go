@@ -54,6 +54,11 @@ type Result struct {
 	Output string `json:"output"`
 	// Artifact marks outputs worth persisting (files produced, etc.).
 	Artifact bool `json:"artifact,omitempty"`
+	// Artifacts lists paths the tool itself produced. Artifact alone only
+	// covers the case where the caller already named the path in the input;
+	// a tool that decides where its output lands — an external tool handing
+	// back an image, say — has to be able to say so.
+	Artifacts []string `json:"artifacts,omitempty"`
 	// Replan marks that this call is a request to restructure the task's
 	// execution — the agent that ran it has decided the current plan is too
 	// small for what it has actually found. The caller (agent.Agent) records

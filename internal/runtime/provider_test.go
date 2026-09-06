@@ -4,11 +4,15 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"omniharness/internal/event"
+	"omniharness/internal/gateway"
 	"omniharness/internal/mcp"
+	"omniharness/internal/task"
 	"omniharness/internal/testutil"
 )
 
@@ -138,4 +142,146 @@ func TestRuntimeCloseIsIdempotentWithProviders(t *testing.T) {
 	}
 	rt.Close()
 	rt.Close() // t.Cleanup will call it a third time.
+}
+
+// blenderShapedServer mirrors the content shapes blender-mcp 1.9.1 returns:
+// get_scene_info is text, get_viewport_screenshot is an image block with no
+// text at all. Tool names and shapes were read from the published package;
+// nothing here claims Blender itself was driven.
+const blenderShapedServer = `
+import base64, json, sys
+PNG = base64.b64encode(bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c6360000002000100ffff0000060005a54f9d000000"
+    "0049454e44ae426082")).decode()
+for line in sys.stdin:
+    try:
+        msg = json.loads(line)
+    except Exception:
+        continue
+    if "id" not in msg:
+        continue
+    method = msg.get("method")
+    if method == "initialize":
+        result = {"protocolVersion": "2025-03-26", "capabilities": {"tools": {}}, "serverInfo": {"name": "blender", "version": "1.9.1"}}
+    elif method == "tools/list":
+        result = {"tools": [
+            {"name": "get_scene_info", "description": "Get scene info",
+             "inputSchema": {"type": "object", "properties": {}}},
+            {"name": "get_viewport_screenshot", "description": "Capture the viewport",
+             "inputSchema": {"type": "object", "properties": {"max_size": {"type": "integer"}}, "required": ["max_size"], "additionalProperties": False}},
+        ]}
+    elif method == "tools/call":
+        if msg["params"]["name"] == "get_viewport_screenshot":
+            result = {"content": [{"type": "image", "data": PNG, "mimeType": "image/png"}], "isError": False}
+        else:
+            result = {"content": [{"type": "text", "text": "Scene: 3 objects"}], "isError": False}
+    else:
+        result = {}
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}) + "\n")
+    sys.stdout.flush()
+`
+
+func toolCall(id, name, args string) gateway.ToolCall {
+	var tc gateway.ToolCall
+	tc.ID = id
+	tc.Type = "function"
+	tc.Function.Name = name
+	tc.Function.Arguments = args
+	return tc
+}
+
+// The whole point of the capability work: a provider this build has never
+// heard of becomes usable through configuration alone. This drives one end to
+// end — capability routing, schema validation, policy, execution, and an
+// image observation landing on disk — with no Blender-specific code anywhere
+// in the harness.
+func TestExternalProviderRunsEndToEnd(t *testing.T) {
+	script := writeScript(t, blenderShapedServer)
+	workspace := t.TempDir()
+
+	fake := testutil.NewFakeOmniRoute(t,
+		// 1. A call the schema rejects: max_size is required.
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{
+			toolCall("c1", "mcp:blender:get_viewport_screenshot", `{}`)}},
+		// 2. Corrected, and it renders.
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{
+			toolCall("c2", "mcp:blender:get_viewport_screenshot", `{"max_size":800}`)}},
+		// 3. Done.
+		testutil.FakeStep{Content: "Captured the viewport."},
+	)
+	rt := testRuntime(t, fake, workspace)
+
+	if err := rt.LoadMCPServers(context.Background(), []mcp.Server{{
+		Name: "blender", Command: "python", Args: []string{script},
+		Capabilities: []string{"inspect_3d_scene", "render_scene"},
+	}}); err != nil {
+		t.Fatalf("LoadMCPServers: %v", err)
+	}
+
+	// Discovery: the harness knows what the provider can do without knowing
+	// what it is.
+	if !rt.Tools.HasCapability("render_scene") {
+		t.Fatal("the provider's capability was not indexed")
+	}
+	if got := rt.Tools.WithCapability("render_scene"); len(got) != 2 {
+		t.Fatalf("WithCapability(render_scene) = %d tools, want both of the server's", len(got))
+	}
+
+	ss, err := rt.NewSession(workspace, "blender")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tsk, err := rt.RunTask(context.Background(), ss.ID, "Capture the current viewport.", RunOptions{ApproveAll: true})
+	if err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+	if tsk.Status != task.StatusCompleted {
+		t.Fatalf("status = %s: %s", tsk.Status, tsk.Error)
+	}
+
+	// The screenshot must have reached disk. Before non-text content was
+	// handled, this call returned an empty string and nothing was written.
+	artifacts, err := filepath.Glob(filepath.Join(workspace, ".omniharness", "artifacts", "*.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("saved %d png artifacts, want 1: %v", len(artifacts), artifacts)
+	}
+	raw, err := os.ReadFile(artifacts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) < 8 || string(raw[1:4]) != "PNG" {
+		t.Error("the saved artifact is not the image the provider returned")
+	}
+
+	// The rejected call must have been recorded as a failure with the reason,
+	// and must never have reached the server.
+	calls, err := rt.Store.ToolCalls(ss.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var invalid, ok int
+	for _, c := range calls {
+		if c.Tool != "mcp:blender:get_viewport_screenshot" {
+			continue
+		}
+		switch c.Status {
+		case "failed":
+			invalid++
+			if !strings.Contains(c.Error, "max_size") {
+				t.Errorf("the recorded failure %q does not name the missing argument", c.Error)
+			}
+		case "completed":
+			ok++
+		}
+	}
+	if invalid != 1 {
+		t.Errorf("recorded %d invalid calls, want 1", invalid)
+	}
+	if ok != 1 {
+		t.Errorf("recorded %d successful calls, want 1", ok)
+	}
 }

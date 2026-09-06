@@ -666,11 +666,14 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 	duration := time.Since(start)
 
 	if result.Artifact {
+		a.mu.Lock()
+		// Paths the tool chose itself (an external tool handing back an
+		// image), then the path the caller named in the input.
+		a.Artifacts = append(a.Artifacts, result.Artifacts...)
 		if p, ok := args["path"].(string); ok {
-			a.mu.Lock()
 			a.Artifacts = append(a.Artifacts, p)
-			a.mu.Unlock()
 		}
+		a.mu.Unlock()
 	}
 	if result.Replan {
 		a.mu.Lock()

@@ -114,13 +114,24 @@ deep_analysis = false
 # build has never heard of is fine. A typo is rejected at startup rather than
 # leaving the server loaded but unreachable.
 #
-# Omit capabilities and the server's tools get "external_tool", which the
-# acting roles (implementer, researcher, debugger, tester, optimizer) can
-# reach and the read-only roles cannot. Declaring real capabilities is better:
-# it says what the server is for, and it lets a role reach it deliberately.
+# capabilities are for DISCOVERY, not access. Every MCP tool also carries
+# "external_tool", which is what the acting roles (implementer, researcher,
+# debugger, tester, optimizer) match on; the read-only roles (reviewer,
+# security auditor, architect, synthesizer) get neither. So declaring names
+# never changes who can reach the server — describing it better must not make
+# it less usable. To restrict a server, use policy.blocked_tools /
+# policy.allowed_tools and the risk_action table, which is the layer that
+# exists for that.
+#
+# Example: Blender, via github.com/ahujasid/blender-mcp. This needs Blender
+# itself plus that project's addon running; the harness needs no code for it.
 #
 # [[mcp.servers]]
 # name = "blender"
 # command = "uvx"
 # args = ["blender-mcp"]
-# capabilities = ["create_3d_scene", "modify_3d_scene", "render_scene", "execute_code"]
+# capabilities = ["inspect_3d_scene", "modify_3d_scene", "render_scene", "execute_code"]
+
+# Binary tool output (a viewport screenshot, a rendered frame) is written to
+# <workspace>/.omniharness/artifacts and referenced by path in the tool result.
+# The tool-result channel is text, so the bytes do not reach the model there.

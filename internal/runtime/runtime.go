@@ -367,8 +367,9 @@ func (r *Runtime) LoadMCPServers(ctx context.Context, servers []mcp.Server) erro
 			_ = c.Close()
 			continue
 		}
+		artifactDir := filepath.Join(r.Workspace, ".omniharness", "artifacts")
 		for _, ti := range toolInfos {
-			adapter := &mcp.ToolAdapter{Client: c, Info: ti}
+			adapter := &mcp.ToolAdapter{Client: c, Info: ti, ArtifactDir: artifactDir}
 			if err := r.Tools.Register(adapter); err != nil {
 				failures = append(failures, fmt.Sprintf("%s: %v", srv.Name, err))
 			}

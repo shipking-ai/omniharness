@@ -38,10 +38,20 @@ type ToolInfo struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// Content is an MCP content block.
+// Content is an MCP content block. Image and resource blocks carry
+// base64-encoded Data rather than Text; a reader that looks only at Text sees
+// an empty result and no error, which is worse than an error.
 type Content struct {
-	Type string `json:"type"` // text | image | resource
-	Text string `json:"text,omitempty"`
+	Type     string `json:"type"` // text | image | resource
+	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`     // base64, for image blocks
+	MimeType string `json:"mimeType,omitempty"` // e.g. image/png
+	Resource *struct {
+		URI      string `json:"uri,omitempty"`
+		MimeType string `json:"mimeType,omitempty"`
+		Text     string `json:"text,omitempty"`
+		Blob     string `json:"blob,omitempty"`
+	} `json:"resource,omitempty"`
 }
 
 // CallResult is the result of tools/call.

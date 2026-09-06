@@ -166,8 +166,17 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
 - **MCP is first-class**: native client over stdio JSON-RPC 2.0; tools registered into
   the same registry as native tools, so policy applies identically. MCP does not
   report capabilities, so `[[mcp.servers]] capabilities` is the operator's
-  declaration; a server that declares nothing gets `external_tool`, reachable by
-  the acting roles only.
+  declaration. Those names are for *discovery*; every MCP tool also carries
+  `external_tool`, which is what the acting roles match on. Declaring names never
+  changes reach — describing a server better must not make it less usable — and
+  restriction stays with policy, which is the layer built for it.
+- **Non-text tool output becomes an artifact.** MCP content blocks can be images
+  or embedded resources, not just text. Reading only text blocks turned a
+  screenshot into an empty string with no error — an observe step failing
+  silently. Binary content is written to `<workspace>/.omniharness/artifacts` and
+  referenced by path in the tool result. The tool-result channel is text, so the
+  bytes do not reach the model there; feeding an image to a vision model would
+  need multimodal message content in `internal/gateway`, which is not built.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)
