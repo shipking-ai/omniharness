@@ -50,68 +50,112 @@ type RoleConfig struct {
 	Role        Role
 	Prompt      string
 	ModelIntent model.Intent
-	ToolAllow   []string // empty = use registry policy only
+	// ToolAllow names specific tools the role may call. It can only ever
+	// name tools this build was compiled knowing about, which is why it is
+	// not the whole story — see Capabilities.
+	ToolAllow []string
+	// Capabilities names what the role is allowed to *do*. A tool the role
+	// has never heard of becomes available the moment it declares a matching
+	// capability, which is how external providers (MCP servers, and whatever
+	// comes after them) reach an agent at all: their tool names are generated
+	// at runtime, so no ToolAllow list can contain them.
+	Capabilities []tools.Capability
+	// Both lists empty means "every registered tool", unchanged from before
+	// capabilities existed.
+}
+
+// AllowsTool reports whether the role may call a tool, by name or by any
+// capability the tool declares. Policy still evaluates the call afterwards;
+// this only decides what the role is offered and permitted to reach for.
+func (rc RoleConfig) AllowsTool(spec tools.Spec) bool {
+	if len(rc.ToolAllow) == 0 && len(rc.Capabilities) == 0 {
+		return true
+	}
+	for _, name := range rc.ToolAllow {
+		if name == spec.Name {
+			return true
+		}
+	}
+	for _, want := range rc.Capabilities {
+		for _, have := range spec.Capabilities {
+			if have == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DefaultRoles returns the built-in role definitions.
 func DefaultRoles() map[Role]RoleConfig {
 	return map[Role]RoleConfig{
 		RoleArchitect: {
-			Role:        RoleArchitect,
-			Prompt:      "You are the architect. Produce precise designs, plans and decomposition. Be concrete: name files, functions and interfaces. Prefer reading before writing.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
-			ToolAllow:   []string{"read_file", "list_dir", "find_files", "search", "git", "remember", "request_replan"},
+			Role:         RoleArchitect,
+			Prompt:       "You are the architect. Produce precise designs, plans and decomposition. Be concrete: name files, functions and interfaces. Prefer reading before writing.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
+			ToolAllow:    []string{"read_file", "list_dir", "find_files", "search", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl),
 		},
 		RoleImplementer: {
-			Role:        RoleImplementer,
-			Prompt:      "You are the implementer. Make minimal, correct changes. Prefer editing existing files. Run the provided tools to inspect before you modify. Keep changes focused on the task.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapCoding, model.CapFast}},
-			ToolAllow:   []string{"read_file", "write_file", "edit_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleImplementer,
+			Prompt:       "You are the implementer. Make minimal, correct changes. Prefer editing existing files. Run the provided tools to inspect before you modify. Keep changes focused on the task.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapCoding, model.CapFast}},
+			ToolAllow:    []string{"read_file", "write_file", "edit_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapWriteFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleResearcher: {
-			Role:        RoleResearcher,
-			Prompt:      "You are the researcher. Gather evidence and sources. Report findings with citations and note uncertainty explicitly. Do not fabricate sources.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapResearch, model.CapReasoning}},
-			ToolAllow:   []string{"read_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleResearcher,
+			Prompt:       "You are the researcher. Gather evidence and sources. Report findings with citations and note uncertainty explicitly. Do not fabricate sources.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapResearch, model.CapReasoning}},
+			ToolAllow:    []string{"read_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleDebugger: {
-			Role:        RoleDebugger,
-			Prompt:      "You are the debugger. Reproduce the failure first, then isolate root cause with the smallest possible experiment. Report the root cause and the fix.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
-			ToolAllow:   []string{"read_file", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleDebugger,
+			Prompt:       "You are the debugger. Reproduce the failure first, then isolate root cause with the smallest possible experiment. Report the root cause and the fix.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
+			ToolAllow:    []string{"read_file", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleReviewer: {
-			Role:        RoleReviewer,
-			Prompt:      "You are the reviewer. Check correctness, safety, and adherence to the task. Identify concrete defects with file/line references. Be skeptical; do not rubber-stamp.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapReview, model.CapReasoning}},
-			ToolAllow:   []string{"read_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleReviewer,
+			Prompt:       "You are the reviewer. Check correctness, safety, and adherence to the task. Identify concrete defects with file/line references. Be skeptical; do not rubber-stamp.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReview, model.CapReasoning}},
+			ToolAllow:    []string{"read_file", "list_dir", "find_files", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl),
 		},
 		RoleTester: {
-			Role:        RoleTester,
-			Prompt:      "You are the tester. Write and run tests that prove the behavior described in the task. Report pass/fail per test.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapCoding, model.CapFast}},
-			ToolAllow:   []string{"read_file", "write_file", "edit_file", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleTester,
+			Prompt:       "You are the tester. Write and run tests that prove the behavior described in the task. Report pass/fail per test.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapCoding, model.CapFast}},
+			ToolAllow:    []string{"read_file", "write_file", "edit_file", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapWriteFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleSecurityAuditor: {
-			Role:        RoleSecurityAuditor,
-			Prompt:      "You are the security auditor. Look for injection, secrets, unsafe file/shell operations, and privilege issues. Report severity and concrete fixes.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapReasoning, model.CapReview}},
-			ToolAllow:   []string{"read_file", "search", "git", "remember", "request_replan"},
+			Role:         RoleSecurityAuditor,
+			Prompt:       "You are the security auditor. Look for injection, secrets, unsafe file/shell operations, and privilege issues. Report severity and concrete fixes.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReasoning, model.CapReview}},
+			ToolAllow:    []string{"read_file", "search", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl),
 		},
 		RoleOptimizer: {
-			Role:        RoleOptimizer,
-			Prompt:      "You are the optimizer. Improve performance without changing observable behavior. Measure before and after.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapCoding, model.CapReasoning}},
-			ToolAllow:   []string{"read_file", "edit_file", "search", "shell", "git", "remember", "request_replan"},
+			Role:         RoleOptimizer,
+			Prompt:       "You are the optimizer. Improve performance without changing observable behavior. Measure before and after.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapCoding, model.CapReasoning}},
+			ToolAllow:    []string{"read_file", "edit_file", "search", "shell", "git", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapWriteFiles, tools.CapSearchCode, tools.CapExecuteCode, tools.CapVersionControl, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
 		},
 		RoleSynthesizer: {
-			Role:        RoleSynthesizer,
-			Prompt:      "You are the synthesizer. Combine the collected results into one coherent deliverable. Integrate, reconcile conflicts, and produce the final answer.",
-			ModelIntent: model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
-			ToolAllow:   []string{"read_file", "search", "remember", "request_replan"},
+			Role:         RoleSynthesizer,
+			Prompt:       "You are the synthesizer. Combine the collected results into one coherent deliverable. Integrate, reconcile conflicts, and produce the final answer.",
+			ModelIntent:  model.Intent{Capabilities: []string{model.CapReasoning, model.CapCoding}},
+			ToolAllow:    []string{"read_file", "search", "remember", "request_replan"},
+			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapManageMemory, tools.CapPlanControl),
 		},
 	}
 }
+
+func caps(c ...tools.Capability) []tools.Capability { return c }
 
 // Lifecycle is the agent state machine.
 type Lifecycle string
@@ -361,7 +405,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.setLifecycle(LifecycleThinking, task.StatusRunning, "thinking")
 
 	roleCfg := a.deps.Roles[a.Role]
-	toolSpecs := a.toolSpecs(roleCfg.ToolAllow)
+	toolSpecs := a.toolSpecs(roleCfg)
 	a.repeats = repeatTracker{}
 
 	for iter := 0; iter < a.deps.MaxIterations; iter++ {
@@ -579,18 +623,12 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 	}
 	spec := tool.Spec()
 
-	// Role tool allowlist.
-	if len(roleCfg.ToolAllow) > 0 {
-		allowed := false
-		for _, t := range roleCfg.ToolAllow {
-			if t == name {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return fmt.Sprintf("error: tool %q is not allowed for role %s", name, a.Role)
-		}
+	// Role reach: by name, or by any capability the tool declares. This
+	// mirrors toolSpecs exactly — a model can only be offered what it may
+	// call — but is re-checked here because a model can name a tool it was
+	// never offered.
+	if !roleCfg.AllowsTool(spec) {
+		return fmt.Sprintf("error: tool %q is not allowed for role %s", name, a.Role)
 	}
 
 	a.publish(&event.ToolRequestedData{
@@ -649,28 +687,22 @@ func (a *Agent) recordToolCall(name, status string, risk tools.Risk, durationMS 
 }
 
 // toolSpecs builds the gateway tool list for the agent.
-func (a *Agent) toolSpecs(allow []string) []gateway.ToolSpec {
+// toolSpecs is the set of tools offered to the model for this role. It reads
+// the registry's full specs rather than the model-facing projection, because
+// the reach decision needs capabilities and the projection drops them.
+func (a *Agent) toolSpecs(roleCfg RoleConfig) []gateway.ToolSpec {
 	var out []gateway.ToolSpec
-	for _, gs := range a.deps.Tools.ToGatewaySpecs() {
-		if len(allow) > 0 {
-			ok := false
-			for _, t := range allow {
-				if t == gs.Name {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				continue
-			}
+	for _, spec := range a.deps.Tools.List() {
+		if !roleCfg.AllowsTool(spec) {
+			continue
 		}
 		out = append(out, gateway.ToolSpec{
 			Type: "function",
 		})
 		// set fields via index to keep type literal simple
-		out[len(out)-1].Function.Name = gs.Name
-		out[len(out)-1].Function.Description = gs.Description
-		out[len(out)-1].Function.Parameters = gs.Parameters
+		out[len(out)-1].Function.Name = spec.Name
+		out[len(out)-1].Function.Description = spec.Description
+		out[len(out)-1].Function.Parameters = spec.Parameters
 	}
 	return out
 }

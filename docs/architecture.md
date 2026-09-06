@@ -139,8 +139,21 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
 - **Repair changes variables, never blind-retries** the identical failed execution.
 - **No fake telemetry.** Every metric in the TUI comes from recorded events or
   session rows.
+- **Tools are addressed by capability, not by name.** `tools.Spec.Capabilities`
+  declares what a tool provides (`read_files`, `execute_code`, and whatever an
+  external adapter names — `render_scene`, `generate_music`); the registry
+  indexes it (`WithCapability`, `HasCapability`, `Capabilities`). Agent roles
+  declare capabilities alongside their `ToolAllow` names, and a tool is offered
+  to a role if either matches. This is what makes an external provider reachable
+  at all: its tool names are generated at runtime, so no compiled-in name list
+  can contain them. The vocabulary is deliberately **open** — core validates a
+  name's shape, never its membership in a list, so adding a Blender or Resolve
+  adapter needs no change to `internal/tools`.
 - **MCP is first-class**: native client over stdio JSON-RPC 2.0; tools registered into
-  the same registry as native tools, so policy applies identically.
+  the same registry as native tools, so policy applies identically. MCP does not
+  report capabilities, so `[[mcp.servers]] capabilities` is the operator's
+  declaration; a server that declares nothing gets `external_tool`, reachable by
+  the acting roles only.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)

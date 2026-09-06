@@ -42,12 +42,24 @@ func NewNative(workspaceRoot string) *Native {
 	}
 }
 
-func (n *Native) tool(name, desc string, risk Risk, params map[string]any, fn func(context.Context, map[string]any) (Result, error)) Tool {
+func (n *Native) tool(name, desc string, risk Risk, caps []Capability, params map[string]any, fn func(context.Context, map[string]any) (Result, error)) Tool {
 	return &funcTool{
-		spec: Spec{Name: name, Description: desc, Parameters: params, Risk: risk},
-		fn:   fn,
+		spec: Spec{
+			Name:         name,
+			Description:  desc,
+			Parameters:   params,
+			Risk:         risk,
+			Capabilities: caps,
+			Provider:     ProviderNative,
+		},
+		fn: fn,
 	}
 }
+
+// ProviderNative labels the built-in tools in Spec.Provider.
+const ProviderNative = "native"
+
+func caps(c ...Capability) []Capability { return c }
 
 type funcTool struct {
 	spec Spec
@@ -62,52 +74,52 @@ func (f *funcTool) Run(ctx context.Context, in map[string]any) (Result, error) {
 // Register adds all native tools to the registry.
 func (n *Native) Register(r *Registry) error {
 	tools := []Tool{
-		n.tool("read_file", "Read the contents of a text file. Use for inspecting source, configs and docs.", RiskLow, schema(map[string]any{
+		n.tool("read_file", "Read the contents of a text file. Use for inspecting source, configs and docs.", RiskLow, caps(CapReadFiles), schema(map[string]any{
 			"path": map[string]any{"type": "string", "description": "path to read"},
 		}), n.readFile),
-		n.tool("write_file", "Write content to a file, creating or overwriting it.", RiskMedium, schema(map[string]any{
+		n.tool("write_file", "Write content to a file, creating or overwriting it.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":    map[string]any{"type": "string", "description": "path to write"},
 			"content": map[string]any{"type": "string", "description": "full file content"},
 		}), n.writeFile),
-		n.tool("edit_file", "Replace one exact substring in a file with new text.", RiskMedium, schema(map[string]any{
+		n.tool("edit_file", "Replace one exact substring in a file with new text.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":     map[string]any{"type": "string", "description": "path to edit"},
 			"old_text": map[string]any{"type": "string", "description": "exact text to replace"},
 			"new_text": map[string]any{"type": "string", "description": "replacement text"},
 		}), n.editFile),
-		n.tool("list_dir", "List entries in a directory.", RiskLow, schema(map[string]any{
+		n.tool("list_dir", "List entries in a directory.", RiskLow, caps(CapReadFiles), schema(map[string]any{
 			"path": map[string]any{"type": "string", "description": "directory to list"},
 		}), n.listDir),
-		n.tool("find_files", "Find files by glob pattern under a directory.", RiskLow, schema(map[string]any{
+		n.tool("find_files", "Find files by glob pattern under a directory.", RiskLow, caps(CapSearchCode), schema(map[string]any{
 			"path":  map[string]any{"type": "string", "description": "root directory"},
 			"glob":  map[string]any{"type": "string", "description": "glob pattern like **/*.go"},
 			"limit": map[string]any{"type": "integer", "description": "max results"},
 		}), n.findFiles),
-		n.tool("search", "Regex search over file contents. Returns file:line matches.", RiskLow, schema(map[string]any{
+		n.tool("search", "Regex search over file contents. Returns file:line matches.", RiskLow, caps(CapSearchCode), schema(map[string]any{
 			"pattern": map[string]any{"type": "string", "description": "regular expression"},
 			"path":    map[string]any{"type": "string", "description": "root directory"},
 			"limit":   map[string]any{"type": "integer", "description": "max matches"},
 		}), n.search),
-		n.tool("shell", "Execute a shell command. Use sparingly; prefer specific tools.", RiskHigh, schema(map[string]any{
+		n.tool("shell", "Execute a shell command. Use sparingly; prefer specific tools.", RiskHigh, caps(CapExecuteCode), schema(map[string]any{
 			"command":     map[string]any{"type": "string", "description": "command to run"},
 			"timeout_sec": map[string]any{"type": "integer", "description": "timeout in seconds (max 300)"},
 		}), n.shell),
-		n.tool("git", "Run a git operation in the workspace. Subcommands: status, diff, log, add, commit, push, checkout, stash.", RiskHigh, schema(map[string]any{
+		n.tool("git", "Run a git operation in the workspace. Subcommands: status, diff, log, add, commit, push, checkout, stash.", RiskHigh, caps(CapVersionControl), schema(map[string]any{
 			"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "git arguments"},
 		}), n.git),
-		n.tool("process_list", "List running processes.", RiskLow, schema(map[string]any{}), n.processList),
-		n.tool("process_kill", "Terminate a process by PID.", RiskHigh, schema(map[string]any{
+		n.tool("process_list", "List running processes.", RiskLow, caps(CapInspectProcess), schema(map[string]any{}), n.processList),
+		n.tool("process_kill", "Terminate a process by PID.", RiskHigh, caps(CapInspectProcess), schema(map[string]any{
 			"pid": map[string]any{"type": "integer", "description": "process id"},
 		}), n.processKill),
 		n.tool("request_replan",
 			"Call this when you discover the task needs real structure the current plan doesn't have — not a bug, a scope change: the request turned out to need several distinct pieces of work, or touches something the plan never accounted for. Do not call it for routine difficulty, a failing test you can fix yourself, or anything you can just finish. This does not do the extra work itself; it tells the harness to restructure execution around what you found, once this step finishes.",
-			RiskLow, schema(map[string]any{
+			RiskLow, caps(CapPlanControl), schema(map[string]any{
 				"reason": map[string]any{"type": "string", "description": "specifically what you found that the current plan does not account for"},
 			}), n.requestReplan),
 	}
 	if n.Memory != nil {
 		tools = append(tools, n.tool("remember",
 			"Save a durable note about this project — a convention, a gotcha, a decision — for future tasks in this workspace. Recalled automatically into every agent's instructions; use it sparingly, for things worth knowing next time, not routine progress notes. kind is a slot: remembering again with the same kind overwrites what was there, so use a specific kind per distinct fact (e.g. \"test-setup\", \"known-issue-flaky-ci\") rather than one generic kind for everything.",
-			RiskLow, schema(map[string]any{
+			RiskLow, caps(CapManageMemory), schema(map[string]any{
 				"kind":    map[string]any{"type": "string", "description": "short, specific slot name, e.g. \"test-setup\" or \"known-issue-flaky-ci\" — reusing a kind replaces its old content"},
 				"content": map[string]any{"type": "string", "description": "what to remember, in one or two sentences"},
 			}), n.remember))

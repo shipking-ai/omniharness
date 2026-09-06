@@ -349,6 +349,12 @@ func (r *Runtime) LoadMCPServers(ctx context.Context, servers []mcp.Server) erro
 	}
 	var failures []string
 	for _, srv := range servers {
+		// Before spawning anything: a mistyped capability makes the server's
+		// tools unreachable, which looks like the server never loaded.
+		if err := mcp.ValidateCapabilities(srv); err != nil {
+			failures = append(failures, err.Error())
+			continue
+		}
 		c := mcp.NewClient(srv)
 		if err := c.Start(ctx); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", srv.Name, err))

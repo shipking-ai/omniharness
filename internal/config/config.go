@@ -39,6 +39,12 @@ type MCServer struct {
 	Command string   `toml:"command"`
 	Args    []string `toml:"args,omitempty"`
 	Env     []string `toml:"env,omitempty"`
+	// Capabilities declares what this server's tools provide, e.g.
+	// ["create_3d_scene", "render_scene"]. MCP has no capability field of its
+	// own, so this is the operator's declaration and cannot be discovered.
+	// Omitted, the server's tools get the generic "external_tool" capability,
+	// which is reachable by the acting roles but tells a planner nothing.
+	Capabilities []string `toml:"capabilities,omitempty"`
 }
 
 // OmniRoute configures the gateway connection.

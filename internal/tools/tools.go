@@ -32,6 +32,15 @@ type Spec struct {
 	Description string         `json:"description"`
 	Parameters  map[string]any `json:"parameters"` // JSON schema
 	Risk        Risk           `json:"risk"`
+	// Capabilities are what this tool provides, independent of its name. A
+	// caller that needs "execute_code" can find every tool that offers it
+	// without knowing which program implements them. Empty means the tool is
+	// reachable by name only.
+	Capabilities []Capability `json:"capabilities,omitempty"`
+	// Provider names where the tool came from — "native" for built-ins, or
+	// "mcp:<server>" for an MCP adapter. Observability only; nothing routes
+	// on it.
+	Provider string `json:"provider,omitempty"`
 	// MutatesFS reports whether the tool can change files on disk.
 	MutatesFS bool `json:"mutatesFs,omitempty"`
 	// ExecutesCode reports whether the tool runs arbitrary commands/code.
@@ -103,6 +112,55 @@ func (r *Registry) List() []Spec {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// WithCapability returns the specs of every registered tool that declares the
+// capability, sorted by name. This is the discovery path: a caller asks what
+// can do a thing, not which program does it.
+func (r *Registry) WithCapability(c Capability) []Spec {
+	var out []Spec
+	for _, s := range r.List() {
+		if specHasCapability(s, c) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// HasCapability reports whether any registered tool provides the capability.
+func (r *Registry) HasCapability(c Capability) bool {
+	for _, s := range r.List() {
+		if specHasCapability(s, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// Capabilities returns every capability provided by at least one registered
+// tool, deduplicated and sorted. The set changes as adapters register, so this
+// is computed on demand rather than cached.
+func (r *Registry) Capabilities() []Capability {
+	seen := map[Capability]bool{}
+	var out []Capability
+	for _, s := range r.List() {
+		for _, c := range s.Capabilities {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		}
+	}
+	return SortCapabilities(out)
+}
+
+func specHasCapability(s Spec, c Capability) bool {
+	for _, have := range s.Capabilities {
+		if have == c {
+			return true
+		}
+	}
+	return false
 }
 
 // Names returns tool names only.

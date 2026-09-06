@@ -99,3 +99,28 @@ format = "text"
 # defaults off.
 [task]
 deep_analysis = false
+
+# MCP servers become tool providers. Each server's tools register into the
+# same registry as the native tools, so policy applies to them identically.
+#
+# capabilities declares what the server's tools provide. MCP has no capability
+# field of its own — the protocol reports names, descriptions and input
+# schemas only — so this is your declaration and cannot be discovered. It is
+# how agents reach the server: roles select tools by capability, not by name,
+# and a server's tool names are only known at runtime.
+#
+# The vocabulary is open. Names must be lowercase letters, digits and
+# underscores; nothing checks them against a fixed list, so a capability this
+# build has never heard of is fine. A typo is rejected at startup rather than
+# leaving the server loaded but unreachable.
+#
+# Omit capabilities and the server's tools get "external_tool", which the
+# acting roles (implementer, researcher, debugger, tester, optimizer) can
+# reach and the read-only roles cannot. Declaring real capabilities is better:
+# it says what the server is for, and it lets a role reach it deliberately.
+#
+# [[mcp.servers]]
+# name = "blender"
+# command = "uvx"
+# args = ["blender-mcp"]
+# capabilities = ["create_3d_scene", "modify_3d_scene", "render_scene", "execute_code"]

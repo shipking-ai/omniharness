@@ -23,6 +23,12 @@ type Server struct {
 	Command string   `json:"command" toml:"command"`
 	Args    []string `json:"args,omitempty" toml:"args,omitempty"`
 	Env     []string `json:"env,omitempty" toml:"env,omitempty"` // KEY=VALUE entries
+	// Capabilities is what the operator declares this server's tools provide,
+	// e.g. ["create_3d_scene", "render_scene"]. MCP itself has no capability
+	// field — the protocol reports names, descriptions and input schemas only
+	// — so this cannot be discovered and must be configured. Left empty, the
+	// adapter falls back to tools.CapExternalTool.
+	Capabilities []string `json:"capabilities,omitempty" toml:"capabilities,omitempty"`
 }
 
 // ToolInfo is the metadata MCP returns for a tool.

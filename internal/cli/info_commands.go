@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"omniharness/internal/config"
 	"omniharness/internal/gateway"
 	"omniharness/internal/telemetry"
+	"omniharness/internal/tools"
 	"omniharness/internal/version"
 )
 
@@ -342,20 +344,55 @@ func newPluginsCmd() *cobra.Command {
 			}
 			defer rt.Close()
 
+			// Start the configured servers before listing. Without this the
+			// command printed the server list and then only the native tools,
+			// so the one surface for answering "did my MCP server load, and
+			// what does it give me?" could not answer it.
+			loadMCPServersFromConfig(cmd.Context(), rt, cfg)
+
 			fmt.Println("configured MCP servers:")
 			if len(cfg.MCP.Servers) == 0 {
 				fmt.Println("  (none — add [[mcp.servers]] entries to your config)")
 			}
 			for _, s := range cfg.MCP.Servers {
 				line := fmt.Sprintf("  %s -> %s %s", s.Name, s.Command, s.Args)
+				if len(s.Capabilities) > 0 {
+					line += "  provides: " + strings.Join(s.Capabilities, ", ")
+				} else {
+					line += "  provides: external_tool (declare capabilities to narrow this)"
+				}
 				fmt.Println(line)
 			}
 
-			fmt.Println("\nnative tools:")
+			fmt.Println("\nregistered tools:")
 			for _, spec := range rt.Tools.List() {
 				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, spec.Description)
+				if len(spec.Capabilities) > 0 {
+					fmt.Printf("  %-16s   provides: %s\n", "", strings.Join(capNames(spec.Capabilities), ", "))
+				}
+			}
+
+			// The capability index is what a role matches a tool against, so
+			// print it separately: it answers "can anything here do X?" without
+			// the reader having to scan every tool.
+			fmt.Println("\navailable capabilities:")
+			for _, c := range rt.Tools.Capabilities() {
+				var providers []string
+				for _, p := range rt.Tools.WithCapability(c) {
+					providers = append(providers, p.Name)
+				}
+				fmt.Printf("  %-16s %s\n", string(c), strings.Join(providers, ", "))
 			}
 			return nil
 		},
 	}
+}
+
+// capNames renders capabilities for display.
+func capNames(in []tools.Capability) []string {
+	out := make([]string, len(in))
+	for i, c := range in {
+		out[i] = string(c)
+	}
+	return out
 }
