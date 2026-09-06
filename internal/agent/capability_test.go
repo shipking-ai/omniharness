@@ -244,3 +244,54 @@ func TestInvalidToolCallIsRejectedBeforePolicy(t *testing.T) {
 		t.Error("a valid call never reached the approver")
 	}
 }
+
+// The transcript deliberately keeps the assistant tool_calls message before
+// the tool results, because the wire format rejects a tool message with no
+// matching assistant message before it. Composition must not undo that.
+func TestCompositionKeepsToolCallsWithTheirResults(t *testing.T) {
+	var assistant gateway.Message
+	assistant.Role = "assistant"
+	assistant.ToolCalls = []gateway.ToolCall{toolCallFor("c1", "read_file")}
+	transcript := []gateway.Message{
+		{Role: "user", Content: "read it"},
+		assistant,
+		{Role: "tool", ToolCallID: "c1", Name: "read_file", Content: "contents"},
+	}
+
+	out := toGatewayMessages(toContextMessages(transcript))
+	if len(out) != 3 {
+		t.Fatalf("got %d messages, want 3", len(out))
+	}
+	if len(out[1].ToolCalls) != 1 || out[1].ToolCalls[0].ID != "c1" {
+		t.Fatal("the assistant message lost its tool_calls, orphaning the tool result that follows")
+	}
+	if out[2].ToolCallID != "c1" {
+		t.Errorf("the tool result lost its call id: %+v", out[2])
+	}
+}
+
+// An image observation has to survive the same trip, or attaching one is
+// pointless.
+func TestCompositionKeepsImages(t *testing.T) {
+	transcript := []gateway.Message{
+		{Role: "user", Content: "look", Images: []gateway.ImageRef{
+			{MimeType: "image/png", Data: []byte{1, 2, 3}, Source: "shot.png"},
+		}},
+	}
+	out := toGatewayMessages(toContextMessages(transcript))
+	if len(out) != 1 || len(out[0].Images) != 1 {
+		t.Fatalf("the image did not survive composition: %+v", out)
+	}
+	if out[0].Images[0].MimeType != "image/png" || len(out[0].Images[0].Data) != 3 {
+		t.Errorf("the image was altered: %+v", out[0].Images[0])
+	}
+}
+
+func toolCallFor(id, name string) gateway.ToolCall {
+	var tc gateway.ToolCall
+	tc.ID = id
+	tc.Type = "function"
+	tc.Function.Name = name
+	tc.Function.Arguments = "{}"
+	return tc
+}

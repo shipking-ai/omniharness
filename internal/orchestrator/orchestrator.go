@@ -32,14 +32,16 @@ import (
 
 // Deps wires the orchestrator to every subsystem.
 type Deps struct {
-	Bus        *event.Bus
-	Store      *session.Store
-	Gateway    *gateway.Client
-	ModelSel   *model.Selector
-	Roles      map[agent.Role]agent.RoleConfig
-	Evaluators *evaluate.Registry
-	Repair     *repair.Engine
-	Analyzer   *task.Analyzer
+	Bus      *event.Bus
+	Store    *session.Store
+	Gateway  *gateway.Client
+	ModelSel *model.Selector
+	Roles    map[agent.Role]agent.RoleConfig
+	// VisionModels are the provider/model refs that accept image input.
+	VisionModels []string
+	Evaluators   *evaluate.Registry
+	Repair       *repair.Engine
+	Analyzer     *task.Analyzer
 	// DeepAnalyzer optionally deepens the pure Analyzer's Profile with a
 	// single model call (see task.DeepAnalyzer). Nil disables the pass
 	// entirely — every task then behaves exactly as before this field
@@ -608,6 +610,7 @@ func (o *Orchestrator) runAgent(ctx context.Context, t *task.Task, role agent.Ro
 		Policy:              o.deps.Policy,
 		Composer:            o.deps.Composer,
 		Roles:               o.deps.Roles,
+		VisionModels:        o.deps.VisionModels,
 		Workspace:           o.deps.Workspace,
 		Budget:              budgets,
 		ProjectInstructions: o.recallProjectInstructions(t),

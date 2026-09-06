@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"omniharness/internal/agent"
+	"omniharness/internal/config"
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
 	"omniharness/internal/mcp"
@@ -394,4 +395,150 @@ func specNames(in []tools.Spec) []string {
 		out[i] = s.Name
 	}
 	return out
+}
+
+// The observe step the whole capability line exists for: a tool renders an
+// image, and a model that can see gets to look at it. Before this, the image
+// reached disk and stopped there.
+func TestImageObservationReachesAVisionModel(t *testing.T) {
+	script := writeScript(t, blenderShapedServer)
+	workspace := t.TempDir()
+
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{
+			toolCall("c1", "mcp:blender:get_viewport_screenshot", `{"max_size":800}`)}},
+		testutil.FakeStep{Content: "The camera is too low."},
+	)
+	testutil.InitFakeWorkspace(t, workspace)
+	cfg := config.Default()
+	cfg.Persistence.Dir = workspace
+	cfg.Policy.WorkspaceRoot = workspace
+	// The run's own model is NOT the vision one. That is the realistic case:
+	// a role resolves a coding model, and only the look-at-the-image turn
+	// needs a model that can see.
+	cfg.Models.Capabilities = nil
+	cfg.Models.Default = "fake/coding-model"
+	cfg.Models.Vision = []string{"fake/vision-model"}
+	rt, err := New(cfg, Options{Gateway: fake.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(rt.Close)
+
+	if err := rt.LoadMCPServers(context.Background(), []mcp.Server{{
+		Name: "blender", Command: "python", Args: []string{script},
+	}}); err != nil {
+		t.Fatalf("LoadMCPServers: %v", err)
+	}
+	ss, err := rt.NewSession(workspace, "vision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rt.RunTask(context.Background(), ss.ID, "Look at the viewport and say what is wrong.",
+		RunOptions{ApproveAll: true}); err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+
+	// The follow-up request must carry the image as content parts. Only a
+	// parts array decodes back with the "[image]" marker, so this proves the
+	// wire shape, not just that a message was appended.
+	var sawImage bool
+	for _, req := range fake.RequestsSnapshot() {
+		for _, m := range req.Messages {
+			if m.Role == "user" && strings.Contains(m.Content, "[image]") {
+				sawImage = true
+			}
+		}
+	}
+	if !sawImage {
+		t.Fatal("no request carried the rendered image; the observation never reached the model")
+	}
+
+	// And the turn that looked at it must have run on the vision model, while
+	// the rest of the run stayed on the agent's own model.
+	var visionCalls, codingCalls int
+	for _, req := range fake.RequestsSnapshot() {
+		switch req.Model {
+		case "fake/vision-model":
+			visionCalls++
+			var carries bool
+			for _, m := range req.Messages {
+				if strings.Contains(m.Content, "[image]") {
+					carries = true
+				}
+			}
+			if !carries {
+				t.Error("a call was routed to the vision model without an image to look at")
+			}
+		case "fake/coding-model":
+			codingCalls++
+		default:
+			t.Errorf("unexpected model %q", req.Model)
+		}
+	}
+	if visionCalls != 1 {
+		t.Errorf("%d calls went to the vision model, want exactly the one that looks", visionCalls)
+	}
+	if codingCalls == 0 {
+		t.Error("the whole run switched to the vision model; the detour was meant to be one turn")
+	}
+}
+
+// The same run against a model that was never declared vision-capable must
+// not send an image, and must say so rather than leaving the model to wonder
+// why a screenshot produced nothing.
+func TestImageIsDescribedWhenTheModelCannotSee(t *testing.T) {
+	script := writeScript(t, blenderShapedServer)
+	workspace := t.TempDir()
+
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{
+			toolCall("c1", "mcp:blender:get_viewport_screenshot", `{"max_size":800}`)}},
+		testutil.FakeStep{Content: "I cannot see it."},
+	)
+	testutil.InitFakeWorkspace(t, workspace)
+	cfg := config.Default()
+	cfg.Persistence.Dir = workspace
+	cfg.Policy.WorkspaceRoot = workspace
+	// No cfg.Models.Vision at all.
+	rt, err := New(cfg, Options{Gateway: fake.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(rt.Close)
+
+	if err := rt.LoadMCPServers(context.Background(), []mcp.Server{{
+		Name: "blender", Command: "python", Args: []string{script},
+	}}); err != nil {
+		t.Fatalf("LoadMCPServers: %v", err)
+	}
+	ss, err := rt.NewSession(workspace, "no vision")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rt.RunTask(context.Background(), ss.ID, "Look at the viewport.",
+		RunOptions{ApproveAll: true}); err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+
+	var told bool
+	for _, req := range fake.RequestsSnapshot() {
+		for _, m := range req.Messages {
+			if strings.Contains(m.Content, "[image]") {
+				t.Fatal("an image was sent to a model not declared vision-capable")
+			}
+			if m.Role == "user" && strings.Contains(m.Content, "cannot view") {
+				told = true
+			}
+		}
+	}
+	if !told {
+		t.Error("the model was never told an image existed that it could not view")
+	}
+
+	// The file is still on disk either way — the run is not worse off.
+	shots, _ := filepath.Glob(filepath.Join(workspace, ".omniharness", "artifacts", "*.png"))
+	if len(shots) != 1 {
+		t.Errorf("saved %d screenshots, want 1", len(shots))
+	}
 }

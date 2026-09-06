@@ -66,6 +66,12 @@ type Models struct {
 	// "long-context", "coding", "vision", "research", "review") to
 	// provider/model strings. Empty values fall back to Default.
 	Capabilities map[string]string `toml:"capabilities"`
+	// Vision lists the provider/model references that accept image input.
+	// It has to be declared: OmniRoute's model catalog reports id, name and
+	// provider, with nothing about modality, so the harness cannot discover
+	// this and will not guess. A model not listed here is never sent an
+	// image; the agent describes the image in text instead.
+	Vision []string `toml:"vision,omitempty"`
 }
 
 // Budgets are task-level resource ceilings; zero means unlimited.
@@ -261,6 +267,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Models.Default != "" && !validModelRef(c.Models.Default) {
 		return fmt.Errorf("invalid default model reference %q (want provider/model)", c.Models.Default)
+	}
+	for _, m := range c.Models.Vision {
+		if !validModelRef(m) {
+			return fmt.Errorf("invalid provider/model reference %q in models.vision", m)
+		}
 	}
 	for risk, action := range c.Policy.RiskAction {
 		switch risk {

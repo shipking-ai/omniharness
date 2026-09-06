@@ -7,15 +7,25 @@ import (
 	"strconv"
 	"strings"
 
+	"omniharness/internal/gateway"
 	"omniharness/internal/task"
 )
 
-// Message is a single conversational message (gateway-agnostic shape).
+// Message is a single conversational message.
 type Message struct {
 	Role       string `json:"role"` // user | assistant | tool
 	Content    string `json:"content"`
 	ToolCallID string `json:"toolCallId,omitempty"`
 	Name       string `json:"name,omitempty"` // tool name for tool results
+	// Images travel with the message so an observation survives composition.
+	// Carried opaquely: the composer measures and condenses text, and has no
+	// business decoding image bytes.
+	Images []gateway.ImageRef `json:"-"`
+	// ToolCalls are the calls an assistant message requested. They must
+	// survive composition: the wire format rejects a tool message with no
+	// matching assistant tool_calls before it, so dropping them here turns
+	// every follow-up request into orphaned tool results.
+	ToolCalls []gateway.ToolCall `json:"-"`
 }
 
 // FileRef is a file selected for inclusion in context.

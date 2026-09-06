@@ -134,4 +134,16 @@ deep_analysis = false
 
 # Binary tool output (a viewport screenshot, a rendered frame) is written to
 # <workspace>/.omniharness/artifacts and referenced by path in the tool result.
-# The tool-result channel is text, so the bytes do not reach the model there.
+# The tool-result channel is text, so an image cannot ride in one; it arrives
+# as a following user message instead.
+#
+# models.vision lists the provider/model refs that accept image input. It has
+# to be declared: OmniRoute's catalog reports id, name and provider with
+# nothing about modality, so the harness cannot discover this and will not
+# guess. When a tool returns an image and the run's own model is not on this
+# list, that one turn is routed to the first model that is, and the run
+# continues on its own model afterwards. With the list empty no image is ever
+# sent, and the agent is told in text that one exists it cannot view.
+#
+# [models]
+# vision = ["openai/gpt-5", "claude/claude-opus-4-8"]

@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -174,14 +176,18 @@ const (
 
 // Deps are the shared runtime dependencies of every agent.
 type Deps struct {
-	Bus           *event.Bus
-	Store         *session.Store
-	Gateway       *gateway.Client
-	ModelSel      *model.Selector
-	Tools         *tools.Registry
-	Policy        *policy.Engine
-	Composer      *composer.Composer
-	Roles         map[Role]RoleConfig
+	Bus      *event.Bus
+	Store    *session.Store
+	Gateway  *gateway.Client
+	ModelSel *model.Selector
+	Tools    *tools.Registry
+	Policy   *policy.Engine
+	Composer *composer.Composer
+	Roles    map[Role]RoleConfig
+	// VisionModels are the provider/model refs that accept image input. Not
+	// discoverable through OmniRoute's catalog, so it is configuration; an
+	// empty set means no image is ever attached.
+	VisionModels  []string
 	Workspace     string
 	MaxIterations int // tool-call loop iterations per agent (0 = 100)
 	// ProjectInstructions are durable notes recalled from project memory
@@ -222,6 +228,12 @@ type Agent struct {
 	Summary string // running condensation summary
 	// Artifacts are paths produced by artifact-marking tools.
 	Artifacts []string
+	// pendingImages are images produced by tools during the current
+	// iteration, waiting to be attached to the next message.
+	pendingImages []tools.Image
+	// visionCallModel, when set, routes exactly the next model call to that
+	// model so it can look at an attached image. Cleared when consumed.
+	visionCallModel string
 	// replanReason is set when a replan-marking tool call (request_replan)
 	// runs. Read via ReplanReason(); empty means nothing was requested.
 	replanReason string
@@ -528,6 +540,16 @@ func (a *Agent) Run(ctx context.Context) error {
 				Tool: tc.Function.Name, AgentID: a.ID, Summary: truncate(obs, 200), OutputLen: len(obs),
 			})
 		}
+
+		// An image observation cannot ride in a tool result: the wire
+		// format gives a tool message a plain string and nowhere to put one.
+		// It becomes a following user message instead — attached when the
+		// model can accept images, described when it cannot, because a model
+		// that silently receives nothing is worse off than one told plainly
+		// that it cannot look.
+		if m := a.flushPendingImages(); m != nil {
+			a.Transcript = append(a.Transcript, *m)
+		}
 		a.setLifecycle(LifecycleObserving, task.StatusRunning, "observing")
 	}
 
@@ -536,6 +558,19 @@ func (a *Agent) Run(ctx context.Context) error {
 
 // callModel composes context and performs one model call.
 func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, roleCfg RoleConfig) (*gateway.ChatResponse, error) {
+	// One call may run on a different model than the rest — an image
+	// observation is routed to a model that can actually see it. The agent's
+	// own Model is unchanged: this is a detour for a single turn, not a
+	// switch, and everything recorded below names the model that did the work.
+	modelRef, reason := a.Model, a.ModelReason
+	a.mu.Lock()
+	if a.visionCallModel != "" {
+		modelRef = a.visionCallModel
+		reason = "routed to a vision-capable model to look at tool image output"
+		a.visionCallModel = ""
+	}
+	a.mu.Unlock()
+
 	in := composer.Input{
 		Spec:                a.Spec,
 		Profile:             a.Profile,
@@ -553,24 +588,24 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 	}
 
 	a.setLifecycle(LifecycleThinking, task.StatusRunning, "thinking")
-	a.publish(&event.ModelRequestedData{Model: a.Model, TaskID: a.TaskID, AgentID: a.ID, Stream: false, Reason: a.ModelReason})
+	a.publish(&event.ModelRequestedData{Model: modelRef, TaskID: a.TaskID, AgentID: a.ID, Stream: false, Reason: reason})
 
 	start := time.Now()
 	req := gateway.ChatRequest{
-		Model:    a.Model,
+		Model:    modelRef,
 		Messages: toGatewayMessages(out.Messages),
 		Tools:    toolSpecs,
 	}
 	resp, err := a.deps.Gateway.Chat(ctx, req)
 	latency := time.Since(start)
 	if err != nil {
-		a.publish(&event.ModelFailedData{Model: a.Model, TaskID: a.TaskID, AgentID: a.ID, Error: err.Error()})
+		a.publish(&event.ModelFailedData{Model: modelRef, TaskID: a.TaskID, AgentID: a.ID, Error: err.Error()})
 		_ = a.recordModelCall(req, nil, latency, err)
 		return nil, err
 	}
 
 	usage := resp.Usage
-	cost := model.EstimateCost(a.Model, usage.PromptTokens, usage.CompletionTokens)
+	cost := model.EstimateCost(modelRef, usage.PromptTokens, usage.CompletionTokens)
 	a.mu.Lock()
 	a.TokensIn += usage.PromptTokens
 	a.TokensOut += usage.CompletionTokens
@@ -673,6 +708,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 		if p, ok := args["path"].(string); ok {
 			a.Artifacts = append(a.Artifacts, p)
 		}
+		a.pendingImages = append(a.pendingImages, result.Images...)
 		a.mu.Unlock()
 	}
 	if result.Replan {
@@ -758,7 +794,7 @@ func (a *Agent) LastOutput() string {
 func toContextMessages(msgs []gateway.Message) []composer.Message {
 	out := make([]composer.Message, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, composer.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, Name: m.Name})
+		out = append(out, composer.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, Name: m.Name, Images: m.Images, ToolCalls: m.ToolCalls})
 	}
 	return out
 }
@@ -766,7 +802,7 @@ func toContextMessages(msgs []gateway.Message) []composer.Message {
 func toGatewayMessages(msgs []composer.Message) []gateway.Message {
 	out := make([]gateway.Message, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, gateway.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, Name: m.Name})
+		out = append(out, gateway.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, Name: m.Name, Images: m.Images, ToolCalls: m.ToolCalls})
 	}
 	return out
 }
@@ -789,4 +825,104 @@ func toolErrorMessage(name string, err error, output string) string {
 		msg += "\n" + output
 	}
 	return msg
+}
+
+// CanSeeImages reports whether this agent's model accepts image input.
+func (a *Agent) CanSeeImages() bool {
+	for _, m := range a.deps.VisionModels {
+		if m == a.Model {
+			return true
+		}
+	}
+	return false
+}
+
+// visionModel returns a declared vision-capable model, preferring the one the
+// agent is already running on so an observation does not change models for no
+// reason. Empty means none is configured and no image can be shown to anyone.
+func (a *Agent) visionModel() string {
+	if a.CanSeeImages() {
+		return a.Model
+	}
+	if len(a.deps.VisionModels) == 0 {
+		return ""
+	}
+	return a.deps.VisionModels[0]
+}
+
+// maxAttachedImageBytes caps one attached image. A data URL is base64, so an
+// attachment costs about a third more than the file, and an unbounded render
+// would blow the context window in a single message.
+const maxAttachedImageBytes = 4 << 20
+
+// maxAttachedImages caps how many go into one message.
+const maxAttachedImages = 4
+
+// flushPendingImages turns the images produced this iteration into the user
+// message that carries them, and clears the queue. Returns nil when there is
+// nothing to say.
+func (a *Agent) flushPendingImages() *gateway.Message {
+	a.mu.Lock()
+	pending := a.pendingImages
+	a.pendingImages = nil
+	a.mu.Unlock()
+	if len(pending) == 0 {
+		return nil
+	}
+
+	viewer := a.visionModel()
+	if viewer == "" {
+		var b strings.Builder
+		b.WriteString("The tool produced image output, which this model cannot view. ")
+		b.WriteString("Work from the file(s) directly or from other evidence:")
+		for _, img := range pending {
+			b.WriteString("\n- " + img.Path)
+		}
+		a.publish(&event.LogMessageData{Message: fmt.Sprintf(
+			"%d image(s) not shown: model %s is not declared vision-capable (set [models] vision)",
+			len(pending), a.Model)})
+		return &gateway.Message{Role: "user", Content: b.String()}
+	}
+
+	var refs []gateway.ImageRef
+	var notes []string
+	for _, img := range pending {
+		if len(refs) >= maxAttachedImages {
+			notes = append(notes, img.Path+" (not attached: too many images in one step)")
+			continue
+		}
+		data, err := os.ReadFile(img.Path)
+		if err != nil {
+			notes = append(notes, img.Path+" (could not be read: "+err.Error()+")")
+			continue
+		}
+		if len(data) > maxAttachedImageBytes {
+			notes = append(notes, fmt.Sprintf("%s (not attached: %d bytes exceeds the %d byte limit)",
+				img.Path, len(data), maxAttachedImageBytes))
+			continue
+		}
+		refs = append(refs, gateway.ImageRef{MimeType: img.MimeType, Data: data, Source: img.Path})
+	}
+
+	var b strings.Builder
+	if len(refs) > 0 {
+		b.WriteString("Here is the image output from the tool call above. Look at it and continue.")
+	} else {
+		b.WriteString("The tool produced image output that could not be attached.")
+	}
+	for _, n := range notes {
+		b.WriteString("\n- " + n)
+	}
+	if len(refs) > 0 {
+		// Route the next call to the viewer only when it is not the model
+		// already in use; a needless switch would misreport which model ran.
+		if viewer != a.Model {
+			a.mu.Lock()
+			a.visionCallModel = viewer
+			a.mu.Unlock()
+		}
+		a.publish(&event.ObservationCreatedData{AgentID: a.ID,
+			Summary: fmt.Sprintf("attached %d image(s) for %s to look at", len(refs), viewer)})
+	}
+	return &gateway.Message{Role: "user", Content: b.String(), Images: refs}
 }

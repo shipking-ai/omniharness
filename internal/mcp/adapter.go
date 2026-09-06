@@ -112,9 +112,9 @@ func (a *ToolAdapter) Run(ctx context.Context, input map[string]any) (tools.Resu
 		}
 		return tools.Result{}, &tools.Error{Kind: kind, Tool: a.Spec().Name, Message: err.Error()}
 	}
-	output, artifacts := a.renderContent(result.Content)
+	output, artifacts, images := a.renderContent(result.Content)
 	if len(artifacts) > 0 {
-		return tools.Result{Output: output, Artifact: true, Artifacts: artifacts}, nil
+		return tools.Result{Output: output, Artifact: true, Artifacts: artifacts, Images: images}, nil
 	}
 	if result.IsError {
 		// The server ran the tool and reported failure — ordinary, and the
@@ -137,9 +137,10 @@ func (a *ToolAdapter) Run(ctx context.Context, input map[string]any) (tools.Resu
 // and described by path and size, so the agent knows what exists and where.
 // The tool-result channel is text, so the bytes themselves do not reach the
 // model here; a path it can act on is the honest thing to hand back.
-func (a *ToolAdapter) renderContent(blocks []Content) (string, []string) {
+func (a *ToolAdapter) renderContent(blocks []Content) (string, []string, []tools.Image) {
 	var b strings.Builder
 	var artifacts []string
+	var images []tools.Image
 	write := func(s string) {
 		if b.Len() > 0 {
 			b.WriteString("\n")
@@ -173,11 +174,14 @@ func (a *ToolAdapter) renderContent(blocks []Content) (string, []string) {
 				continue
 			}
 			artifacts = append(artifacts, path)
+			if strings.HasPrefix(strings.ToLower(mime), "image/") {
+				images = append(images, tools.Image{Path: path, MimeType: mime})
+			}
 			write(fmt.Sprintf("[%s content, %d bytes, %s] saved to %s",
 				blockLabel(c.Type), len(raw), mimeOrUnknown(mime), path))
 		}
 	}
-	return b.String(), artifacts
+	return b.String(), artifacts, images
 }
 
 // saveBlob writes binary content under the adapter's artifact directory.

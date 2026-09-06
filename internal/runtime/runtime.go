@@ -170,6 +170,7 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 		Gateway:        gw,
 		ModelSel:       r.ModelSel,
 		Roles:          agent.DefaultRoles(),
+		VisionModels:   cfg.Models.Vision,
 		Evaluators:     evals,
 		Repair:         r.Repair,
 		Analyzer:       r.Analyzer,

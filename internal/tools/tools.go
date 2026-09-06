@@ -59,12 +59,24 @@ type Result struct {
 	// a tool that decides where its output lands — an external tool handing
 	// back an image, say — has to be able to say so.
 	Artifacts []string `json:"artifacts,omitempty"`
+	// Images are the subset of Artifacts a vision-capable model could be
+	// shown. Named explicitly rather than inferred from file extensions: a
+	// tool knows the media type it produced, and guessing it back from a
+	// suffix is how a .bin of unknown content ends up sent to a model.
+	Images []Image `json:"images,omitempty"`
 	// Replan marks that this call is a request to restructure the task's
 	// execution — the agent that ran it has decided the current plan is too
 	// small for what it has actually found. The caller (agent.Agent) records
 	// the reason (Output); the orchestrator acts on it once the current step
 	// finishes.
 	Replan bool `json:"replan,omitempty"`
+}
+
+// Image is an image a tool produced, on disk and ready to show a model that
+// can accept one.
+type Image struct {
+	Path     string `json:"path"`
+	MimeType string `json:"mimeType"`
 }
 
 // Tool is the execution interface.
