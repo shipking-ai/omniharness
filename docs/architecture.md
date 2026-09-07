@@ -238,11 +238,14 @@ published `blender-mcp` server (28 tools) through `uvx`. It is opt-in
 found two more defects — a server-level capability list flattening the discovery
 index, and multi-line docstring descriptions breaking the `plugins` listing.
 
-Still open: Blender itself has never been driven. Its MCP addon drains commands
-through `bpy.app.timers` on Blender's main thread, which does not run under
-`--background`, so a live render test needs the Blender GUI open with the
-addon's server started by hand. Without it the server still answers `initialize`
-and `tools/list`, and reports the missing connection as text at call time.
+Blender is driven for real, headless, by `internal/runtime/live_blender_test.go`
+(opt-in, `OMNIHARNESS_LIVE_BLENDER=1`): the harness inspects a live scene,
+executes bpy, renders a PNG, and gets a viewport screenshot back as an MCP image
+block that reaches a model request as content parts. blender-mcp documents its
+addon as needing the GUI because it drains commands through `bpy.app.timers`,
+which do not fire under `--background`; `scripts/blender_headless.py` drains the
+same queue from the `--python` script, which *is* the main thread there. See
+`docs/blender.md`.
 
 ## 6. Phases
 
