@@ -641,7 +641,9 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 		a.deps.Budget.AddTokens(usage.PromptTokens+usage.CompletionTokens, cost)
 	}
 	a.publish(&event.ModelRespondedData{
-		Model: a.Model, TaskID: a.TaskID, AgentID: a.ID,
+		// modelRef, not a.Model: a routed vision turn runs on a different
+		// model, and the reply must be attributed to the one that produced it.
+		Model: modelRef, TaskID: a.TaskID, AgentID: a.ID,
 		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CostUSD: cost, Latency: latency,
 	})
 	_ = a.recordModelCall(req, resp, latency, nil)
@@ -659,10 +661,14 @@ func (a *Agent) recordModelCall(req gateway.ChatRequest, resp *gateway.ChatRespo
 	if resp != nil {
 		in, out = resp.Usage.PromptTokens, resp.Usage.CompletionTokens
 	}
-	provider, _ := gateway.SplitModel(a.Model)
+	// The request carries the model that actually ran, which is not always
+	// a.Model: an image observation is routed to a vision-capable model for
+	// one turn. Recording a.Model credited that work to the wrong model and
+	// put its cost on the wrong row.
+	provider, _ := gateway.SplitModel(req.Model)
 	return a.deps.Store.RecordModelCall(&session.ModelCall{
 		SessionID: a.SessionID, TaskID: a.TaskID, AgentID: a.ID,
-		Provider: provider, Model: a.Model, TokensIn: in, TokensOut: out,
+		Provider: provider, Model: req.Model, TokensIn: in, TokensOut: out,
 		CostUSD: model.EstimateCost(a.Model, in, out), LatencyMS: latency.Milliseconds(),
 		Status: status, Error: errMsg,
 	})

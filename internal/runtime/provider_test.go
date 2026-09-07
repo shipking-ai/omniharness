@@ -482,6 +482,26 @@ func TestImageObservationReachesAVisionModel(t *testing.T) {
 	if codingCalls == 0 {
 		t.Error("the whole run switched to the vision model; the detour was meant to be one turn")
 	}
+
+	// The durable record must name the model that actually ran. Recording the
+	// agent's own model instead credited the routed turn to the wrong model
+	// and put its cost on the wrong row — which is exactly the kind of
+	// fabricated telemetry the runtime is not allowed to produce.
+	recorded, err := rt.Store.ModelCalls(ss.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byModel := map[string]int{}
+	for _, mc := range recorded {
+		byModel[mc.Model]++
+	}
+	if byModel["fake/vision-model"] != 1 {
+		t.Errorf("model_calls recorded %d rows for the vision model, want 1 (rows: %v)",
+			byModel["fake/vision-model"], byModel)
+	}
+	if byModel["fake/coding-model"] == 0 {
+		t.Errorf("model_calls has no rows for the run's own model (rows: %v)", byModel)
+	}
 }
 
 // The same run against a model that was never declared vision-capable must

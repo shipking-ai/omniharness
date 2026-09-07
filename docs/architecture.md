@@ -238,6 +238,13 @@ published `blender-mcp` server (28 tools) through `uvx`. It is opt-in
 found two more defects — a server-level capability list flattening the discovery
 index, and multi-line docstring descriptions breaking the `plugins` listing.
 
+The whole loop has been run against live everything — OmniRoute 3.8.50, Blender
+5.2.1 headless, `antigravity/gemini-3.6-flash-high` as the vision model. The
+analyzer picked `creative-iterate` on its own, the asset-producer built the
+scene and captured the viewport, the image was routed to the vision model, and
+the model described the frame accurately down to the selection ring and the 3D
+cursor. That run is what surfaced the attribution bug below.
+
 Blender is driven for real, headless, by `internal/runtime/live_blender_test.go`
 (opt-in, `OMNIHARNESS_LIVE_BLENDER=1`): the harness inspects a live scene,
 executes bpy, renders a PNG, and gets a viewport screenshot back as an MCP image
