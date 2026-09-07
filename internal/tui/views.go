@@ -10,6 +10,7 @@ import (
 	"omniharness/internal/version"
 
 	"omniharness/internal/mcp"
+	"omniharness/internal/memory"
 )
 
 var (
@@ -465,6 +466,21 @@ func (m *Model) renderCapabilitiesOverlay() string {
 		b.WriteString("\n" + m.styles.title.Render("lost during this session") + "\n\n")
 		for _, p := range m.lostProviders {
 			fmt.Fprintf(&b, "  %s\n", p)
+		}
+	}
+
+	// Tools that have earned a bad reputation here. Only tools with enough
+	// attempts to have a record at all: one failure out of one call is noise,
+	// not evidence, and reporting it would train the reader to ignore this.
+	if stats, err := memory.ToolStats(m.rt.Store); err == nil {
+		if bad := memory.Unreliable(stats, 3, 0.6); len(bad) > 0 {
+			b.WriteString("\n" + m.styles.title.Render("unreliable here") + "\n\n")
+			for _, st := range bad {
+				fmt.Fprintf(&b, "  %-18s %s\n", st.Tool, st.Summary())
+				if st.LastError != "" {
+					fmt.Fprintf(&b, "  %-18s   last: %s\n", "", truncate(st.LastError, 60))
+				}
+			}
 		}
 	}
 

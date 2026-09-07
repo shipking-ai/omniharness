@@ -17,6 +17,7 @@ import (
 	"omniharness/internal/config"
 	"omniharness/internal/gateway"
 	"omniharness/internal/mcp"
+	"omniharness/internal/memory"
 	"omniharness/internal/telemetry"
 	"omniharness/internal/tools"
 	"omniharness/internal/version"
@@ -380,8 +381,20 @@ func newPluginsCmd() *cobra.Command {
 			}
 
 			fmt.Println("\nregistered tools:")
+			// A tool's track record in this workspace, from recorded calls.
+			// Reliability is not discoverable from a tool definition; it is only
+			// knowable by having run the thing.
+			record := map[string]memory.ToolStat{}
+			if stats, err := memory.ToolStats(rt.Store); err == nil {
+				for _, st := range stats {
+					record[st.Tool] = st
+				}
+			}
 			for _, spec := range rt.Tools.List() {
 				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, oneLine(spec.Description, 90))
+				if st, ok := record[spec.Name]; ok {
+					fmt.Printf("  %-16s   record: %s\n", "", st.Summary())
+				}
 				if len(spec.Capabilities) > 0 {
 					fmt.Printf("  %-16s   provides: %s\n", "", strings.Join(capNames(spec.Capabilities), ", "))
 				}

@@ -90,7 +90,9 @@ CLI ──────────┐        ┌── TUI (Bubble Tea, thin con
 ```
 
 Cross-cutting: `event` (spine), `session` (SQLite durable state), `telemetry`
-(recorded from events, never fabricated), `memory` (performance + project).
+(recorded from events, never fabricated), `memory` (project, model performance,
+and tool track records — which tools are reliable here and which commonly fail,
+aggregated from calls the runtime already recorded).
 
 ## 4. Package layout
 
