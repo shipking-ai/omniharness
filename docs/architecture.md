@@ -177,6 +177,15 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   referenced by path in the tool result. The tool-result channel is text, so the
   bytes do not reach the model there; feeding an image to a vision model would
   need multimodal message content in `internal/gateway`, which is not built.
+- **The TUI shows decisions, not subsystems.** Capability work reaches the Go
+  cockpit as: `provider.lost` inline (a provider dying narrows what the agent
+  can do and nothing else stops to say so), the routing reason on
+  `model.requested` (which already carried "routed to a vision-capable model"),
+  and a Ctrl+T view answering "what can this run do?" by capability rather than
+  by tool name — diagnostics behind a key, so the main view stays task, plan and
+  action. The npm TUI is a separate program with its own engine and its own MCP
+  path (OmniRoute's HTTP gateway, not local stdio), so none of the Go registry
+  reaches it; what it shares is the content-block bug, fixed there too.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)
