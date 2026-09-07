@@ -38,6 +38,7 @@ func (a *ToolAdapter) Spec() tools.Spec {
 		Parameters:   params,
 		Risk:         risk,
 		Capabilities: a.capabilities(),
+		Effects:      a.effects(),
 		Provider:     ProviderName(a.Client.server.Name),
 		ExecutesCode: true,
 	}
@@ -107,7 +108,45 @@ func ValidateCapabilities(s Server) error {
 			}
 		}
 	}
+
+	// Effects are a closed vocabulary, so a typo here is worse than for a
+	// capability: policy branches on these names, and one it does not know
+	// would silently drop the gate the operator was asking for.
+	effectNames := make([]string, 0, len(s.ToolEffects))
+	for name := range s.ToolEffects {
+		effectNames = append(effectNames, name)
+	}
+	sort.Strings(effectNames)
+	for _, name := range effectNames {
+		for _, raw := range s.ToolEffects[name] {
+			e := tools.Effect(strings.TrimSpace(raw))
+			if err := tools.ValidateEffect(e); err != nil {
+				return fmt.Errorf("mcp server %q, tool %q: %w", s.Name, name, err)
+			}
+		}
+	}
 	return nil
+}
+
+// effects reports what the operator declared this tool does. Unlike
+// capabilities there is no default: an undeclared external tool gets no
+// effects, because claiming one would be inventing a fact about a program
+// this build has never seen. The risk class still applies — every MCP tool is
+// high risk — so an undeclared tool is not thereby unguarded.
+func (a *ToolAdapter) effects() []tools.Effect {
+	declared := a.Client.server.ToolEffects[a.Info.Name]
+	out := make([]tools.Effect, 0, len(declared))
+	for _, raw := range declared {
+		e := tools.Effect(strings.TrimSpace(raw))
+		if tools.ValidateEffect(e) != nil {
+			continue
+		}
+		out = append(out, e)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // ProviderName labels an MCP server in tools.Spec.Provider.

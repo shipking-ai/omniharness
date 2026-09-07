@@ -50,6 +50,10 @@ type MCServer struct {
 	// A server with many unrelated tools needs this: one server-level list
 	// gives every tool every capability and flattens the discovery index.
 	ToolCapabilities map[string][]string `toml:"tool_capabilities,omitempty"`
+	// ToolEffects declares consequences per tool: destructive, financial,
+	// credential, requires_confirmation, read_only, external. Gated ones force
+	// a confirmation prompt whatever the risk table says.
+	ToolEffects map[string][]string `toml:"tool_effects,omitempty"`
 }
 
 // OmniRoute configures the gateway connection.
@@ -71,12 +75,18 @@ type Models struct {
 	// "long-context", "coding", "vision", "research", "review") to
 	// provider/model strings. Empty values fall back to Default.
 	Capabilities map[string]string `toml:"capabilities"`
-	// Vision lists the provider/model references that accept image input.
-	// It has to be declared: OmniRoute's model catalog reports id, name and
-	// provider, with nothing about modality, so the harness cannot discover
-	// this and will not guess. A model not listed here is never sent an
-	// image; the agent describes the image in text instead.
-	Vision []string `toml:"vision,omitempty"`
+	// Supports declares what each model can actually do, keyed by
+	// provider/model reference: "vision", "tools", "structured_output",
+	// "long_context", "local". It has to be declared — OmniRoute's catalog
+	// reports id, name and provider with nothing about modality or context —
+	// so the harness will not guess, and an undeclared model is treated as
+	// supporting nothing.
+	//
+	// Note the direction. Capabilities above maps capability to model ("for
+	// reasoning, use X"); this maps model to facts ("X can see"). Both are
+	// needed: a run can be on a coding model and still need to know whether
+	// that model accepts an image.
+	Supports map[string][]string `toml:"supports,omitempty"`
 }
 
 // Budgets are task-level resource ceilings; zero means unlimited.
@@ -273,9 +283,9 @@ func (c *Config) Validate() error {
 	if c.Models.Default != "" && !validModelRef(c.Models.Default) {
 		return fmt.Errorf("invalid default model reference %q (want provider/model)", c.Models.Default)
 	}
-	for _, m := range c.Models.Vision {
+	for m := range c.Models.Supports {
 		if !validModelRef(m) {
-			return fmt.Errorf("invalid provider/model reference %q in models.vision", m)
+			return fmt.Errorf("invalid provider/model reference %q in models.supports", m)
 		}
 	}
 	for risk, action := range c.Policy.RiskAction {

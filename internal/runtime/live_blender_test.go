@@ -258,7 +258,7 @@ func TestRealBlenderScreenshotReachesTheModel(t *testing.T) {
 	cfg.Policy.WorkspaceRoot = workspace
 	cfg.Models.Capabilities = nil
 	cfg.Models.Default = "fake/coding-model"
-	cfg.Models.Vision = []string{"fake/vision-model"}
+	cfg.Models.Supports = map[string][]string{"fake/vision-model": {"vision"}}
 	rt, err := New(cfg, Options{Gateway: fake.Client()})
 	if err != nil {
 		t.Fatal(err)

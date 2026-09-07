@@ -50,10 +50,25 @@ func (n *Native) tool(name, desc string, risk Risk, caps []Capability, params ma
 			Parameters:   params,
 			Risk:         risk,
 			Capabilities: caps,
+			Effects:      nativeEffects[name],
 			Provider:     ProviderNative,
 		},
 		fn: fn,
 	}
+}
+
+// nativeEffects declares what the built-in tools do beyond their risk class.
+// Only what is true: write_file and edit_file change things but a changed file
+// is recoverable, so they are not destructive. process_kill is — a killed
+// process does not come back.
+var nativeEffects = map[string][]Effect{
+	"read_file":      {EffectReadOnly},
+	"list_dir":       {EffectReadOnly},
+	"find_files":     {EffectReadOnly},
+	"search":         {EffectReadOnly},
+	"process_list":   {EffectReadOnly},
+	"process_kill":   {EffectDestructive},
+	"request_replan": {EffectReadOnly},
 }
 
 // ProviderNative labels the built-in tools in Spec.Provider.

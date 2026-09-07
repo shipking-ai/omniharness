@@ -133,6 +133,11 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	composerLimits := composer.Limits{CondenseAt: 96 << 10}
 	advisor := &memory.Advisor{Store: store}
 	modelSel := model.NewSelector(cfg.Models.Default, cfg.Models.Capabilities)
+	// A typo here silently removes a capability — a model declared "vison"
+	// would never be offered an image — so it fails at startup instead.
+	if err := modelSel.SetSupports(cfg.Models.Supports); err != nil {
+		return nil, err
+	}
 	// Performance memory can substitute an empirically better model among the
 	// configured candidates, with an explainable reason; cold start declines.
 	modelSel.Empirical = func(resolved string, candidates []string) (string, string, bool) {
@@ -165,12 +170,14 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	}
 
 	r.Orchestrator = orchestrator.New(orchestrator.Deps{
-		Bus:            bus,
-		Store:          store,
-		Gateway:        gw,
-		ModelSel:       r.ModelSel,
-		Roles:          agent.DefaultRoles(),
-		VisionModels:   cfg.Models.Vision,
+		Bus:      bus,
+		Store:    store,
+		Gateway:  gw,
+		ModelSel: r.ModelSel,
+		Roles:    agent.DefaultRoles(),
+		// One source of truth: the models declared able to see, read from the
+		// same place selection reads.
+		VisionModels:   modelSel.Supporting(model.PropVision),
 		Evaluators:     evals,
 		Repair:         r.Repair,
 		Analyzer:       r.Analyzer,

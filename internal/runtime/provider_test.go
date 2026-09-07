@@ -418,7 +418,7 @@ func TestImageObservationReachesAVisionModel(t *testing.T) {
 	// needs a model that can see.
 	cfg.Models.Capabilities = nil
 	cfg.Models.Default = "fake/coding-model"
-	cfg.Models.Vision = []string{"fake/vision-model"}
+	cfg.Models.Supports = map[string][]string{"fake/vision-model": {"vision"}}
 	rt, err := New(cfg, Options{Gateway: fake.Client()})
 	if err != nil {
 		t.Fatal(err)
@@ -520,7 +520,7 @@ func TestImageIsDescribedWhenTheModelCannotSee(t *testing.T) {
 	cfg := config.Default()
 	cfg.Persistence.Dir = workspace
 	cfg.Policy.WorkspaceRoot = workspace
-	// No cfg.Models.Vision at all.
+	// No cfg.Models.Supports at all, so nothing is declared able to see.
 	rt, err := New(cfg, Options{Gateway: fake.Client()})
 	if err != nil {
 		t.Fatal(err)

@@ -37,6 +37,12 @@ type Server struct {
 	// capability, which makes "what can render a scene?" answer "all 28".
 	// Tools not named here fall back to Capabilities.
 	ToolCapabilities map[string][]string `json:"toolCapabilities,omitempty" toml:"tool_capabilities,omitempty"`
+	// ToolEffects declares consequences per tool, keyed by the tool name the
+	// server reports: "destructive", "financial", "credential",
+	// "requires_confirmation", "read_only", "external". MCP reports nothing of
+	// the sort, and it matters — blender-mcp's asset generation tools bill
+	// third-party APIs, which no risk class conveys.
+	ToolEffects map[string][]string `json:"toolEffects,omitempty" toml:"tool_effects,omitempty"`
 }
 
 // ToolInfo is the metadata MCP returns for a tool.

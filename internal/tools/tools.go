@@ -37,6 +37,10 @@ type Spec struct {
 	// without knowing which program implements them. Empty means the tool is
 	// reachable by name only.
 	Capabilities []Capability `json:"capabilities,omitempty"`
+	// Effects declare what kind of thing the tool does — irreversible, costs
+	// money, handles credentials — which Risk does not capture. Policy gates
+	// some of them regardless of the risk table; see effect.go.
+	Effects []Effect `json:"effects,omitempty"`
 	// Provider names where the tool came from — "native" for built-ins, or
 	// "mcp:<server>" for an MCP adapter. Observability only; nothing routes
 	// on it.

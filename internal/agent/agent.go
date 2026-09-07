@@ -712,7 +712,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 		return toolErrorMessage(name, err, "")
 	}
 
-	req := policy.Request{Tool: name, Input: args, Risk: spec.Risk, AgentID: a.ID}
+	req := policy.Request{Tool: name, Input: args, Risk: spec.Risk, AgentID: a.ID, Effects: spec.Effects}
 	decision, err := a.deps.Policy.EvaluateAndExecute(ctx, req)
 	if err != nil {
 		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied", Error: err.Error()})

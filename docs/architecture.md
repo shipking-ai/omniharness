@@ -188,6 +188,19 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   action. The npm TUI is a separate program with its own engine and its own MCP
   path (OmniRoute's HTTP gateway, not local stdio), so none of the Go registry
   reaches it; what it shares is the content-block bug, fixed there too.
+- **Risk and effects are different questions.** Risk says how bad a call could
+  be; `tools.Effects` says what kind of thing it is — irreversible, spends
+  money, handles credentials. Those four force a confirmation whatever
+  `[policy.risk_action]` says, because a risk class is a blunt instrument: an
+  operator who allows high risk to stop being asked about shell has not agreed
+  to spend money unprompted. Unlike capabilities the vocabulary is closed —
+  policy branches on the names, so one it did not know could not be enforced.
+- **Model properties point the other way from capabilities.**
+  `[models.capabilities]` maps a capability to a model; `[models.supports]`
+  maps a model to facts about it. `Intent.Requires` uses the latter: a step
+  that needs to see resolves to a model that can, rather than proceeding with
+  one that will confidently guess. Latency and cost are not declared —
+  performance memory measures them.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)
@@ -231,10 +244,10 @@ orchestrate any tool that exposes useful capabilities:
 
 6. **Vision.** `gateway.Message.Images` marshals as OpenAI content parts. An
    image cannot ride in a tool result, so it arrives as a following user
-   message. `[models] vision` declares which models accept images — OmniRoute's
+   message. `[models.supports]` declares what each model can do — OmniRoute's
    catalog reports no modality, so this cannot be discovered — and exactly the
-   turn that looks at an image is routed to one of them, the run continuing on
-   its own model afterwards.
+   turn that looks at an image is routed to a model declared able to see, the
+   run continuing on its own model afterwards.
 7. **Creative roles.** `DomainCreative`, the `creative-iterate` strategy
    (brief → make → judge), and two roles: creative-director and asset-producer.
    Split by function, not medium: a "FilmAgent" or "MusicAgent" would bake the

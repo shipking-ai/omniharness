@@ -154,13 +154,40 @@ deep_analysis = false
 # The tool-result channel is text, so an image cannot ride in one; it arrives
 # as a following user message instead.
 #
-# models.vision lists the provider/model refs that accept image input. It has
-# to be declared: OmniRoute's catalog reports id, name and provider with
-# nothing about modality, so the harness cannot discover this and will not
-# guess. When a tool returns an image and the run's own model is not on this
-# list, that one turn is routed to the first model that is, and the run
-# continues on its own model afterwards. With the list empty no image is ever
-# sent, and the agent is told in text that one exists it cannot view.
+# [models.supports] declares what each model can actually do, keyed by
+# provider/model. Known properties: vision, tools, structured_output,
+# long_context, local. It has to be declared — OmniRoute's catalog reports id,
+# name and provider with nothing about modality or context — so the harness
+# will not guess, and an undeclared model is treated as supporting nothing.
 #
-# [models]
-# vision = ["openai/gpt-5", "claude/claude-opus-4-8"]
+# Note the direction, which is the opposite of [models.capabilities] above.
+# capabilities maps a capability to a model ("for reasoning, use X");
+# supports maps a model to facts ("X can see"). Both are needed: a run can be
+# on a coding model and still need to know whether that model takes an image.
+#
+# Latency and cost are deliberately not declared here. Performance memory
+# measures them from real runs, which beats an estimate and cannot go stale.
+#
+# When a tool returns an image and the run's own model is not declared to see,
+# that one turn is routed to a model that is, and the run continues on its own
+# model afterwards. With nothing declared no image is ever sent, and the agent
+# is told in text that one exists which it cannot view.
+#
+# [models.supports]
+# "antigravity/gemini-3.6-flash-high" = ["vision", "tools"]
+# "openai/gpt-5" = ["vision", "tools", "long_context"]
+
+# tool_effects declares consequences per tool, which the risk class does not
+# capture: destructive (cannot be undone), financial (spends money),
+# credential (handles secrets), requires_confirmation (ask anyway), read_only,
+# external. The first four force a confirmation prompt however permissive
+# [policy.risk_action] is — setting high = "allow" to stop being asked about
+# shell is not agreement to spend money unprompted.
+#
+# Real example: blender-mcp's asset generation and download tools bill
+# third-party APIs, and nothing about their risk class says so.
+#
+# [mcp.servers.tool_effects]
+# generate_hyper3d_model_via_text = ["financial", "external"]
+# download_sketchfab_model        = ["financial", "external"]
+# get_scene_info                  = ["read_only"]
