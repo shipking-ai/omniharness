@@ -191,3 +191,60 @@ deep_analysis = false
 # generate_hyper3d_model_via_text = ["financial", "external"]
 # download_sketchfab_model        = ["financial", "external"]
 # get_scene_info                  = ["read_only"]
+
+# A browser, via agent-browser (npm i -g agent-browser). Verified against
+# v0.34.0 — 29 tools, stdio MCP. The first call is slow because it launches a
+# browser; later ones are fast.
+#
+# Browser automation must respect the target site's terms, authentication and
+# technical restrictions. Nothing here is for getting past a paywall, a login,
+# a CAPTCHA or a rate limit.
+#
+# [[mcp.servers]]
+# name = "browser"
+# command = "agent-browser"      # agent-browser.cmd on Windows
+# args = ["mcp"]
+# capabilities = ["browse_web"]
+#
+# [mcp.servers.tool_capabilities]
+# agent_browser_open       = ["browse_web"]
+# agent_browser_read       = ["browse_web", "inspect_page"]
+# agent_browser_snapshot   = ["inspect_page"]
+# agent_browser_get_text   = ["inspect_page"]
+# agent_browser_click      = ["interact_page"]
+# agent_browser_fill       = ["interact_page"]
+# agent_browser_screenshot = ["capture_page"]
+# agent_browser_eval       = ["execute_code"]
+#
+# [mcp.servers.tool_effects]
+# agent_browser_read = ["external", "read_only"]
+# agent_browser_open = ["external"]
+# # Arbitrary script against whatever is loaded, including anything the person
+# # running this is signed in to.
+# agent_browser_eval = ["external", "requires_confirmation"]
+
+# DaVinci Resolve, via resolve-mcp (pypi). Verified against v4.0.3 — 211 tools
+# — for registration, schemas and gating only: Resolve itself is not installed
+# here, so no edit or render has been driven. Like blender-mcp the server
+# answers tools/list without the application and reports the missing
+# connection at call time.
+#
+# [[mcp.servers]]
+# name = "resolve"
+# command = "uvx"
+# args = ["resolve-mcp"]
+# capabilities = ["edit_video"]
+#
+# [mcp.servers.tool_capabilities]
+# resolve_import_media   = ["import_media"]
+# resolve_add_render_job = ["render_video"]
+# resolve_copy_grade     = ["color_grade"]
+# resolve_add_markers    = ["edit_timeline"]
+#
+# [mcp.servers.tool_effects]
+# # These four warn "cannot be undone" in their own descriptions.
+# resolve_delete_timelines = ["destructive"]
+# resolve_delete_project   = ["destructive"]
+# resolve_delete_clips     = ["destructive"]
+# resolve_delete_db_folder = ["destructive"]
+# resolve_list_projects    = ["read_only"]

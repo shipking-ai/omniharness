@@ -84,6 +84,16 @@ type Client struct {
 	mu      sync.Mutex
 	nextID  uint64
 	done    chan struct{}
+	// info is what the server said it was during the handshake. MCP reports
+	// it and this client used to discard it, so a tool's provenance stopped
+	// at the server name an operator happened to choose.
+	info ServerInfo
+}
+
+// ServerInfo is the server's self-description from the initialize handshake.
+type ServerInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -152,6 +162,14 @@ func (c *Client) Start(ctx context.Context) error {
 	}, &initResult); err != nil {
 		c.Close()
 		return fmt.Errorf("mcp initialize %q: %w", c.server.Name, err)
+	}
+	// Best effort: a server that reports no serverInfo is still usable, so a
+	// decode failure here must not fail the connection.
+	var handshake struct {
+		ServerInfo ServerInfo `json:"serverInfo"`
+	}
+	if json.Unmarshal(initResult, &handshake) == nil {
+		c.info = handshake.ServerInfo
 	}
 	if err := c.notify("notifications/initialized", map[string]any{}); err != nil {
 		c.Close()
@@ -266,6 +284,10 @@ func (c *Client) Alive() bool {
 
 // Name returns the configured server name.
 func (c *Client) Name() string { return c.server.Name }
+
+// Info returns what the server called itself during the handshake. Empty if
+// it reported nothing.
+func (c *Client) Info() ServerInfo { return c.info }
 
 // ListTools returns the tools exposed by the server.
 func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {

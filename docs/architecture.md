@@ -32,6 +32,15 @@ statements about the workspace are no longer true of this repository.*
 - Toolchain: Go 1.27. `scripts/env.sh` puts a portable toolchain at `~/go-sdk`
   on PATH for hosts without a system Go.
 
+### A note on `docs/reference/API_REFERENCE.md`
+
+The brief for the capability work named that file as the source of truth for
+the gateway contract. **It does not exist** — not in this repository, not in the
+installed `omniroute` package, not anywhere under `~/.omniroute`. `internal/gateway`
+is therefore the contract of record, derived from the call logs in section 1 and
+from the installed server's own source (section 7). If the reference document
+turns up, reconcile against it rather than assuming this package is right.
+
 ## 2. Integration boundary (what OmniHarness must NOT duplicate)
 
 OmniHarness treats OmniRoute as an opaque **provider execution layer**. It never:
@@ -201,6 +210,13 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   that needs to see resolves to a model that can, rather than proceeding with
   one that will confidently guess. Latency and cost are not declared —
   performance memory measures them.
+- **A plan step can require a capability.** `strategy.Step.RequiresCapabilities`
+  is checked against the registry before the step spends a model call, so a
+  missing provider is reported as a missing provider rather than as an agent
+  that tried for ten iterations and gave up. This is what makes "tool selection"
+  a real planning stage instead of a diagram box: creative-iterate's make step
+  declares `external_tool`, because producing an asset is not something the
+  native filesystem tools can do.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)
@@ -240,7 +256,12 @@ orchestrate any tool that exposes useful capabilities:
    integration is proven to the edge of the process boundary and no further.
 5. **Generality.** A second provider of an unrelated shape needed no code. That
    is the whole claim: `internal/runtime`'s provider tests are where a future
-   provider requiring a core change would show up.
+   provider requiring a core change would show up. Since proven twice more
+   against real servers: **agent-browser** 0.34.0 (29 tools, a real browser
+   driven against a local page) and **resolve-mcp** 4.0.3 (211 tools —
+   registration, schemas and effect gating only; DaVinci Resolve is not
+   installed, so no edit or render has been driven). Neither needed a line of
+   harness code.
 
 6. **Vision.** `gateway.Message.Images` marshals as OpenAI content parts. An
    image cannot ride in a tool result, so it arrives as a following user

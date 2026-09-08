@@ -41,6 +41,10 @@ type Spec struct {
 	// money, handles credentials — which Risk does not capture. Policy gates
 	// some of them regardless of the risk table; see effect.go.
 	Effects []Effect `json:"effects,omitempty"`
+	// Version is the provider's own version string, when it reports one —
+	// "BlenderMCP 1.29.1". A bug report against a tool is close to useless
+	// without it, and the provider is the only thing that knows.
+	Version string `json:"version,omitempty"`
 	// Provider names where the tool came from — "native" for built-ins, or
 	// "mcp:<server>" for an MCP adapter. Observability only; nothing routes
 	// on it.

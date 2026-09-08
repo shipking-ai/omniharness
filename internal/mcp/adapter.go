@@ -39,6 +39,7 @@ func (a *ToolAdapter) Spec() tools.Spec {
 		Risk:         risk,
 		Capabilities: a.capabilities(),
 		Effects:      a.effects(),
+		Version:      a.version(),
 		Provider:     ProviderName(a.Client.server.Name),
 		ExecutesCode: true,
 	}
@@ -147,6 +148,20 @@ func (a *ToolAdapter) effects() []tools.Effect {
 		return nil
 	}
 	return out
+}
+
+// version renders what the server called itself, for provenance. A server
+// that reported nothing gets an empty string rather than a guess.
+func (a *ToolAdapter) version() string {
+	info := a.Client.Info()
+	switch {
+	case info.Name != "" && info.Version != "":
+		return info.Name + " " + info.Version
+	case info.Version != "":
+		return info.Version
+	default:
+		return info.Name
+	}
 }
 
 // ProviderName labels an MCP server in tools.Spec.Provider.

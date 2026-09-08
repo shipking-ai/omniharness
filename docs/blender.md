@@ -111,7 +111,14 @@ OMNIHARNESS_LIVE_MCP=1 go test ./internal/runtime -run RealMCPServer
 
 # Real Blender. Needs the addon listening on 127.0.0.1:9876 (see above).
 OMNIHARNESS_LIVE_BLENDER=1 go test ./internal/runtime -run Blender
+
+# A real browser, via agent-browser. The first run launches one and is slow.
+OMNIHARNESS_LIVE_BROWSER=1 go test ./internal/runtime -run Browser -timeout 15m
 ```
+
+Blender is one provider among several; `resolve-mcp` and `agent-browser` are
+configured the same way and needed no harness code. See the recipes in
+`config/omniharness.example.toml`.
 
 The Blender suite renders an image, confirms scene state survives between
 calls, and checks that a screenshot reaches a model request as content parts.

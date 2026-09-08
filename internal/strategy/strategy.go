@@ -48,6 +48,16 @@ type Step struct {
 	Depends  []string `json:"depends,omitempty"`
 	Task     string   `json:"task,omitempty"`
 	Parallel bool     `json:"parallel,omitempty"`
+	// RequiresCapabilities names what must be available for this step to be
+	// worth starting — "this step cannot happen without something that can
+	// render a scene". The orchestrator checks the registry before spending a
+	// model call, so a missing provider is reported as a missing provider
+	// rather than as an agent that tried for ten iterations and gave up.
+	//
+	// Empty means the step needs nothing in particular, which is the case for
+	// every software strategy: they run on the native tools, which are always
+	// present.
+	RequiresCapabilities []string `json:"requiresCapabilities,omitempty"`
 }
 
 // Plan is the concrete execution plan produced by the strategy engine.
@@ -267,9 +277,16 @@ func stepsFor(p task.Profile, s Strategy) []Step {
 			{ID: "synth", Role: "synthesizer", Depends: []string{"r1", "r2"}, Task: "synthesize findings"},
 		}
 	case CreativeIterate:
+		// The make step is the one that needs a real tool: a brief and a
+		// judgement are model work, but producing an asset is not something
+		// the native filesystem tools can do. external_tool is the honest
+		// requirement — the harness cannot know which medium this is, and any
+		// configured provider might be the right one.
 		return []Step{
 			{ID: "brief", Role: "creative-director", Task: "state concretely what the piece has to achieve"},
-			{ID: "make", Role: "asset-producer", Depends: []string{"brief"}, Task: "produce the asset against the brief"},
+			{ID: "make", Role: "asset-producer", Depends: []string{"brief"},
+				Task:                 "produce the asset against the brief",
+				RequiresCapabilities: []string{"external_tool"}},
 			{ID: "judge", Role: "creative-director", Depends: []string{"make"}, Task: "look at the result and judge it against the brief"},
 		}
 	case PlanImplementVerify:
