@@ -127,6 +127,14 @@ func (r *Registry) ForTask(p task.Profile) []Evaluator {
 			out = append(out, e)
 		}
 	}
+	// Creative work has no build to run, so the check is the judgement the
+	// plan already produced. Without this the domain matched no evaluator at
+	// all and every creative task passed, rejection and all.
+	if p.Domain == task.DomainCreative {
+		if e, ok := r.evaluators["creative-verdict"]; ok {
+			out = append(out, e)
+		}
+	}
 	// Not gated on domain: criteria describe what "done" means for whatever
 	// this task is, and only exist at all when the deepening pass ran.
 	if len(p.AcceptanceCriteria) > 0 {
@@ -152,6 +160,7 @@ func (r *Registry) RegisterDefaults() error {
 		&AcceptanceCriteriaEvaluator{},
 		&DiffCheckEvaluator{},
 		&EvidenceEvaluator{},
+		&CreativeVerdictEvaluator{},
 	} {
 		if err := r.Register(e); err != nil {
 			return err
