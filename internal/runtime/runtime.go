@@ -15,6 +15,7 @@ import (
 
 	"omniharness/internal/agent"
 	"omniharness/internal/budget"
+	"omniharness/internal/command"
 	"omniharness/internal/config"
 	composer "omniharness/internal/context"
 	"omniharness/internal/envguard"
@@ -49,6 +50,11 @@ type Runtime struct {
 	Analyzer     *task.Analyzer
 	Orchestrator *orchestrator.Orchestrator
 	Workspace    string
+
+	// CommandIssues records configured commands that could not be registered,
+	// almost always because the program is not installed. Not an error: the
+	// rest of the harness still works without ffmpeg.
+	CommandIssues []string
 
 	MCPClients []*mcp.Client
 	stopSinks  []func()
@@ -90,6 +96,19 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 		}
 	}
 
+	// Every failure below this point returns before the Runtime exists, so
+	// nothing would ever close the store we just opened: on Windows that
+	// leaves the database file locked, and the process holds a handle for its
+	// lifetime. Only a store this function opened is closed — one passed in
+	// belongs to the caller.
+	ownStore := opts.Store == nil
+	failed := true
+	defer func() {
+		if failed && ownStore {
+			store.Close()
+		}
+	}()
+
 	gw := opts.Gateway
 	if gw == nil {
 		gw = gateway.New(cfg.OmniRoute.Endpoint, cfg.OmniRoute.Timeout, cfg.OmniRoute.APIKey)
@@ -109,11 +128,43 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 
 	projectMemory := memory.Project(store)
 
+	var commandIssues []string
 	reg := tools.NewRegistry()
 	native := tools.NewNative(workspace)
 	native.Memory = projectMemory
 	if err := native.Register(reg); err != nil {
 		return nil, fmt.Errorf("register native tools: %w", err)
+	}
+
+	// Commands the operator declared. A configured program that is not
+	// installed is reported and skipped rather than registered: a tool that
+	// cannot possibly run should be visible as absent, not as a failure on
+	// first use.
+	for _, c := range cfg.Commands {
+		caps, err := tools.ParseCapabilities(c.Capabilities)
+		if err != nil {
+			return nil, fmt.Errorf("command %q: %w", c.Name, err)
+		}
+		effects, err := tools.ParseEffects(c.Effects)
+		if err != nil {
+			return nil, fmt.Errorf("command %q: %w", c.Name, err)
+		}
+		ct, err := command.New(command.Spec{
+			Name: c.Name, Description: c.Description, Command: c.Command,
+			Args: c.Args, ArgsParam: c.ArgsParam,
+			Capabilities: caps, Effects: effects,
+			Risk: tools.Risk(c.Risk), Timeout: c.Timeout,
+		}, workspace)
+		if err != nil {
+			return nil, err
+		}
+		if err := ct.Available(); err != nil {
+			commandIssues = append(commandIssues, fmt.Sprintf("%s: %v", c.Name, err))
+			continue
+		}
+		if err := reg.Register(ct); err != nil {
+			return nil, fmt.Errorf("register command %q: %w", c.Name, err)
+		}
 	}
 
 	pol := policy.NewEngine(policy.Config{
@@ -161,6 +212,7 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 		Analyzer:   &task.Analyzer{RepoRoot: workspace},
 		Workspace:  workspace,
 	}
+	r.CommandIssues = commandIssues
 
 	// Off by default (see config.Task.DeepAnalysis) — nil disables the pass
 	// entirely, exactly as if this field didn't exist.
@@ -196,6 +248,7 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	if !opts.DisablePersistenceSink {
 		r.startPersistenceSink()
 	}
+	failed = false
 	return r, nil
 } // startPersistenceSink persists every event to the session store.
 func (r *Runtime) startPersistenceSink() {

@@ -120,6 +120,7 @@ internal/context       context engine + composer
 internal/memory        project + performance memory (SQLite)
 internal/tools         tool registry + native tools (fs, shell, git, search, proc, memory, replan)
 internal/mcp           MCP stdio client (first-class protocol)
+internal/command       local CLI programs as capability-bearing tools
 internal/policy        risk classes, permission evaluation, approvals
 internal/evaluate      evaluator framework (build/test/lint/constraint/evidence)
 internal/repair        failure classification + repair strategies
@@ -210,6 +211,14 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
   that needs to see resolves to a model that can, rather than proceeding with
   one that will confidently guess. Latency and cost are not declared —
   performance memory measures them.
+- **MCP is not the only adapter.** `internal/command` exposes a declared local
+  program (ffmpeg, ffprobe, anything with a stable CLI) as a `tools.Tool` with
+  its own capabilities and effects. It exists as much to test the interface as
+  to run ffmpeg: reaching a second kind of provider required no change inside
+  the registry, the policy engine or the agent. Arguments are passed as a list
+  and never through a shell, and a program that is not installed is reported at
+  startup rather than registered — a capability must never be advertised by
+  something absent.
 - **A plan step can require a capability.** `strategy.Step.RequiresCapabilities`
   is checked against the registry before the step spends a model call, so a
   missing provider is reported as a missing provider rather than as an agent

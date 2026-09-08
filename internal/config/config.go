@@ -25,7 +25,31 @@ type Config struct {
 	Benchmark   Benchmark   `toml:"benchmark"`
 	Logging     Logging     `toml:"logging"`
 	MCP         MCP         `toml:"mcp"`
+	Commands    []Command   `toml:"commands"`
 	Task        Task        `toml:"task"`
+}
+
+// Command exposes a local command-line program as a capability-bearing tool.
+// MCP is one way to reach an external program; plenty of useful ones (ffmpeg,
+// ImageMagick, yt-dlp) already have a stable interface and will never ship an
+// MCP server. Nothing in the harness knows what any of them are — a command is
+// entirely described here.
+type Command struct {
+	Name        string `toml:"name"`
+	Description string `toml:"description"`
+	Command     string `toml:"command"`
+	// Args are fixed arguments placed before the caller's.
+	Args []string `toml:"args,omitempty"`
+	// ArgsParam names the tool argument holding the caller's argument list.
+	// Empty means the tool takes none.
+	ArgsParam string `toml:"args_param,omitempty"`
+	// Capabilities and Effects work exactly as for an MCP server.
+	Capabilities []string `toml:"capabilities,omitempty"`
+	Effects      []string `toml:"effects,omitempty"`
+	// Risk defaults to "high": an arbitrary local program can do anything.
+	Risk string `toml:"risk,omitempty"`
+	// Timeout bounds one run; zero uses the package default.
+	Timeout time.Duration `toml:"timeout,omitempty"`
 }
 
 // MCP configures Model Context Protocol servers to load as tools.

@@ -248,3 +248,76 @@ deep_analysis = false
 # resolve_delete_clips     = ["destructive"]
 # resolve_delete_db_folder = ["destructive"]
 # resolve_list_projects    = ["read_only"]
+
+# ── Local command-line programs ───────────────────────────────────────────
+# MCP is one way to reach an external program. Plenty of useful ones already
+# have a stable CLI and will never ship an MCP server; [[commands]] exposes
+# them as capability-bearing tools. Nothing in the harness knows what any of
+# these are — a command is entirely described here.
+#
+# Arguments are passed as a list and never through a shell, so an argument
+# containing ";" or "&&" is an argument, not a second command.
+#
+# A program that is not installed is reported at startup and skipped rather
+# than registered, so a capability is never advertised by something absent.
+#
+# risk defaults to "high": an arbitrary local program can do anything.
+#
+# [[commands]]
+# name = "ffmpeg"
+# description = "Encode, transcode or trim audio and video."
+# command = "ffmpeg"
+# args_param = "args"
+# capabilities = ["transcode_video", "render_video"]
+# # An overwrite cannot be undone, so this always prompts.
+# effects = ["destructive"]
+#
+# [[commands]]
+# name = "ffprobe"
+# description = "Report the streams and format of a media file."
+# command = "ffprobe"
+# args_param = "args"
+# capabilities = ["probe_media", "inspect_media"]
+# effects = ["read_only"]
+# risk = "low"
+
+# OBS Studio, via obs-mcp (npm). Verified against v1.0.0 — 125 tools.
+# Driving OBS additionally needs OBS running with its WebSocket server
+# enabled: Tools → WebSocket Server Settings → Enable WebSocket server. It is
+# off by default. Put the password in env below, or turn off authentication
+# there if you would rather not keep one in a config file.
+#
+# [[mcp.servers]]
+# name = "obs"
+# command = "npx"                 # npx.cmd on Windows
+# args = ["-y", "obs-mcp@latest"]
+# env = ["OBS_WEBSOCKET_PASSWORD=..."]
+# capabilities = ["control_obs"]
+#
+# [mcp.servers.tool_capabilities]
+# obs-get-scene-list        = ["inspect_scene"]
+# obs-set-current-scene     = ["switch_scene"]
+# obs-get-source-screenshot = ["capture_screen"]
+# obs-start-record          = ["record_video"]
+# obs-stop-record           = ["record_video"]
+# obs-start-stream          = ["broadcast_stream"]
+#
+# [mcp.servers.tool_effects]
+# obs-get-scene-list        = ["read_only"]
+# obs-get-source-screenshot = ["read_only"]
+# obs-remove-scene          = ["destructive"]
+# obs-remove-input          = ["destructive"]
+# # Going live is public and cannot be taken back.
+# obs-start-stream          = ["external", "requires_confirmation"]
+
+# Video editing needs no separate NLE: Blender's Video Sequence Editor is a
+# real one, reached through execute_blender_code, which already works. Add the
+# editing capabilities to that tool — it genuinely does both:
+#
+# [mcp.servers.tool_capabilities]
+# execute_blender_code = ["modify_3d_scene", "edit_timeline", "edit_video", "render_video", "execute_code"]
+#
+# Blender 5.x renamed sequences -> strips, and new_effect takes `length` not
+# `frame_end`. Use `se.strips if hasattr(se, "strips") else se.sequences` —
+# an empty strip collection is falsy, so `getattr(...) or se.sequences` picks
+# the removed name on a brand-new editor.
