@@ -138,8 +138,20 @@ func (t *Tool) Spec() tools.Spec {
 		}
 		params["required"] = []string{t.spec.ArgsParam}
 	}
-	caps := append([]tools.Capability(nil), t.spec.Capabilities...)
+	// Declared names first for discovery, then external_tool — which is what
+	// the acting roles actually match on. Without it a command declaring only
+	// "transcode_video" is registered, listed, and offered to nobody, because
+	// nothing in core declares that capability and nothing ever will: core
+	// does not know what ffmpeg is. Same rule as the MCP adapter, and the same
+	// trap — describing a tool better must never make it less reachable.
+	caps := make([]tools.Capability, 0, len(t.spec.Capabilities)+1)
+	for _, c := range t.spec.Capabilities {
+		if c != tools.CapExternalTool {
+			caps = append(caps, c)
+		}
+	}
 	sort.Slice(caps, func(i, j int) bool { return caps[i] < caps[j] })
+	caps = append(caps, tools.CapExternalTool)
 	return tools.Spec{
 		Name:         t.spec.Name,
 		Description:  t.spec.Description,

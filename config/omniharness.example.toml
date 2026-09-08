@@ -263,6 +263,13 @@ deep_analysis = false
 #
 # risk defaults to "high": an arbitrary local program can do anything.
 #
+# Declared capabilities are for discovery; every command also carries
+# "external_tool", which is what the acting roles match on. Without that a
+# command declaring only "transcode_video" would register, appear in
+# `omniharness plugins`, and be offered to no model at all — nothing in core
+# declares that capability and nothing ever will, because core does not know
+# what ffmpeg is.
+#
 # [[commands]]
 # name = "ffmpeg"
 # description = "Encode, transcode or trim audio and video."

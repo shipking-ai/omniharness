@@ -179,3 +179,43 @@ func TestSchemaRequiresTheArgumentList(t *testing.T) {
 		t.Errorf("a fixed command rejected an empty call: %v", err)
 	}
 }
+
+// A command declaring only its own capabilities would be reachable by nobody:
+// nothing in core declares "transcode_video" and nothing ever will, because
+// core does not know what ffmpeg is. external_tool is what the acting roles
+// match on, so it is always present — the same rule the MCP adapter follows,
+// and the same trap: describing a tool better must not make it less reachable.
+func TestCommandToolIsAlwaysReachable(t *testing.T) {
+	tool := mustNew(t, Spec{
+		Name: "ffmpeg", Command: goBin(t),
+		Capabilities: []tools.Capability{"transcode_video"},
+	})
+	spec := tool.Spec()
+	var hasExternal, hasDeclared bool
+	for _, c := range spec.Capabilities {
+		if c == tools.CapExternalTool {
+			hasExternal = true
+		}
+		if c == "transcode_video" {
+			hasDeclared = true
+		}
+	}
+	if !hasDeclared {
+		t.Error("the declared capability was lost; discovery would not find it")
+	}
+	if !hasExternal {
+		t.Fatal("no external_tool capability, so no role can reach this command")
+	}
+	// And it must not be duplicated when an operator names it themselves.
+	dup := mustNew(t, Spec{Name: "c", Command: goBin(t),
+		Capabilities: []tools.Capability{tools.CapExternalTool, "transcode_video"}})
+	seen := 0
+	for _, c := range dup.Spec().Capabilities {
+		if c == tools.CapExternalTool {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Errorf("external_tool appears %d times, want exactly once", seen)
+	}
+}
