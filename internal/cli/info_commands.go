@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -15,7 +16,10 @@ import (
 
 	"omniharness/internal/config"
 	"omniharness/internal/gateway"
+	"omniharness/internal/mcp"
+	"omniharness/internal/memory"
 	"omniharness/internal/telemetry"
+	"omniharness/internal/tools"
 	"omniharness/internal/version"
 )
 
@@ -342,20 +346,102 @@ func newPluginsCmd() *cobra.Command {
 			}
 			defer rt.Close()
 
+			// Start the configured servers before listing. Without this the
+			// command printed the server list and then only the native tools,
+			// so the one surface for answering "did my MCP server load, and
+			// what does it give me?" could not answer it.
+			loadMCPServersFromConfig(cmd.Context(), rt, cfg)
+
 			fmt.Println("configured MCP servers:")
 			if len(cfg.MCP.Servers) == 0 {
 				fmt.Println("  (none — add [[mcp.servers]] entries to your config)")
 			}
+			// Status comes from the live client, not from the config: "it is
+			// in the file" and "it started and is answering" are different
+			// claims, and only the second one is worth printing.
+			live := map[string]*mcp.Client{}
+			for _, c := range rt.MCPClients {
+				live[c.Name()] = c
+			}
 			for _, s := range cfg.MCP.Servers {
-				line := fmt.Sprintf("  %s -> %s %s", s.Name, s.Command, s.Args)
-				fmt.Println(line)
+				status := "did not start"
+				count := 0
+				if c, ok := live[s.Name]; ok {
+					count = len(rt.Tools.WithProvider(mcp.ProviderName(s.Name)))
+					if c.Alive() {
+						status = fmt.Sprintf("running, %d tool(s)", count)
+					} else {
+						status = "started, then exited"
+					}
+				}
+				fmt.Printf("  %-14s %-24s %s\n", s.Name, status, s.Command+" "+strings.Join(s.Args, " "))
+				if len(s.Capabilities) > 0 {
+					fmt.Printf("  %-14s   declares: %s\n", "", strings.Join(s.Capabilities, ", "))
+				}
 			}
 
-			fmt.Println("\nnative tools:")
+			fmt.Println("\nregistered tools:")
+			// A tool's track record in this workspace, from recorded calls.
+			// Reliability is not discoverable from a tool definition; it is only
+			// knowable by having run the thing.
+			record := map[string]memory.ToolStat{}
+			if stats, err := memory.ToolStats(rt.Store); err == nil {
+				for _, st := range stats {
+					record[st.Tool] = st
+				}
+			}
 			for _, spec := range rt.Tools.List() {
-				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, spec.Description)
+				fmt.Printf("  %-16s [%s] %s\n", spec.Name, spec.Risk, oneLine(spec.Description, 90))
+				if st, ok := record[spec.Name]; ok {
+					fmt.Printf("  %-16s   record: %s\n", "", st.Summary())
+				}
+				if len(spec.Capabilities) > 0 {
+					fmt.Printf("  %-16s   provides: %s\n", "", strings.Join(capNames(spec.Capabilities), ", "))
+				}
+			}
+
+			// The capability index is what a role matches a tool against, so
+			// print it separately: it answers "can anything here do X?" without
+			// the reader having to scan every tool.
+			fmt.Println("\navailable capabilities:")
+			for _, c := range rt.Tools.Capabilities() {
+				var providers []string
+				for _, p := range rt.Tools.WithCapability(c) {
+					providers = append(providers, p.Name)
+				}
+				// A server with many tools would otherwise print one
+				// unreadable line per capability.
+				shown := providers
+				suffix := ""
+				if len(shown) > 6 {
+					suffix = fmt.Sprintf(" (+%d more)", len(shown)-6)
+					shown = shown[:6]
+				}
+				fmt.Printf("  %-18s %d: %s%s\n", string(c), len(providers), strings.Join(shown, ", "), suffix)
 			}
 			return nil
 		},
 	}
+}
+
+// capNames renders capabilities for display.
+func capNames(in []tools.Capability) []string {
+	out := make([]string, len(in))
+	for i, c := range in {
+		out[i] = string(c)
+	}
+	return out
+}
+
+// oneLine flattens a tool description for a single-line listing. Descriptions
+// from an MCP server are the tool function's docstring: they routinely start
+// with a newline and run to several paragraphs, which printed straight into a
+// %s made every external tool look as though it had no description at all.
+// Only the listing is flattened; the model still receives the full text.
+func oneLine(s string, max int) string {
+	flat := strings.Join(strings.Fields(s), " ")
+	if max > 0 && len([]rune(flat)) > max {
+		flat = string([]rune(flat)[:max-1]) + "…"
+	}
+	return flat
 }

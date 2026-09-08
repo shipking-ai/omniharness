@@ -209,7 +209,7 @@ func loadMCPServersFromConfig(ctx context.Context, rt *runtime.Runtime, cfg conf
 	}
 	servers := make([]mcp.Server, 0, len(cfg.MCP.Servers))
 	for _, s := range cfg.MCP.Servers {
-		servers = append(servers, mcp.Server{Name: s.Name, Command: s.Command, Args: s.Args, Env: s.Env})
+		servers = append(servers, mcp.Server{Name: s.Name, Command: s.Command, Args: s.Args, Env: s.Env, Capabilities: s.Capabilities, ToolCapabilities: s.ToolCapabilities, ToolEffects: s.ToolEffects})
 	}
 	if err := rt.LoadMCPServers(ctx, servers); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)

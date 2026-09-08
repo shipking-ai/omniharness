@@ -32,6 +32,11 @@ type Intent struct {
 	Preferred string
 	// Capabilities in priority order; the first resolvable one wins.
 	Capabilities []string
+	// Requires are properties the chosen model must actually have — "this
+	// step needs a model that can see". Capabilities say which model to
+	// prefer; Requires says which models are usable at all, and when the
+	// preferred one does not qualify the selector looks for one that does.
+	Requires []Property
 }
 
 // Selector resolves capability intents against configuration.
@@ -43,6 +48,8 @@ type Selector struct {
 	// choice. It lets performance memory influence selection without coupling
 	// this package to the store.
 	Empirical func(resolved string, candidates []string) (alt, reason string, ok bool)
+	// supports is the per-model property declaration; see property.go.
+	supports map[string][]Property
 }
 
 // NewSelector builds a selector from config values.
@@ -102,6 +109,18 @@ func (s *Selector) ResolveExplain(in Intent) (string, string, error) {
 	}
 	if base == "" {
 		return "", "", fmt.Errorf("no model configured and no default set")
+	}
+
+	// A required property is not a preference. If the model the config points
+	// at cannot do the thing, using it anyway produces a confident wrong
+	// answer — a model that cannot see does not say so, it guesses.
+	if len(in.Requires) > 0 && !s.satisfies(base, in.Requires) {
+		if alt := s.firstSatisfying(in.Requires); alt != "" {
+			return alt, fmt.Sprintf("%s does not support %s; %s does",
+				base, joinProperties(in.Requires), alt), nil
+		}
+		return "", "", fmt.Errorf("no configured model supports %s (declare one under [models.supports])",
+			joinProperties(in.Requires))
 	}
 	if s.Empirical != nil {
 		if alt, reason, ok := s.Empirical(base, s.AllConfigured()); ok && alt != "" {
@@ -170,4 +189,29 @@ func EstimateCost(modelRef string, tokensIn, tokensOut int64) float64 {
 
 func round4(f float64) float64 {
 	return float64(int(f*10000+0.5)) / 10000
+}
+
+// firstSatisfying returns the first configured model with every required
+// property, in the selector's stable candidate order.
+func (s *Selector) firstSatisfying(required []Property) string {
+	for _, ref := range s.AllConfigured() {
+		if s.satisfies(ref, required) {
+			return ref
+		}
+	}
+	// A model may be declared in supports without being a capability target.
+	for _, ref := range s.Supporting(required[0]) {
+		if s.satisfies(ref, required) {
+			return ref
+		}
+	}
+	return ""
+}
+
+func joinProperties(in []Property) string {
+	names := make([]string, len(in))
+	for i, p := range in {
+		names[i] = string(p)
+	}
+	return strings.Join(names, " + ")
 }

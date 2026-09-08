@@ -25,7 +25,31 @@ type Config struct {
 	Benchmark   Benchmark   `toml:"benchmark"`
 	Logging     Logging     `toml:"logging"`
 	MCP         MCP         `toml:"mcp"`
+	Commands    []Command   `toml:"commands"`
 	Task        Task        `toml:"task"`
+}
+
+// Command exposes a local command-line program as a capability-bearing tool.
+// MCP is one way to reach an external program; plenty of useful ones (ffmpeg,
+// ImageMagick, yt-dlp) already have a stable interface and will never ship an
+// MCP server. Nothing in the harness knows what any of them are — a command is
+// entirely described here.
+type Command struct {
+	Name        string `toml:"name"`
+	Description string `toml:"description"`
+	Command     string `toml:"command"`
+	// Args are fixed arguments placed before the caller's.
+	Args []string `toml:"args,omitempty"`
+	// ArgsParam names the tool argument holding the caller's argument list.
+	// Empty means the tool takes none.
+	ArgsParam string `toml:"args_param,omitempty"`
+	// Capabilities and Effects work exactly as for an MCP server.
+	Capabilities []string `toml:"capabilities,omitempty"`
+	Effects      []string `toml:"effects,omitempty"`
+	// Risk defaults to "high": an arbitrary local program can do anything.
+	Risk string `toml:"risk,omitempty"`
+	// Timeout bounds one run; zero uses the package default.
+	Timeout time.Duration `toml:"timeout,omitempty"`
 }
 
 // MCP configures Model Context Protocol servers to load as tools.
@@ -39,6 +63,21 @@ type MCServer struct {
 	Command string   `toml:"command"`
 	Args    []string `toml:"args,omitempty"`
 	Env     []string `toml:"env,omitempty"`
+	// Capabilities declares what this server's tools provide, e.g.
+	// ["create_3d_scene", "render_scene"]. MCP has no capability field of its
+	// own, so this is the operator's declaration and cannot be discovered.
+	// Omitted, the server's tools get the generic "external_tool" capability,
+	// which is reachable by the acting roles but tells a planner nothing.
+	Capabilities []string `toml:"capabilities,omitempty"`
+	// ToolCapabilities declares capabilities per tool, keyed by the tool name
+	// the server reports. Tools not named here fall back to Capabilities.
+	// A server with many unrelated tools needs this: one server-level list
+	// gives every tool every capability and flattens the discovery index.
+	ToolCapabilities map[string][]string `toml:"tool_capabilities,omitempty"`
+	// ToolEffects declares consequences per tool: destructive, financial,
+	// credential, requires_confirmation, read_only, external. Gated ones force
+	// a confirmation prompt whatever the risk table says.
+	ToolEffects map[string][]string `toml:"tool_effects,omitempty"`
 }
 
 // OmniRoute configures the gateway connection.
@@ -60,6 +99,18 @@ type Models struct {
 	// "long-context", "coding", "vision", "research", "review") to
 	// provider/model strings. Empty values fall back to Default.
 	Capabilities map[string]string `toml:"capabilities"`
+	// Supports declares what each model can actually do, keyed by
+	// provider/model reference: "vision", "tools", "structured_output",
+	// "long_context", "local". It has to be declared — OmniRoute's catalog
+	// reports id, name and provider with nothing about modality or context —
+	// so the harness will not guess, and an undeclared model is treated as
+	// supporting nothing.
+	//
+	// Note the direction. Capabilities above maps capability to model ("for
+	// reasoning, use X"); this maps model to facts ("X can see"). Both are
+	// needed: a run can be on a coding model and still need to know whether
+	// that model accepts an image.
+	Supports map[string][]string `toml:"supports,omitempty"`
 }
 
 // Budgets are task-level resource ceilings; zero means unlimited.
@@ -255,6 +306,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Models.Default != "" && !validModelRef(c.Models.Default) {
 		return fmt.Errorf("invalid default model reference %q (want provider/model)", c.Models.Default)
+	}
+	for m := range c.Models.Supports {
+		if !validModelRef(m) {
+			return fmt.Errorf("invalid provider/model reference %q in models.supports", m)
+		}
 	}
 	for risk, action := range c.Policy.RiskAction {
 		switch risk {

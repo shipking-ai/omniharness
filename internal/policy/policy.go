@@ -50,6 +50,10 @@ type Request struct {
 	Input   map[string]any
 	Risk    tools.Risk
 	AgentID string
+	// Effects are the tool's declared consequences. Some of them force a
+	// confirmation whatever the risk table says — see gated effects in
+	// internal/tools.
+	Effects []tools.Effect
 }
 
 // Approver is implemented by the runtime (TUI, CLI prompt, or headless
@@ -129,8 +133,57 @@ func (e *Engine) Evaluate(ctx context.Context, r Request) (Decision, string, err
 		}
 	}
 
+	// Gated effects override a permissive risk table. Setting high = "allow"
+	// to stop being asked about shell is not agreement to spend money, hand
+	// over a credential, or destroy something unprompted — those are separate
+	// decisions and a risk class cannot express them.
+	if gated := gatedEffectsOf(r.Effects); len(gated) > 0 {
+		d, reason := e.decideForRisk(r.Risk)
+		if d == Allow {
+			return Ask, fmt.Sprintf("%s is %s; that needs explicit approval regardless of its risk class",
+				r.Tool, joinEffects(gated)), nil
+		}
+		// Already Ask or Block: the stricter outcome stands, but say why.
+		if d == Ask {
+			return Ask, fmt.Sprintf("%s is %s", r.Tool, joinEffects(gated)), nil
+		}
+		return d, reason, nil
+	}
+
 	d, reason := e.decideForRisk(r.Risk)
 	return d, reason, nil
+}
+
+// gatedEffectsOf filters a tool's declared effects to the ones that force a
+// prompt.
+func gatedEffectsOf(declared []tools.Effect) []tools.Effect {
+	return tools.Spec{Effects: declared}.GatedEffects()
+}
+
+func joinEffects(in []tools.Effect) string {
+	words := make([]string, len(in))
+	for i, e := range in {
+		switch e {
+		case tools.EffectDestructive:
+			words[i] = "irreversible"
+		case tools.EffectFinancial:
+			words[i] = "able to spend money"
+		case tools.EffectCredential:
+			words[i] = "credential-sensitive"
+		case tools.EffectRequiresConfirmation:
+			words[i] = "marked as needing confirmation"
+		default:
+			words[i] = string(e)
+		}
+	}
+	switch len(words) {
+	case 1:
+		return words[0]
+	case 2:
+		return words[0] + " and " + words[1]
+	default:
+		return strings.Join(words[:len(words)-1], ", ") + " and " + words[len(words)-1]
+	}
 }
 
 // decideForRisk maps a risk class to a decision using cfg.RiskAction alone —

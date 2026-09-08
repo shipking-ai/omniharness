@@ -99,3 +99,237 @@ format = "text"
 # defaults off.
 [task]
 deep_analysis = false
+
+# MCP servers become tool providers. Each server's tools register into the
+# same registry as the native tools, so policy applies to them identically.
+#
+# capabilities declares what the server's tools provide. MCP has no capability
+# field of its own — the protocol reports names, descriptions and input
+# schemas only — so this is your declaration and cannot be discovered. It is
+# how agents reach the server: roles select tools by capability, not by name,
+# and a server's tool names are only known at runtime.
+#
+# The vocabulary is open. Names must be lowercase letters, digits and
+# underscores; nothing checks them against a fixed list, so a capability this
+# build has never heard of is fine. A typo is rejected at startup rather than
+# leaving the server loaded but unreachable.
+#
+# capabilities are for DISCOVERY, not access. Every MCP tool also carries
+# "external_tool", which is what the acting roles (implementer, researcher,
+# debugger, tester, optimizer) match on; the read-only roles (reviewer,
+# security auditor, architect, synthesizer) get neither. So declaring names
+# never changes who can reach the server — describing it better must not make
+# it less usable. To restrict a server, use policy.blocked_tools /
+# policy.allowed_tools and the risk_action table, which is the layer that
+# exists for that.
+#
+# tool_capabilities declares capabilities per tool, keyed by the name the
+# server reports. A server rarely has one job: blender-mcp exposes 28 tools
+# spanning scene inspection, rendering, telemetry and third-party asset search,
+# and a single server-level list gives every one of them every capability, so
+# "what can render a scene?" answers "all 28". Name the tools that matter and
+# let the rest fall back to the server list.
+#
+# Example: Blender, via github.com/ahujasid/blender-mcp (verified against
+# v1.9.1 / server 1.29.1 — 28 tools, tool names below are the real ones).
+# Running it needs Blender itself with that project's addon started; the
+# harness needs no code either way.
+#
+# [[mcp.servers]]
+# name = "blender"
+# command = "uvx"
+# args = ["blender-mcp"]
+# capabilities = ["execute_code"]
+#
+# [mcp.servers.tool_capabilities]
+# get_scene_info                  = ["inspect_3d_scene"]
+# get_object_info                 = ["inspect_3d_scene"]
+# get_viewport_screenshot         = ["inspect_3d_scene", "render_scene"]
+# execute_blender_code            = ["modify_3d_scene", "execute_code"]
+# set_texture                     = ["modify_3d_scene"]
+# generate_hyper3d_model_via_text = ["generate_3d_asset"]
+
+# Binary tool output (a viewport screenshot, a rendered frame) is written to
+# <workspace>/.omniharness/artifacts and referenced by path in the tool result.
+# The tool-result channel is text, so an image cannot ride in one; it arrives
+# as a following user message instead.
+#
+# [models.supports] declares what each model can actually do, keyed by
+# provider/model. Known properties: vision, tools, structured_output,
+# long_context, local. It has to be declared — OmniRoute's catalog reports id,
+# name and provider with nothing about modality or context — so the harness
+# will not guess, and an undeclared model is treated as supporting nothing.
+#
+# Note the direction, which is the opposite of [models.capabilities] above.
+# capabilities maps a capability to a model ("for reasoning, use X");
+# supports maps a model to facts ("X can see"). Both are needed: a run can be
+# on a coding model and still need to know whether that model takes an image.
+#
+# Latency and cost are deliberately not declared here. Performance memory
+# measures them from real runs, which beats an estimate and cannot go stale.
+#
+# When a tool returns an image and the run's own model is not declared to see,
+# that one turn is routed to a model that is, and the run continues on its own
+# model afterwards. With nothing declared no image is ever sent, and the agent
+# is told in text that one exists which it cannot view.
+#
+# [models.supports]
+# "antigravity/gemini-3.6-flash-high" = ["vision", "tools"]
+# "openai/gpt-5" = ["vision", "tools", "long_context"]
+
+# tool_effects declares consequences per tool, which the risk class does not
+# capture: destructive (cannot be undone), financial (spends money),
+# credential (handles secrets), requires_confirmation (ask anyway), read_only,
+# external. The first four force a confirmation prompt however permissive
+# [policy.risk_action] is — setting high = "allow" to stop being asked about
+# shell is not agreement to spend money unprompted.
+#
+# Real example: blender-mcp's asset generation and download tools bill
+# third-party APIs, and nothing about their risk class says so.
+#
+# [mcp.servers.tool_effects]
+# generate_hyper3d_model_via_text = ["financial", "external"]
+# download_sketchfab_model        = ["financial", "external"]
+# get_scene_info                  = ["read_only"]
+
+# A browser, via agent-browser (npm i -g agent-browser). Verified against
+# v0.34.0 — 29 tools, stdio MCP. The first call is slow because it launches a
+# browser; later ones are fast.
+#
+# Browser automation must respect the target site's terms, authentication and
+# technical restrictions. Nothing here is for getting past a paywall, a login,
+# a CAPTCHA or a rate limit.
+#
+# [[mcp.servers]]
+# name = "browser"
+# command = "agent-browser"      # agent-browser.cmd on Windows
+# args = ["mcp"]
+# capabilities = ["browse_web"]
+#
+# [mcp.servers.tool_capabilities]
+# agent_browser_open       = ["browse_web"]
+# agent_browser_read       = ["browse_web", "inspect_page"]
+# agent_browser_snapshot   = ["inspect_page"]
+# agent_browser_get_text   = ["inspect_page"]
+# agent_browser_click      = ["interact_page"]
+# agent_browser_fill       = ["interact_page"]
+# agent_browser_screenshot = ["capture_page"]
+# agent_browser_eval       = ["execute_code"]
+#
+# [mcp.servers.tool_effects]
+# agent_browser_read = ["external", "read_only"]
+# agent_browser_open = ["external"]
+# # Arbitrary script against whatever is loaded, including anything the person
+# # running this is signed in to.
+# agent_browser_eval = ["external", "requires_confirmation"]
+
+# DaVinci Resolve, via resolve-mcp (pypi). Verified against v4.0.3 — 211 tools
+# — for registration, schemas and gating only: Resolve itself is not installed
+# here, so no edit or render has been driven. Like blender-mcp the server
+# answers tools/list without the application and reports the missing
+# connection at call time.
+#
+# [[mcp.servers]]
+# name = "resolve"
+# command = "uvx"
+# args = ["resolve-mcp"]
+# capabilities = ["edit_video"]
+#
+# [mcp.servers.tool_capabilities]
+# resolve_import_media   = ["import_media"]
+# resolve_add_render_job = ["render_video"]
+# resolve_copy_grade     = ["color_grade"]
+# resolve_add_markers    = ["edit_timeline"]
+#
+# [mcp.servers.tool_effects]
+# # These four warn "cannot be undone" in their own descriptions.
+# resolve_delete_timelines = ["destructive"]
+# resolve_delete_project   = ["destructive"]
+# resolve_delete_clips     = ["destructive"]
+# resolve_delete_db_folder = ["destructive"]
+# resolve_list_projects    = ["read_only"]
+
+# ── Local command-line programs ───────────────────────────────────────────
+# MCP is one way to reach an external program. Plenty of useful ones already
+# have a stable CLI and will never ship an MCP server; [[commands]] exposes
+# them as capability-bearing tools. Nothing in the harness knows what any of
+# these are — a command is entirely described here.
+#
+# Arguments are passed as a list and never through a shell, so an argument
+# containing ";" or "&&" is an argument, not a second command.
+#
+# A program that is not installed is reported at startup and skipped rather
+# than registered, so a capability is never advertised by something absent.
+#
+# risk defaults to "high": an arbitrary local program can do anything.
+#
+# Declared capabilities are for discovery; every command also carries
+# "external_tool", which is what the acting roles match on. Without that a
+# command declaring only "transcode_video" would register, appear in
+# `omniharness plugins`, and be offered to no model at all — nothing in core
+# declares that capability and nothing ever will, because core does not know
+# what ffmpeg is.
+#
+# [[commands]]
+# name = "ffmpeg"
+# description = "Encode, transcode or trim audio and video."
+# command = "ffmpeg"
+# args_param = "args"
+# capabilities = ["transcode_video", "render_video"]
+# # An overwrite cannot be undone, so this always prompts.
+# effects = ["destructive"]
+#
+# [[commands]]
+# name = "ffprobe"
+# description = "Report the streams and format of a media file."
+# command = "ffprobe"
+# args_param = "args"
+# capabilities = ["probe_media", "inspect_media"]
+# effects = ["read_only"]
+# risk = "low"
+
+# OBS Studio, via obs-mcp (npm). Verified against v1.0.0 — 125 tools.
+# Driving OBS additionally needs OBS running with its WebSocket server
+# enabled: Tools → WebSocket Server Settings → Enable WebSocket server. It is
+# off by default. Put the password in env below, or turn off authentication
+# there if you would rather not keep one in a config file.
+#
+# [[mcp.servers]]
+# name = "obs"
+# command = "npx"                 # npx.cmd on Windows
+# args = ["-y", "obs-mcp@latest"]
+# env = ["OBS_WEBSOCKET_PASSWORD=..."]
+# capabilities = ["control_obs"]
+#
+# [mcp.servers.tool_capabilities]
+# obs-get-scene-list        = ["inspect_scene"]
+# obs-set-current-scene     = ["switch_scene"]
+# obs-get-source-screenshot = ["capture_screen"]
+# obs-start-record          = ["record_video"]
+# obs-stop-record           = ["record_video"]
+# obs-start-stream          = ["broadcast_stream"]
+#
+# [mcp.servers.tool_effects]
+# obs-get-scene-list        = ["read_only"]
+# obs-get-source-screenshot = ["read_only"]
+# obs-remove-scene          = ["destructive"]
+# obs-remove-input          = ["destructive"]
+# # Going live is public and cannot be taken back.
+# obs-start-stream          = ["external", "requires_confirmation"]
+#
+# obs-mcp answers tools/list immediately but opens its WebSocket to OBS
+# asynchronously afterwards, so the first call or two can come back "Not
+# connected or identified" before the handshake finishes. That is the
+# provider being slow to be ready, not a failure; try again.
+
+# Video editing needs no separate NLE: Blender's Video Sequence Editor is a
+# real one, reached through execute_blender_code, which already works. Add the
+# editing capabilities to that tool — it genuinely does both:
+#
+# [mcp.servers.tool_capabilities]
+# execute_blender_code = ["modify_3d_scene", "edit_timeline", "edit_video", "render_video", "execute_code"]
+#
+# Blender 5.x renamed sequences -> strips, and new_effect takes `length` not
+# `frame_end`. Use `se.strips if hasattr(se, "strips") else se.sequences` —
+# an empty strip collection is falsy, so `getattr(...) or se.sequences` picks
+# the removed name on a brand-new editor.

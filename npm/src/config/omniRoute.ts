@@ -48,8 +48,42 @@ export interface ChatTool {
 }
 
 export interface McpToolCallResult {
-  content: { type?: string; text?: string }[];
+  content: { type?: string; text?: string; data?: string; mimeType?: string }[];
   isError?: boolean;
+}
+
+/**
+ * Render MCP content blocks as text.
+ *
+ * Not every block is text. A tool that returns a screenshot sends an image
+ * block carrying base64 data and no text at all, and reading only the text
+ * blocks turned that into an empty string with no error — a call that appears
+ * to succeed and returns nothing, which is worse than one that fails. The
+ * bytes cannot travel in a tool result here, so a non-text block is described
+ * rather than dropped: the model then knows something was produced instead of
+ * silently seeing nothing.
+ */
+export function describeMcpContent(
+  blocks: readonly { type?: string; text?: string; data?: string; mimeType?: string }[],
+): string {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    if (block.type === 'text' || typeof block.text === 'string') {
+      if (typeof block.text === 'string' && block.text !== '') parts.push(block.text);
+      continue;
+    }
+    const kind = block.type ?? 'binary';
+    const mime = block.mimeType ?? 'unknown type';
+    if (typeof block.data !== 'string' || block.data === '') {
+      parts.push(`[${kind} content, empty]`);
+      continue;
+    }
+    // base64 length maps to roughly 3/4 as many bytes; exact enough to say how
+    // much came back without decoding a payload nothing here can use.
+    const bytes = Math.floor((block.data.length * 3) / 4);
+    parts.push(`[${kind} content, ~${bytes} bytes, ${mime} — not shown here]`);
+  }
+  return parts.join('\n');
 }
 
 export interface CompressionInfo {
@@ -139,11 +173,7 @@ export class OmniRouteClient {
   /** Invoke an MCP tool and return its text content. */
   public async callMcpTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
     const result = await this.mcpRpc<McpToolCallResult>('tools/call', { name, arguments: args }, signal);
-    const text = (result.content ?? [])
-      .filter((part) => part.type === 'text' && typeof part.text === 'string')
-      .map((part) => part.text as string)
-      .filter((part) => part !== '')
-      .join('\n');
+    const text = describeMcpContent(result.content ?? []);
     return result.isError ? (text !== '' ? `MCP error: ${text}` : `MCP tool ${name} failed`) : text;
   }
 

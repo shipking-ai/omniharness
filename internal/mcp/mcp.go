@@ -23,6 +23,26 @@ type Server struct {
 	Command string   `json:"command" toml:"command"`
 	Args    []string `json:"args,omitempty" toml:"args,omitempty"`
 	Env     []string `json:"env,omitempty" toml:"env,omitempty"` // KEY=VALUE entries
+	// Capabilities is what the operator declares this server's tools provide,
+	// e.g. ["create_3d_scene", "render_scene"]. MCP itself has no capability
+	// field — the protocol reports names, descriptions and input schemas only
+	// — so this cannot be discovered and must be configured. Left empty, the
+	// adapter falls back to tools.CapExternalTool.
+	Capabilities []string `json:"capabilities,omitempty" toml:"capabilities,omitempty"`
+	// ToolCapabilities declares capabilities for individual tools, keyed by
+	// the tool's own name as the server reports it (no "mcp:server:" prefix).
+	// A server's tools are rarely homogeneous — blender-mcp exposes 28,
+	// covering scene inspection, rendering, telemetry and third-party asset
+	// search — and a single server-level list gives every one of them every
+	// capability, which makes "what can render a scene?" answer "all 28".
+	// Tools not named here fall back to Capabilities.
+	ToolCapabilities map[string][]string `json:"toolCapabilities,omitempty" toml:"tool_capabilities,omitempty"`
+	// ToolEffects declares consequences per tool, keyed by the tool name the
+	// server reports: "destructive", "financial", "credential",
+	// "requires_confirmation", "read_only", "external". MCP reports nothing of
+	// the sort, and it matters — blender-mcp's asset generation tools bill
+	// third-party APIs, which no risk class conveys.
+	ToolEffects map[string][]string `json:"toolEffects,omitempty" toml:"tool_effects,omitempty"`
 }
 
 // ToolInfo is the metadata MCP returns for a tool.
@@ -32,10 +52,20 @@ type ToolInfo struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// Content is an MCP content block.
+// Content is an MCP content block. Image and resource blocks carry
+// base64-encoded Data rather than Text; a reader that looks only at Text sees
+// an empty result and no error, which is worse than an error.
 type Content struct {
-	Type string `json:"type"` // text | image | resource
-	Text string `json:"text,omitempty"`
+	Type     string `json:"type"` // text | image | resource
+	Text     string `json:"text,omitempty"`
+	Data     string `json:"data,omitempty"`     // base64, for image blocks
+	MimeType string `json:"mimeType,omitempty"` // e.g. image/png
+	Resource *struct {
+		URI      string `json:"uri,omitempty"`
+		MimeType string `json:"mimeType,omitempty"`
+		Text     string `json:"text,omitempty"`
+		Blob     string `json:"blob,omitempty"`
+	} `json:"resource,omitempty"`
 }
 
 // CallResult is the result of tools/call.
@@ -54,6 +84,16 @@ type Client struct {
 	mu      sync.Mutex
 	nextID  uint64
 	done    chan struct{}
+	// info is what the server said it was during the handshake. MCP reports
+	// it and this client used to discard it, so a tool's provenance stopped
+	// at the server name an operator happened to choose.
+	info ServerInfo
+}
+
+// ServerInfo is the server's self-description from the initialize handshake.
+type ServerInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 // rpcRequest is a JSON-RPC 2.0 request.
@@ -122,6 +162,14 @@ func (c *Client) Start(ctx context.Context) error {
 	}, &initResult); err != nil {
 		c.Close()
 		return fmt.Errorf("mcp initialize %q: %w", c.server.Name, err)
+	}
+	// Best effort: a server that reports no serverInfo is still usable, so a
+	// decode failure here must not fail the connection.
+	var handshake struct {
+		ServerInfo ServerInfo `json:"serverInfo"`
+	}
+	if json.Unmarshal(initResult, &handshake) == nil {
+		c.info = handshake.ServerInfo
 	}
 	if err := c.notify("notifications/initialized", map[string]any{}); err != nil {
 		c.Close()
@@ -213,6 +261,33 @@ func (c *Client) notify(method string, params any) error {
 	_, err = c.stdin.Write(append(b, '\n'))
 	return err
 }
+
+// Done is closed when the server's stdout closes — the process exited, was
+// killed, or crashed. Nothing else notices: every subsequent call would block
+// until its own context expired, so a caller that registered this server's
+// tools watches this channel to take them back out.
+func (c *Client) Done() <-chan struct{} { return c.done }
+
+// Alive reports whether the server is still running. A client that was never
+// started is not alive.
+func (c *Client) Alive() bool {
+	if c.done == nil {
+		return false
+	}
+	select {
+	case <-c.done:
+		return false
+	default:
+		return true
+	}
+}
+
+// Name returns the configured server name.
+func (c *Client) Name() string { return c.server.Name }
+
+// Info returns what the server called itself during the handshake. Empty if
+// it reported nothing.
+func (c *Client) Info() ServerInfo { return c.info }
 
 // ListTools returns the tools exposed by the server.
 func (c *Client) ListTools(ctx context.Context) ([]ToolInfo, error) {

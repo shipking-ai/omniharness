@@ -9,11 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"omniharness/internal/agent"
 	"omniharness/internal/budget"
+	"omniharness/internal/command"
 	"omniharness/internal/config"
 	composer "omniharness/internal/context"
 	"omniharness/internal/envguard"
@@ -48,6 +50,11 @@ type Runtime struct {
 	Analyzer     *task.Analyzer
 	Orchestrator *orchestrator.Orchestrator
 	Workspace    string
+
+	// CommandIssues records configured commands that could not be registered,
+	// almost always because the program is not installed. Not an error: the
+	// rest of the harness still works without ffmpeg.
+	CommandIssues []string
 
 	MCPClients []*mcp.Client
 	stopSinks  []func()
@@ -89,6 +96,19 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 		}
 	}
 
+	// Every failure below this point returns before the Runtime exists, so
+	// nothing would ever close the store we just opened: on Windows that
+	// leaves the database file locked, and the process holds a handle for its
+	// lifetime. Only a store this function opened is closed — one passed in
+	// belongs to the caller.
+	ownStore := opts.Store == nil
+	failed := true
+	defer func() {
+		if failed && ownStore {
+			store.Close()
+		}
+	}()
+
 	gw := opts.Gateway
 	if gw == nil {
 		gw = gateway.New(cfg.OmniRoute.Endpoint, cfg.OmniRoute.Timeout, cfg.OmniRoute.APIKey)
@@ -108,11 +128,43 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 
 	projectMemory := memory.Project(store)
 
+	var commandIssues []string
 	reg := tools.NewRegistry()
 	native := tools.NewNative(workspace)
 	native.Memory = projectMemory
 	if err := native.Register(reg); err != nil {
 		return nil, fmt.Errorf("register native tools: %w", err)
+	}
+
+	// Commands the operator declared. A configured program that is not
+	// installed is reported and skipped rather than registered: a tool that
+	// cannot possibly run should be visible as absent, not as a failure on
+	// first use.
+	for _, c := range cfg.Commands {
+		caps, err := tools.ParseCapabilities(c.Capabilities)
+		if err != nil {
+			return nil, fmt.Errorf("command %q: %w", c.Name, err)
+		}
+		effects, err := tools.ParseEffects(c.Effects)
+		if err != nil {
+			return nil, fmt.Errorf("command %q: %w", c.Name, err)
+		}
+		ct, err := command.New(command.Spec{
+			Name: c.Name, Description: c.Description, Command: c.Command,
+			Args: c.Args, ArgsParam: c.ArgsParam,
+			Capabilities: caps, Effects: effects,
+			Risk: tools.Risk(c.Risk), Timeout: c.Timeout,
+		}, workspace)
+		if err != nil {
+			return nil, err
+		}
+		if err := ct.Available(); err != nil {
+			commandIssues = append(commandIssues, fmt.Sprintf("%s: %v", c.Name, err))
+			continue
+		}
+		if err := reg.Register(ct); err != nil {
+			return nil, fmt.Errorf("register command %q: %w", c.Name, err)
+		}
 	}
 
 	pol := policy.NewEngine(policy.Config{
@@ -132,6 +184,11 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	composerLimits := composer.Limits{CondenseAt: 96 << 10}
 	advisor := &memory.Advisor{Store: store}
 	modelSel := model.NewSelector(cfg.Models.Default, cfg.Models.Capabilities)
+	// A typo here silently removes a capability — a model declared "vison"
+	// would never be offered an image — so it fails at startup instead.
+	if err := modelSel.SetSupports(cfg.Models.Supports); err != nil {
+		return nil, err
+	}
 	// Performance memory can substitute an empirically better model among the
 	// configured candidates, with an explainable reason; cold start declines.
 	modelSel.Empirical = func(resolved string, candidates []string) (string, string, bool) {
@@ -155,6 +212,7 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 		Analyzer:   &task.Analyzer{RepoRoot: workspace},
 		Workspace:  workspace,
 	}
+	r.CommandIssues = commandIssues
 
 	// Off by default (see config.Task.DeepAnalysis) — nil disables the pass
 	// entirely, exactly as if this field didn't exist.
@@ -164,11 +222,14 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	}
 
 	r.Orchestrator = orchestrator.New(orchestrator.Deps{
-		Bus:            bus,
-		Store:          store,
-		Gateway:        gw,
-		ModelSel:       r.ModelSel,
-		Roles:          agent.DefaultRoles(),
+		Bus:      bus,
+		Store:    store,
+		Gateway:  gw,
+		ModelSel: r.ModelSel,
+		Roles:    agent.DefaultRoles(),
+		// One source of truth: the models declared able to see, read from the
+		// same place selection reads.
+		VisionModels:   modelSel.Supporting(model.PropVision),
 		Evaluators:     evals,
 		Repair:         r.Repair,
 		Analyzer:       r.Analyzer,
@@ -187,6 +248,7 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	if !opts.DisablePersistenceSink {
 		r.startPersistenceSink()
 	}
+	failed = false
 	return r, nil
 } // startPersistenceSink persists every event to the session store.
 func (r *Runtime) startPersistenceSink() {
@@ -349,6 +411,12 @@ func (r *Runtime) LoadMCPServers(ctx context.Context, servers []mcp.Server) erro
 	}
 	var failures []string
 	for _, srv := range servers {
+		// Before spawning anything: a mistyped capability makes the server's
+		// tools unreachable, which looks like the server never loaded.
+		if err := mcp.ValidateCapabilities(srv); err != nil {
+			failures = append(failures, err.Error())
+			continue
+		}
 		c := mcp.NewClient(srv)
 		if err := c.Start(ctx); err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", srv.Name, err))
@@ -360,18 +428,49 @@ func (r *Runtime) LoadMCPServers(ctx context.Context, servers []mcp.Server) erro
 			_ = c.Close()
 			continue
 		}
+		artifactDir := filepath.Join(r.Workspace, ".omniharness", "artifacts")
 		for _, ti := range toolInfos {
-			adapter := &mcp.ToolAdapter{Client: c, Info: ti}
+			adapter := &mcp.ToolAdapter{Client: c, Info: ti, ArtifactDir: artifactDir}
 			if err := r.Tools.Register(adapter); err != nil {
 				failures = append(failures, fmt.Sprintf("%s: %v", srv.Name, err))
 			}
 		}
 		r.MCPClients = append(r.MCPClients, c)
+		r.watchProvider(c)
 	}
 	if len(failures) > 0 {
 		return fmt.Errorf("MCP load issues: %s", strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+// watchProvider removes a provider's tools when its process goes away. An MCP
+// server that dies otherwise leaves its tools registered: they keep being
+// offered to every model, and every call to one fails with a timeout the agent
+// cannot interpret. Removing them narrows what the agent can do, which is
+// true, instead of leaving it reaching for something that is gone.
+func (r *Runtime) watchProvider(c *mcp.Client) {
+	provider := mcp.ProviderName(c.Name())
+	done := make(chan struct{})
+	// Close runs every stopSink, and nothing promises it runs only once, so
+	// closing this channel directly would panic on a second Close.
+	var once sync.Once
+	r.stopSinks = append(r.stopSinks, func() { once.Do(func() { close(done) }) })
+	go func() {
+		select {
+		case <-done:
+			// Runtime shutting down: Close() handles the process, and the
+			// registry is about to be discarded with it.
+			return
+		case <-c.Done():
+		}
+		removed := r.Tools.UnregisterProvider(provider)
+		r.Bus.Publish(event.New(&event.ProviderLostData{
+			Provider: provider,
+			Reason:   "the MCP server process ended",
+			Tools:    removed,
+		}))
+	}()
 }
 
 // ListSessions lists recent sessions.

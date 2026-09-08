@@ -32,6 +32,15 @@ statements about the workspace are no longer true of this repository.*
 - Toolchain: Go 1.27. `scripts/env.sh` puts a portable toolchain at `~/go-sdk`
   on PATH for hosts without a system Go.
 
+### A note on `docs/reference/API_REFERENCE.md`
+
+The brief for the capability work named that file as the source of truth for
+the gateway contract. **It does not exist** — not in this repository, not in the
+installed `omniroute` package, not anywhere under `~/.omniroute`. `internal/gateway`
+is therefore the contract of record, derived from the call logs in section 1 and
+from the installed server's own source (section 7). If the reference document
+turns up, reconcile against it rather than assuming this package is right.
+
 ## 2. Integration boundary (what OmniHarness must NOT duplicate)
 
 OmniHarness treats OmniRoute as an opaque **provider execution layer**. It never:
@@ -90,7 +99,9 @@ CLI ──────────┐        ┌── TUI (Bubble Tea, thin con
 ```
 
 Cross-cutting: `event` (spine), `session` (SQLite durable state), `telemetry`
-(recorded from events, never fabricated), `memory` (performance + project).
+(recorded from events, never fabricated), `memory` (project, model performance,
+and tool track records — which tools are reliable here and which commonly fail,
+aggregated from calls the runtime already recorded).
 
 ## 4. Package layout
 
@@ -109,6 +120,7 @@ internal/context       context engine + composer
 internal/memory        project + performance memory (SQLite)
 internal/tools         tool registry + native tools (fs, shell, git, search, proc, memory, replan)
 internal/mcp           MCP stdio client (first-class protocol)
+internal/command       local CLI programs as capability-bearing tools
 internal/policy        risk classes, permission evaluation, approvals
 internal/evaluate      evaluator framework (build/test/lint/constraint/evidence)
 internal/repair        failure classification + repair strategies
@@ -139,8 +151,81 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
 - **Repair changes variables, never blind-retries** the identical failed execution.
 - **No fake telemetry.** Every metric in the TUI comes from recorded events or
   session rows.
+- **Tools are addressed by capability, not by name.** `tools.Spec.Capabilities`
+  declares what a tool provides (`read_files`, `execute_code`, and whatever an
+  external adapter names — `render_scene`, `generate_music`); the registry
+  indexes it (`WithCapability`, `HasCapability`, `Capabilities`). Agent roles
+  declare capabilities alongside their `ToolAllow` names, and a tool is offered
+  to a role if either matches. This is what makes an external provider reachable
+  at all: its tool names are generated at runtime, so no compiled-in name list
+  can contain them. The vocabulary is deliberately **open** — core validates a
+  name's shape, never its membership in a list, so adding a Blender or Resolve
+  adapter needs no change to `internal/tools`.
+- **Tool calls are validated at the boundary.** `tools.ValidateInput` checks
+  arguments against the tool's declared JSON schema before the tool runs, and
+  before policy asks a human to approve anything. It implements only the schema
+  subset tool definitions actually use (type, properties, required, enum, items,
+  additionalProperties) and ignores what it does not understand, so an unfamiliar
+  schema from an external server makes its tool permissive rather than unusable.
+  Output validation is *not* implemented: MCP at the negotiated protocol version
+  (2025-03-26) has no output schema to validate against, and inventing one would
+  be guessing at the server's contract.
+- **Tool failures carry a kind.** `tools.Error{Kind}` (invalid_input,
+  unavailable, timeout, failed) is matched with `errors.As`, the same way
+  `gateway.Error` is, so `repair.Classify` branches on structure rather than on
+  substring matches against message text. The kind also reaches the model as
+  guidance, which is what stops it retrying a tool whose provider has gone away.
 - **MCP is first-class**: native client over stdio JSON-RPC 2.0; tools registered into
-  the same registry as native tools, so policy applies identically.
+  the same registry as native tools, so policy applies identically. MCP does not
+  report capabilities, so `[[mcp.servers]] capabilities` is the operator's
+  declaration. Those names are for *discovery*; every MCP tool also carries
+  `external_tool`, which is what the acting roles match on. Declaring names never
+  changes reach — describing a server better must not make it less usable — and
+  restriction stays with policy, which is the layer built for it.
+- **Non-text tool output becomes an artifact.** MCP content blocks can be images
+  or embedded resources, not just text. Reading only text blocks turned a
+  screenshot into an empty string with no error — an observe step failing
+  silently. Binary content is written to `<workspace>/.omniharness/artifacts` and
+  referenced by path in the tool result. The tool-result channel is text, so the
+  bytes do not reach the model there; feeding an image to a vision model would
+  need multimodal message content in `internal/gateway`, which is not built.
+- **The TUI shows decisions, not subsystems.** Capability work reaches the Go
+  cockpit as: `provider.lost` inline (a provider dying narrows what the agent
+  can do and nothing else stops to say so), the routing reason on
+  `model.requested` (which already carried "routed to a vision-capable model"),
+  and a Ctrl+T view answering "what can this run do?" by capability rather than
+  by tool name — diagnostics behind a key, so the main view stays task, plan and
+  action. The npm TUI is a separate program with its own engine and its own MCP
+  path (OmniRoute's HTTP gateway, not local stdio), so none of the Go registry
+  reaches it; what it shares is the content-block bug, fixed there too.
+- **Risk and effects are different questions.** Risk says how bad a call could
+  be; `tools.Effects` says what kind of thing it is — irreversible, spends
+  money, handles credentials. Those four force a confirmation whatever
+  `[policy.risk_action]` says, because a risk class is a blunt instrument: an
+  operator who allows high risk to stop being asked about shell has not agreed
+  to spend money unprompted. Unlike capabilities the vocabulary is closed —
+  policy branches on the names, so one it did not know could not be enforced.
+- **Model properties point the other way from capabilities.**
+  `[models.capabilities]` maps a capability to a model; `[models.supports]`
+  maps a model to facts about it. `Intent.Requires` uses the latter: a step
+  that needs to see resolves to a model that can, rather than proceeding with
+  one that will confidently guess. Latency and cost are not declared —
+  performance memory measures them.
+- **MCP is not the only adapter.** `internal/command` exposes a declared local
+  program (ffmpeg, ffprobe, anything with a stable CLI) as a `tools.Tool` with
+  its own capabilities and effects. It exists as much to test the interface as
+  to run ffmpeg: reaching a second kind of provider required no change inside
+  the registry, the policy engine or the agent. Arguments are passed as a list
+  and never through a shell, and a program that is not installed is reported at
+  startup rather than registered — a capability must never be advertised by
+  something absent.
+- **A plan step can require a capability.** `strategy.Step.RequiresCapabilities`
+  is checked against the registry before the step spends a model call, so a
+  missing provider is reported as a missing provider rather than as an agent
+  that tried for ten iterations and gave up. This is what makes "tool selection"
+  a real planning stage instead of a diagram box: creative-iterate's make step
+  declares `external_tool`, because producing an asset is not something the
+  native filesystem tools can do.
 - **TUI is a consumer.** All state flows through the runtime event bus; the TUI renders
   and sends control commands (pause/cancel/approve) only.
 - **The "stack" is the model combo.** `omniharness stack` (and the TUI `p` picker)
@@ -156,6 +241,72 @@ Dependency direction is downward only; `event` and `config` are leaves. No cycle
 - **The API key is never written by Save.** `config.Save` (used by `stack set` and the
   TUI picker) scrubs the key before encoding, so an env-provided key can never leak
   into the config file on disk.
+
+## 5a. Capability phases
+
+A second phase line, run after the eleven below, to make the harness able to
+orchestrate any tool that exposes useful capabilities:
+
+1. **Capability vocabulary + registry discovery.** `tools.Spec.Capabilities`,
+   registry indexing, roles matching by capability. Fixed a live bug: MCP tools
+   registered under runtime-generated names and no role's name list could ever
+   contain them, so they were loaded and never offered to a model.
+2. **Provider lifecycle.** `Registry.Unregister`/`UnregisterProvider`,
+   `mcp.Client.Done`/`Alive`, and a runtime watcher that removes a dead
+   provider's tools and publishes `provider.lost`.
+3. **Input validation and structured errors.** `tools.ValidateInput` against the
+   declared schema, before policy; `tools.Error{Kind}` matched with `errors.As`
+   so `repair.Classify` stops matching substrings. No output validation — MCP at
+   the negotiated protocol version has no output schema.
+4. **First real external provider.** Verified against the published blender-mcp
+   1.9.1 surface. Found two defects: image content silently dropped, and
+   declared capabilities making a server *less* reachable than an undescribed
+   one. Both fixed. Blender itself was not driven — it is not installed — so the
+   integration is proven to the edge of the process boundary and no further.
+5. **Generality.** A second provider of an unrelated shape needed no code. That
+   is the whole claim: `internal/runtime`'s provider tests are where a future
+   provider requiring a core change would show up. Since proven twice more
+   against real servers: **agent-browser** 0.34.0 (29 tools, a real browser
+   driven against a local page) and **resolve-mcp** 4.0.3 (211 tools —
+   registration, schemas and effect gating only; DaVinci Resolve is not
+   installed, so no edit or render has been driven). Neither needed a line of
+   harness code.
+
+6. **Vision.** `gateway.Message.Images` marshals as OpenAI content parts. An
+   image cannot ride in a tool result, so it arrives as a following user
+   message. `[models.supports]` declares what each model can do — OmniRoute's
+   catalog reports no modality, so this cannot be discovered — and exactly the
+   turn that looks at an image is routed to a model declared able to see, the
+   run continuing on its own model afterwards.
+7. **Creative roles.** `DomainCreative`, the `creative-iterate` strategy
+   (brief → make → judge), and two roles: creative-director and asset-producer.
+   Split by function, not medium: a "FilmAgent" or "MusicAgent" would bake the
+   medium into core, the same mistake as baking in an application. What medium a
+   run works in comes from the capabilities its tools provide. The director
+   cannot write files — a role that can overwrite the asset it is assessing is
+   not an independent check.
+
+Verified against the real thing: `internal/runtime/live_mcp_test.go` runs the
+published `blender-mcp` server (28 tools) through `uvx`. It is opt-in
+(`OMNIHARNESS_LIVE_MCP=1`) so the rest of the suite stays hermetic. Running it
+found two more defects — a server-level capability list flattening the discovery
+index, and multi-line docstring descriptions breaking the `plugins` listing.
+
+The whole loop has been run against live everything — OmniRoute 3.8.50, Blender
+5.2.1 headless, `antigravity/gemini-3.6-flash-high` as the vision model. The
+analyzer picked `creative-iterate` on its own, the asset-producer built the
+scene and captured the viewport, the image was routed to the vision model, and
+the model described the frame accurately down to the selection ring and the 3D
+cursor. That run is what surfaced the attribution bug below.
+
+Blender is driven for real, headless, by `internal/runtime/live_blender_test.go`
+(opt-in, `OMNIHARNESS_LIVE_BLENDER=1`): the harness inspects a live scene,
+executes bpy, renders a PNG, and gets a viewport screenshot back as an MCP image
+block that reaches a model request as content parts. blender-mcp documents its
+addon as needing the GUI because it drains commands through `bpy.app.timers`,
+which do not fire under `--background`; `scripts/blender_headless.py` drains the
+same queue from the `--python` script, which *is* the main thread there. See
+`docs/blender.md`.
 
 ## 6. Phases
 

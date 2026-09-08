@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"omniharness/internal/gateway"
+	"omniharness/internal/tools"
 )
 
 func TestClassifyGatewayErrors(t *testing.T) {
@@ -215,5 +216,28 @@ func TestReplanRespectsTheRepairLimit(t *testing.T) {
 	}
 	if !p.SkipRepair {
 		t.Fatalf("attempt at the limit must give up: %+v", p)
+	}
+}
+
+// A structured tool error must classify by its kind, not by whether its
+// message happens to contain a keyword the substring fallback knows.
+func TestClassifyUsesStructuredToolErrors(t *testing.T) {
+	for _, tc := range []struct {
+		kind tools.ErrorKind
+		want string
+	}{
+		{tools.ErrInvalidInput, "invalid_input"},
+		{tools.ErrUnavailable, "unavailable"},
+		{tools.ErrTimeout, "timeout"},
+		{tools.ErrFailed, "failed"},
+	} {
+		err := &tools.Error{Kind: tc.kind, Tool: "mcp:blender:render", Message: "scene has no camera"}
+		got := Classify(StageTool, err)
+		if got.Kind != tc.want {
+			t.Errorf("Classify(%s).Kind = %q, want %q", tc.kind, got.Kind, tc.want)
+		}
+		if got.Stage != StageTool {
+			t.Errorf("stage = %q, want %q", got.Stage, StageTool)
+		}
 	}
 }

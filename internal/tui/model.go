@@ -37,6 +37,7 @@ const (
 	OverlayKeyInput
 	OverlayEndpointInput
 	OverlayBoot
+	OverlayCapabilities
 )
 
 // agentRow is a live snapshot of one agent.
@@ -199,6 +200,11 @@ type Model struct {
 	input        textinput.Model
 	inputFocused bool
 	selected     int
+
+	// lostProviders names tool providers that went away during the session,
+	// so the capabilities view can say why something is missing rather than
+	// simply not listing it.
+	lostProviders []string
 
 	// Overlay state.
 	overlay       Overlay
@@ -584,6 +590,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.input.Focus()
 	case "?", "ctrl+/":
 		m.overlay = OverlayHelp
+		return m, nil
+	case "ctrl+t", "ctrl+T":
+		// Diagnostics, not front-line: what this run can actually do, by
+		// capability rather than by tool name. Kept behind a key so the main
+		// view stays task/plan/action and does not become a dashboard.
+		m.overlay = OverlayCapabilities
 		return m, nil
 	case "i":
 		m.inputFocused = true
@@ -983,6 +995,16 @@ func (m *Model) applyEvent(e event.Event) {
 		var d event.EvaluationCompletedData
 		decode(e, &d)
 		m.chat(chatHarness, "verified: "+d.Evaluator+" -> "+d.Outcome)
+	case event.ProviderLost:
+		// A provider dying mid-run narrows what the agent can still do. It
+		// does not fail the task, so nothing else stops to say so — which is
+		// exactly why it has to be visible: the run carries on with fewer
+		// tools and the reason would otherwise be invisible.
+		var d event.ProviderLostData
+		decode(e, &d)
+		m.lostProviders = append(m.lostProviders, d.Provider)
+		m.chat(chatError, fmt.Sprintf("provider %s is gone (%s) — %d tool(s) withdrawn",
+			d.Provider, d.Reason, len(d.Tools)))
 	}
 	m.pushEvent(e)
 }

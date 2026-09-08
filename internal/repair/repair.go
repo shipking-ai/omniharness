@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"omniharness/internal/gateway"
+	"omniharness/internal/tools"
 )
 
 // Stage identifies where a failure occurred.
@@ -39,6 +40,14 @@ func Classify(stage Stage, err error) Failure {
 	var gwErr *gateway.Error
 	if errors.As(err, &gwErr) {
 		f.Kind = string(gwErr.Kind)
+		return f
+	}
+	// A structured tool error says what went wrong; the substring matching
+	// below is a fallback for errors that carry no kind at all, and it would
+	// classify "invalid_input" as "unknown" for want of a keyword.
+	var toolErr *tools.Error
+	if errors.As(err, &toolErr) {
+		f.Kind = string(toolErr.Kind)
 		return f
 	}
 	msg := strings.ToLower(err.Error())

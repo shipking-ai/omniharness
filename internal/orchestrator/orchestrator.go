@@ -32,14 +32,16 @@ import (
 
 // Deps wires the orchestrator to every subsystem.
 type Deps struct {
-	Bus        *event.Bus
-	Store      *session.Store
-	Gateway    *gateway.Client
-	ModelSel   *model.Selector
-	Roles      map[agent.Role]agent.RoleConfig
-	Evaluators *evaluate.Registry
-	Repair     *repair.Engine
-	Analyzer   *task.Analyzer
+	Bus      *event.Bus
+	Store    *session.Store
+	Gateway  *gateway.Client
+	ModelSel *model.Selector
+	Roles    map[agent.Role]agent.RoleConfig
+	// VisionModels are the provider/model refs that accept image input.
+	VisionModels []string
+	Evaluators   *evaluate.Registry
+	Repair       *repair.Engine
+	Analyzer     *task.Analyzer
 	// DeepAnalyzer optionally deepens the pure Analyzer's Profile with a
 	// single model call (see task.DeepAnalyzer). Nil disables the pass
 	// entirely — every task then behaves exactly as before this field
@@ -546,6 +548,15 @@ func (o *Orchestrator) executeStep(ctx context.Context, t *task.Task, step strat
 	if role == "" {
 		role = agent.RoleImplementer
 	}
+	// Tool selection, before any model call. A step that needs a capability
+	// nothing provides cannot succeed, and letting an agent discover that by
+	// running out of iterations wastes a model call to produce a worse
+	// message than this one.
+	if missing := o.missingCapabilities(step); len(missing) > 0 {
+		return stepResult{ID: step.ID, Err: fmt.Errorf(
+			"step %q needs %s, which no configured tool provides; add a provider that offers it (see `omniharness plugins`)",
+			step.ID, strings.Join(missing, " and "))}
+	}
 	modelRef := ""
 	extra := ""
 	maxAttempts := o.deps.Repair.MaxAttempts
@@ -608,6 +619,7 @@ func (o *Orchestrator) runAgent(ctx context.Context, t *task.Task, role agent.Ro
 		Policy:              o.deps.Policy,
 		Composer:            o.deps.Composer,
 		Roles:               o.deps.Roles,
+		VisionModels:        o.deps.VisionModels,
 		Workspace:           o.deps.Workspace,
 		Budget:              budgets,
 		ProjectInstructions: o.recallProjectInstructions(t),
@@ -839,4 +851,19 @@ func summarizeOutput(s string) string {
 		return s
 	}
 	return s[:300] + "…"
+}
+
+// missingCapabilities returns the step's required capabilities that nothing
+// registered provides, in declaration order so the message is stable.
+func (o *Orchestrator) missingCapabilities(step strategy.Step) []string {
+	if len(step.RequiresCapabilities) == 0 || o.deps.Tools == nil {
+		return nil
+	}
+	var missing []string
+	for _, name := range step.RequiresCapabilities {
+		if !o.deps.Tools.HasCapability(tools.Capability(name)) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
 }

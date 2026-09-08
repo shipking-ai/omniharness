@@ -63,6 +63,11 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
+	// Images, when set, turn Content into a multimodal content-parts array on
+	// the wire (see multimodal.go). Only user messages may carry them: the
+	// OpenAI dialect has no place for an image in a tool result, which is why
+	// an image observation arrives as a following user message.
+	Images []ImageRef `json:"images,omitempty"`
 }
 
 // ToolCall is a function invocation requested by the model.

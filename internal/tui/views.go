@@ -8,6 +8,9 @@ import (
 
 	"omniharness/internal/event"
 	"omniharness/internal/version"
+
+	"omniharness/internal/mcp"
+	"omniharness/internal/memory"
 )
 
 var (
@@ -263,6 +266,8 @@ func (m *Model) renderOverlay() string {
 		return m.renderSessionsOverlay()
 	case OverlayHelp:
 		return m.renderHelpOverlay()
+	case OverlayCapabilities:
+		return m.renderCapabilitiesOverlay()
 	}
 	return ""
 }
@@ -338,6 +343,7 @@ func (m *Model) renderHelpOverlay() string {
 		{"Ctrl+A", "switch session"},
 		{"Ctrl+K", "set API key"},
 		{"Ctrl+E", "change endpoint"},
+		{"Ctrl+T", "what this run can do (capabilities)"},
 		{"?", "toggle this help"},
 		{"q / Ctrl+C", "quit"},
 	}
@@ -415,4 +421,69 @@ func formatDurationMS(ms int64) string {
 	default:
 		return fmt.Sprintf("%dm%02ds", ms/60000, (ms%60000)/1000)
 	}
+}
+
+// renderCapabilitiesOverlay answers "what can this run actually do?" by
+// capability rather than by tool name. That is the question worth asking when
+// an external provider is involved: the tools are named at runtime, so a list
+// of names says nothing about what is possible.
+func (m *Model) renderCapabilitiesOverlay() string {
+	var b strings.Builder
+	b.WriteString(m.styles.title.Render("what this run can do") + "\n\n")
+
+	caps := m.rt.Tools.Capabilities()
+	if len(caps) == 0 {
+		b.WriteString(m.styles.muted.Render("  no tools are registered") + "\n")
+	}
+	for _, c := range caps {
+		providers := m.rt.Tools.WithCapability(c)
+		names := make([]string, 0, len(providers))
+		for _, p := range providers {
+			names = append(names, p.Name)
+		}
+		line := strings.Join(names, ", ")
+		if len(names) > 4 {
+			line = strings.Join(names[:4], ", ") + fmt.Sprintf(" (+%d)", len(names)-4)
+		}
+		fmt.Fprintf(&b, "  %-18s %s\n", string(c), line)
+	}
+
+	if len(m.rt.MCPClients) > 0 {
+		b.WriteString("\n" + m.styles.title.Render("tool providers") + "\n\n")
+		for _, c := range m.rt.MCPClients {
+			provider := mcp.ProviderName(c.Name())
+			state := "running"
+			if !c.Alive() {
+				state = "exited"
+			}
+			fmt.Fprintf(&b, "  %-18s %-8s %d tool(s)\n", c.Name(), state, len(m.rt.Tools.WithProvider(provider)))
+		}
+	}
+
+	// A provider that died is not simply absent — say so, or the reader is
+	// left wondering whether it was ever configured.
+	if len(m.lostProviders) > 0 {
+		b.WriteString("\n" + m.styles.title.Render("lost during this session") + "\n\n")
+		for _, p := range m.lostProviders {
+			fmt.Fprintf(&b, "  %s\n", p)
+		}
+	}
+
+	// Tools that have earned a bad reputation here. Only tools with enough
+	// attempts to have a record at all: one failure out of one call is noise,
+	// not evidence, and reporting it would train the reader to ignore this.
+	if stats, err := memory.ToolStats(m.rt.Store); err == nil {
+		if bad := memory.Unreliable(stats, 3, 0.6); len(bad) > 0 {
+			b.WriteString("\n" + m.styles.title.Render("unreliable here") + "\n\n")
+			for _, st := range bad {
+				fmt.Fprintf(&b, "  %-18s %s\n", st.Tool, st.Summary())
+				if st.LastError != "" {
+					fmt.Fprintf(&b, "  %-18s   last: %s\n", "", truncate(st.LastError, 60))
+				}
+			}
+		}
+	}
+
+	b.WriteString("\n" + m.styles.muted.Render("esc to close"))
+	return b.String()
 }

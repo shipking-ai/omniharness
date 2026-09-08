@@ -57,6 +57,7 @@ const (
 	SessionStarted     Type = "session.started"
 	SessionEnded       Type = "session.ended"
 	CheckpointSaved    Type = "checkpoint.saved"
+	ProviderLost       Type = "provider.lost"
 	LogMessage         Type = "log.message"
 )
 

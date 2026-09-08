@@ -32,6 +32,23 @@ type Spec struct {
 	Description string         `json:"description"`
 	Parameters  map[string]any `json:"parameters"` // JSON schema
 	Risk        Risk           `json:"risk"`
+	// Capabilities are what this tool provides, independent of its name. A
+	// caller that needs "execute_code" can find every tool that offers it
+	// without knowing which program implements them. Empty means the tool is
+	// reachable by name only.
+	Capabilities []Capability `json:"capabilities,omitempty"`
+	// Effects declare what kind of thing the tool does — irreversible, costs
+	// money, handles credentials — which Risk does not capture. Policy gates
+	// some of them regardless of the risk table; see effect.go.
+	Effects []Effect `json:"effects,omitempty"`
+	// Version is the provider's own version string, when it reports one —
+	// "BlenderMCP 1.29.1". A bug report against a tool is close to useless
+	// without it, and the provider is the only thing that knows.
+	Version string `json:"version,omitempty"`
+	// Provider names where the tool came from — "native" for built-ins, or
+	// "mcp:<server>" for an MCP adapter. Observability only; nothing routes
+	// on it.
+	Provider string `json:"provider,omitempty"`
 	// MutatesFS reports whether the tool can change files on disk.
 	MutatesFS bool `json:"mutatesFs,omitempty"`
 	// ExecutesCode reports whether the tool runs arbitrary commands/code.
@@ -45,12 +62,29 @@ type Result struct {
 	Output string `json:"output"`
 	// Artifact marks outputs worth persisting (files produced, etc.).
 	Artifact bool `json:"artifact,omitempty"`
+	// Artifacts lists paths the tool itself produced. Artifact alone only
+	// covers the case where the caller already named the path in the input;
+	// a tool that decides where its output lands — an external tool handing
+	// back an image, say — has to be able to say so.
+	Artifacts []string `json:"artifacts,omitempty"`
+	// Images are the subset of Artifacts a vision-capable model could be
+	// shown. Named explicitly rather than inferred from file extensions: a
+	// tool knows the media type it produced, and guessing it back from a
+	// suffix is how a .bin of unknown content ends up sent to a model.
+	Images []Image `json:"images,omitempty"`
 	// Replan marks that this call is a request to restructure the task's
 	// execution — the agent that ran it has decided the current plan is too
 	// small for what it has actually found. The caller (agent.Agent) records
 	// the reason (Output); the orchestrator acts on it once the current step
 	// finishes.
 	Replan bool `json:"replan,omitempty"`
+}
+
+// Image is an image a tool produced, on disk and ready to show a model that
+// can accept one.
+type Image struct {
+	Path     string `json:"path"`
+	MimeType string `json:"mimeType"`
 }
 
 // Tool is the execution interface.
@@ -85,6 +119,54 @@ func (r *Registry) Register(t Tool) error {
 	return nil
 }
 
+// Unregister removes a tool by name, reporting whether it was present. A tool
+// whose provider has gone away must leave the registry: left in place it is
+// still offered to models, and every call to it fails.
+func (r *Registry) Unregister(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.tools[name]; !ok {
+		return false
+	}
+	delete(r.tools, name)
+	return true
+}
+
+// UnregisterProvider removes every tool from one provider (see Spec.Provider)
+// and returns the removed names, sorted. This is the whole-server case: an MCP
+// process that dies takes all of its tools with it, and the caller needs the
+// names to report what was lost.
+func (r *Registry) UnregisterProvider(provider string) []string {
+	if provider == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var removed []string
+	for name, t := range r.tools {
+		if t.Spec().Provider == provider {
+			removed = append(removed, name)
+			delete(r.tools, name)
+		}
+	}
+	sort.Strings(removed)
+	return removed
+}
+
+// WithProvider returns the specs registered by one provider, sorted by name.
+func (r *Registry) WithProvider(provider string) []Spec {
+	if provider == "" {
+		return nil
+	}
+	var out []Spec
+	for _, s := range r.List() {
+		if s.Provider == provider {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Get returns a tool by name.
 func (r *Registry) Get(name string) (Tool, bool) {
 	r.mu.RLock()
@@ -103,6 +185,55 @@ func (r *Registry) List() []Spec {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// WithCapability returns the specs of every registered tool that declares the
+// capability, sorted by name. This is the discovery path: a caller asks what
+// can do a thing, not which program does it.
+func (r *Registry) WithCapability(c Capability) []Spec {
+	var out []Spec
+	for _, s := range r.List() {
+		if specHasCapability(s, c) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// HasCapability reports whether any registered tool provides the capability.
+func (r *Registry) HasCapability(c Capability) bool {
+	for _, s := range r.List() {
+		if specHasCapability(s, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// Capabilities returns every capability provided by at least one registered
+// tool, deduplicated and sorted. The set changes as adapters register, so this
+// is computed on demand rather than cached.
+func (r *Registry) Capabilities() []Capability {
+	seen := map[Capability]bool{}
+	var out []Capability
+	for _, s := range r.List() {
+		for _, c := range s.Capabilities {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+			}
+		}
+	}
+	return SortCapabilities(out)
+}
+
+func specHasCapability(s Spec, c Capability) bool {
+	for _, have := range s.Capabilities {
+		if have == c {
+			return true
+		}
+	}
+	return false
 }
 
 // Names returns tool names only.
