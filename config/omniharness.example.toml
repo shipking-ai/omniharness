@@ -309,6 +309,11 @@ deep_analysis = false
 # obs-remove-input          = ["destructive"]
 # # Going live is public and cannot be taken back.
 # obs-start-stream          = ["external", "requires_confirmation"]
+#
+# obs-mcp answers tools/list immediately but opens its WebSocket to OBS
+# asynchronously afterwards, so the first call or two can come back "Not
+# connected or identified" before the handshake finishes. That is the
+# provider being slow to be ready, not a failure; try again.
 
 # Video editing needs no separate NLE: Blender's Video Sequence Editor is a
 # real one, reached through execute_blender_code, which already works. Add the
