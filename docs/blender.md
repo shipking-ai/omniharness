@@ -79,8 +79,8 @@ a scene?" answers "all 28".
 To let a model actually look at a screenshot, declare a vision-capable model:
 
 ```toml
-[models]
-vision = ["openai/gpt-5"]
+[models.supports]
+"antigravity/gemini-3.6-flash-high" = ["vision"]
 ```
 
 Without it the agent is told in text that an image exists which it cannot view.
