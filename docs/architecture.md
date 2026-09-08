@@ -284,7 +284,25 @@ orchestrate any tool that exposes useful capabilities:
    medium into core, the same mistake as baking in an application. What medium a
    run works in comes from the capabilities its tools provide. The director
    cannot write files — a role that can overwrite the asset it is assessing is
-   not an independent check.
+   not an independent check. The judgement is an outcome, not prose: the
+   director ends with `VERDICT: approved` or `VERDICT: revise - <reason>`, and
+   `creative-verdict` (`internal/evaluate/creative.go`) turns that into
+   PASS/FAIL so the existing task-level repair loop runs the plan again with
+   the objection as the failure detail. Without it the domain matched no
+   evaluator at all, so "no evaluator applicable" was taken as a pass and a
+   creative run completed as a success with the director's rejection sitting
+   in its own final output — `creative-iterate` never iterated. A verdict is
+   parsed rather than sniffed for approving words because negation, hedging
+   and quoting the brief all defeat keyword matching; no verdict at all is
+   NEEDS_REVIEW, which completes the task and records that nothing judged it,
+   on the same rule as every other evaluator here: a fabricated verdict is
+   worse than an honest "nobody checked". Registration is gated on complexity
+   for the same reason the creative strategy is: a low-complexity creative task
+   runs direct, one agent, no director and no brief, so there is no judgement
+   to read. A live run found those two conditions disagreeing — a short render
+   request ran direct with a lone implementer and still recorded "not assessed
+   against the brief" — and `TestVerdictEvaluatorTracksTheCreativePlan` now
+   pins them together.
 
 Verified against the real thing: `internal/runtime/live_mcp_test.go` runs the
 published `blender-mcp` server (28 tools) through `uvx`. It is opt-in

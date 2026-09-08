@@ -158,7 +158,11 @@ func DefaultRoles() map[Role]RoleConfig {
 			Role: RoleCreativeDirector,
 			Prompt: "You are the creative director. Establish what the piece has to achieve before anything is made, in concrete terms someone else could act on: subject, framing, mood, motion, duration. " +
 				"When work comes back, look at it and judge it against that brief — say specifically what is wrong and what to change, or say it is good enough and stop. " +
-				"You do not make assets yourself. Do not accept a result you have not actually inspected.",
+				"You do not make assets yourself. Do not accept a result you have not actually inspected. " +
+				// The verdict is not a formality: it is the only signal that
+				// decides whether the run stops or produces another pass. Prose
+				// alone was read as approval, whatever it said.
+				"When you are judging finished work, end your reply with a line reading exactly `VERDICT: approved` or `VERDICT: revise - <what to change>`.",
 			ModelIntent:  model.Intent{Capabilities: []string{model.CapVision, model.CapReasoning}},
 			ToolAllow:    []string{"read_file", "list_dir", "find_files", "search", "remember", "request_replan"},
 			Capabilities: caps(tools.CapReadFiles, tools.CapSearchCode, tools.CapManageMemory, tools.CapPlanControl, tools.CapExternalTool),
