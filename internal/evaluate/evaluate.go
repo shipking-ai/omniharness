@@ -130,7 +130,14 @@ func (r *Registry) ForTask(p task.Profile) []Evaluator {
 	// Creative work has no build to run, so the check is the judgement the
 	// plan already produced. Without this the domain matched no evaluator at
 	// all and every creative task passed, rejection and all.
-	if p.Domain == task.DomainCreative {
+	//
+	// Gated on complexity for the same reason the creative strategy is: a low
+	// complexity creative task runs direct, one agent, no director and no
+	// brief — so there is no judgement to read, and reporting "not assessed
+	// against the brief" on every small render request would be a false
+	// record of a check that was never part of the plan. The two conditions
+	// have to agree; TestVerdictEvaluatorTracksTheCreativePlan pins them.
+	if p.Domain == task.DomainCreative && p.Complexity != task.ComplexityLow {
 		if e, ok := r.evaluators["creative-verdict"]; ok {
 			out = append(out, e)
 		}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"omniharness/internal/evaluate"
 	"omniharness/internal/session"
 	"omniharness/internal/strategy"
 	"omniharness/internal/task"
@@ -134,5 +135,44 @@ func TestUnjudgedCreativeWorkCompletesWithATrace(t *testing.T) {
 	}
 	if got := verdictOutcome(t, store, tsk.ID); got != "NEEDS_REVIEW" {
 		t.Errorf("outcome = %s, want NEEDS_REVIEW; the run leaves no sign nothing judged it", got)
+	}
+}
+
+// The verdict evaluator and the creative plan are two separate conditions on
+// the same profile, and they have to agree. A live run found them disagreeing:
+// a short creative request profiled as low complexity, ran direct with one
+// implementer and no director at all, and still recorded "no VERDICT line;
+// the result was not assessed against the brief" — a check reported as missed
+// that was never part of the plan.
+//
+// This lives here because it is the only package that imports both sides.
+func TestVerdictEvaluatorTracksTheCreativePlan(t *testing.T) {
+	evals := evaluate.NewRegistry()
+	if err := evals.RegisterDefaults(); err != nil {
+		t.Fatal(err)
+	}
+	for _, complexity := range []task.Complexity{
+		task.ComplexityLow, task.ComplexityMedium, task.ComplexityHigh,
+	} {
+		profile := task.Profile{
+			Domain: task.DomainCreative, Complexity: complexity,
+			Ambiguity: task.LevelLow, Risk: task.LevelLow, Verification: task.VerificationNone,
+		}
+		sel, err := (strategy.Selector{}).Select(strategy.Input{Profile: profile})
+		if err != nil {
+			t.Fatal(err)
+		}
+		judged := sel.Strategy == strategy.CreativeIterate
+
+		var registered bool
+		for _, e := range evals.ForTask(profile) {
+			if e.Name() == "creative-verdict" {
+				registered = true
+			}
+		}
+		if registered != judged {
+			t.Errorf("complexity %s: plan %s judges=%v but the verdict evaluator registered=%v",
+				complexity, sel.Strategy, judged, registered)
+		}
 	}
 }

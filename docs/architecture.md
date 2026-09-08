@@ -296,7 +296,13 @@ orchestrate any tool that exposes useful capabilities:
    and quoting the brief all defeat keyword matching; no verdict at all is
    NEEDS_REVIEW, which completes the task and records that nothing judged it,
    on the same rule as every other evaluator here: a fabricated verdict is
-   worse than an honest "nobody checked".
+   worse than an honest "nobody checked". Registration is gated on complexity
+   for the same reason the creative strategy is: a low-complexity creative task
+   runs direct, one agent, no director and no brief, so there is no judgement
+   to read. A live run found those two conditions disagreeing — a short render
+   request ran direct with a lone implementer and still recorded "not assessed
+   against the brief" — and `TestVerdictEvaluatorTracksTheCreativePlan` now
+   pins them together.
 
 Verified against the real thing: `internal/runtime/live_mcp_test.go` runs the
 published `blender-mcp` server (28 tools) through `uvx`. It is opt-in
