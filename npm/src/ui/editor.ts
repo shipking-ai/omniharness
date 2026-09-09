@@ -87,11 +87,6 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-/** True when a key-value carries a terminal paste (multi-line or multi-char run). */
-export function isPaste(value: string): boolean {
-  return value.length > 1 || value.includes('\n');
-}
-
 export interface EditorLayout {
   lines: readonly string[];
   cursorLine: number;
