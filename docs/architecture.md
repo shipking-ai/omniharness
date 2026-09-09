@@ -655,7 +655,25 @@ below) with a real model inference:
   deprecating bypass-2FA tokens (direct publish ends January 2027), and OIDC
   only exists on hosted CI runners.
 
-## 11. Anti-goals (v1)
+## 11. Anti-goals
 
-No Kubernetes, microservices, remote DBs, message brokers, web frontends, Electron,
-vector databases, or "AI frameworks". Local-first, native, single binary.
+No Kubernetes, microservices, remote DBs, message brokers, Electron, vector
+databases, or "AI frameworks". Local-first, native, single binary.
+
+**Web frontends were on this list and are not any more.** The list said "(v1)"
+but nothing recorded what v2 changed, while two milestones planned exactly the
+things it forbade — the repo's architecture contradicted its own roadmap. The
+owner settled it: web and desktop are wanted. What survives is the reasoning
+underneath, which was never really about browsers:
+
+- **Still one binary.** The web UI is `go:embed`-ed and served by
+  `omniharness serve` from the same port as the API. No bundler, no CDN, no
+  webfont, no npm install — it draws itself on a machine with no network, the
+  same promise the TUI makes.
+- **Still no Electron.** `omniharness desktop` opens the UI in app mode in a
+  Chromium-family browser the machine already has, with its own profile. A
+  bundled runtime would add ~150MB to a binary whose point is that it is one
+  file, and would buy nothing a `--app` window does not already give.
+- **The engine gained nothing web-shaped.** Both front-ends are clients of the
+  same HTTP API, which existed for scripts and CI first. `internal/` has no
+  idea a browser exists.

@@ -74,3 +74,68 @@ func TestGuardLoopback(t *testing.T) {
 		t.Fatal("a cross-origin request must not reach the handler")
 	}
 }
+
+// The guard used to refuse any request carrying an Origin, which locked out
+// the harness's own web UI: a browser attaches Origin to every fetch it makes.
+// What the guard is for is DNS rebinding, and a rebound page carries the
+// attacker's origin, not a loopback one.
+func TestIsLoopbackOrigin(t *testing.T) {
+	for _, origin := range []string{
+		"http://localhost", "http://localhost:20140", "http://LOCALHOST:20140",
+		"http://127.0.0.1:20140", "http://127.0.0.5:20140", "http://[::1]:20140",
+	} {
+		if !isLoopbackOrigin(origin) {
+			t.Errorf("isLoopbackOrigin(%q) = false, want true", origin)
+		}
+	}
+
+	for _, origin := range []string{
+		"", "null", "evil.example.com", "http://evil.example.com",
+		"http://omniharness.localhost.evil.com", "http://10.0.0.5:20140",
+		// https cannot be this server: it does not serve TLS, so an https
+		// origin claiming to be localhost is somebody else's page.
+		"https://127.0.0.1:20140",
+		// Userinfo is the classic trick — the real host here is evil.com.
+		"http://127.0.0.1@evil.com",
+		// A well-formed Origin has no path or query; accepting one widens the
+		// parse surface for no reason.
+		"http://127.0.0.1:20140/x", "http://127.0.0.1:20140?a=b",
+		"file://", "chrome-extension://abcdef",
+	} {
+		if isLoopbackOrigin(origin) {
+			t.Errorf("isLoopbackOrigin(%q) = true, want false", origin)
+		}
+	}
+}
+
+// End to end through the guard: the harness's own UI gets through, a rebound
+// page does not.
+func TestGuardAllowsTheLocalUIAndStillBlocksRebinding(t *testing.T) {
+	guarded := guardLoopback(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	call := func(host, origin string) int {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:20140/v1/tasks", nil)
+		req.Host = host
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		rec := httptest.NewRecorder()
+		guarded.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := call("127.0.0.1:20140", "http://127.0.0.1:20140"); code != http.StatusOK {
+		t.Errorf("the local UI was refused: %d", code)
+	}
+	if code := call("localhost:20140", "http://localhost:20140"); code != http.StatusOK {
+		t.Errorf("the local UI on localhost was refused: %d", code)
+	}
+	// DNS rebinding: the browser resolved evil.com to 127.0.0.1, so the request
+	// arrives here — carrying the attacker's origin.
+	if code := call("127.0.0.1:20140", "http://evil.example.com"); code != http.StatusForbidden {
+		t.Errorf("a rebound request was accepted: %d", code)
+	}
+	if code := call("evil.example.com", "http://evil.example.com"); code != http.StatusForbidden {
+		t.Errorf("a rebound request was accepted: %d", code)
+	}
+}
