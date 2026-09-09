@@ -133,9 +133,11 @@ test('todos events render the visible plan panel with markers and progress', asy
   const text = stripAnsi(stdout.output);
   assert.match(text, /plan/);
   assert.match(text, /1\/3 done/);
+  // Every marker is padded to the same width so the titles start in one
+  // column; the two spaces after > and - are that padding, not a typo.
   assert.match(text, /ok read the file/);
-  assert.match(text, /> fix the bug/);
-  assert.match(text, /- run tests/);
+  assert.match(text, />  fix the bug/);
+  assert.match(text, /-  run tests/);
   instance.unmount();
 });
 

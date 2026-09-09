@@ -117,7 +117,11 @@ export interface TodoRow {
  */
 export function todoRows(todos: readonly TodoLike[], limit: number, width: number): TodoRow[] {
   return todos.slice(0, Math.max(0, limit)).map((todo) => ({
-    marker: todo.status === 'done' ? 'x' : todo.status === 'active' ? '>' : '-',
+    // Padded to two so the titles line up in a column, and 'ok' rather than
+    // 'x' because that is the word the rest of the interface uses for a
+    // finished thing — the same plan rendered 'x' here and 'ok' in the inline
+    // card, and 'x' reads as failed, which is the opposite of what it meant.
+    marker: todo.status === 'done' ? 'ok' : todo.status === 'active' ? '> ' : '- ',
     title: clip(todo.title, Math.max(4, width)),
     active: todo.status === 'active',
   }));

@@ -35,8 +35,14 @@ process on this machine can reach it.
 Endpoints:
   GET  /health             liveness + OmniRoute reachability
   POST /v1/tasks           run a task {prompt, sessionId?}
+  GET  /v1/events          live event stream (SSE); ?session= and ?types= filter
   GET  /v1/sessions        list sessions
-  GET  /v1/sessions/{id}   session detail with metrics`,
+  GET  /v1/sessions/{id}   session detail with metrics
+
+POST /v1/tasks does not return until the task is finished, so watch
+/v1/events to follow a run in progress. The stream is lossy under load: the
+SSE id is the bus publish counter, so a gap in it means a client fell behind
+and should re-read the session rather than assume it saw everything.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := newRuntime(cmd.Context())
@@ -101,6 +107,7 @@ Endpoints:
 				}
 				writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID, "task": tsk})
 			})
+			mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
 			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
 				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 				ss, err := rt.Store.GetSession(id)

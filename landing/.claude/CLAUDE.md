@@ -31,6 +31,13 @@ The hero uses Three.js `0.161.0` loaded from `esm.sh`. The particle network (`N=
 animates on a Three.js scene rendered into `#bg-canvas`.
 To swap accent color for theme/brand changes: `accentColor()` reads `--accent` from CSS each frame.
 
+It lives in `assets/hero-bg.js`, imported dynamically inside a `try/catch`, and it must
+stay that way. It is the page's only third-party dependency and it is pure decoration:
+when it shared a module with the rest of the JS, an unreachable `esm.sh` aborted that
+module and left all 24 `.reveal` sections at `opacity:0` — every section below the hero
+invisible, with the version badge stuck on its stale literal. Anything the page actually
+needs belongs in the plain `<script>` below it, which no CDN can stop.
+
 ## Sections
 
 | id             | what it is                              |
