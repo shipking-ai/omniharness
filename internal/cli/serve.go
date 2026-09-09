@@ -35,6 +35,7 @@ process on this machine can reach it.
 Endpoints:
   GET  /health             liveness + OmniRoute reachability
   POST /v1/tasks           run a task {prompt, sessionId?}
+  POST /v1/tasks/{id}/cancel  stop a running task
   GET  /v1/events          live event stream (SSE); ?session= and ?types= filter
   GET  /v1/sessions        list sessions
   GET  /v1/sessions/{id}   session detail with metrics
@@ -107,6 +108,7 @@ and should re-read the session rather than assume it saw everything.`,
 				}
 				writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID, "task": tsk})
 			})
+			mux.HandleFunc("/v1/tasks/", cancelTaskHandler(rt))
 			mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
 			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
 				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
@@ -210,4 +212,34 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// cancelTaskHandler serves POST /v1/tasks/{id}/cancel.
+//
+// Cancellation is addressed by task id because the socket that started a run is
+// not a usable handle: POST /v1/tasks does not return until the task is over,
+// so the only way to "cancel" was to drop the request carrying the result. A
+// client watching /v1/events has the id from task.created, and so does a second
+// client that reconnected after a refresh.
+func cancelTaskHandler(rt *runtime.Runtime) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, action, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/v1/tasks/"), "/")
+		if !ok || action != "cancel" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// 404 rather than a cheerful 200: a client that cancels a task which
+		// already finished, or mistypes an id, has to be able to tell.
+		if !rt.CancelTask(id) {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"taskId": id, "cancelled": false, "error": "no such running task",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"taskId": id, "cancelled": true})
+	}
 }

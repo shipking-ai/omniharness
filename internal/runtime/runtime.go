@@ -320,6 +320,14 @@ func (r *Runtime) Close() {
 // SetApprover installs the human-approval callback into the policy engine.
 func (r *Runtime) SetApprover(a policy.Approver) { r.Policy.SetApprover(a) }
 
+// CancelTask stops one running task and reports whether it was running. The
+// task id comes from the task.created event, so a client watching the stream
+// can cancel a run it is only observing — POST /v1/tasks does not return until
+// the run is over, so the socket that started it is not a usable handle.
+func (r *Runtime) CancelTask(taskID string) bool {
+	return r.Orchestrator.CancelTask(taskID)
+}
+
 // NewSession creates and records a session.
 func (r *Runtime) NewSession(cwd, title string) (*session.Session, error) {
 	ss := &session.Session{ID: id.New(), CWD: cwd, Title: title, Status: "active"}
