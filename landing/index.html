@@ -372,9 +372,8 @@ kbd{
 
 /* ── Terminal mockup ────────────────────────────── */
 .term-demo{
-  font-family:var(--font-mono);font-size:.8rem;
-  background:var(--ground);border:1px solid var(--hairline);
-  border-radius:var(--radius);overflow:hidden;
+  display:block;width:100%;height:auto;
+  border-radius:var(--radius);
   box-shadow:0 16px 48px rgba(0,0,0,.35);
 }
 .term-bar{
@@ -407,8 +406,8 @@ kbd{
 /* ── Roadmap ────────────────────────────────────── */
 #coming{text-align:center}
 .roadmap-grid{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
-  gap:1.25rem;max-width:620px;margin:0 auto 2rem;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:1.25rem;max-width:940px;margin:0 auto 2rem;
 }
 .roadmap-card{
   background:var(--surface);border:1px solid var(--hairline);
@@ -424,28 +423,9 @@ kbd{
 .rc-icon{font-family:var(--font-mono);font-size:.75rem;color:var(--accent);margin-bottom:.65rem;display:block}
 .roadmap-card h3{font-size:1.05rem;font-weight:700;margin-bottom:.45rem}
 .roadmap-card p{font-size:.84rem;color:var(--muted);line-height:1.58}
-.notify-form{
-  display:flex;gap:.5rem;max-width:380px;margin:0 auto;
-  flex-wrap:wrap;justify-content:center;
-}
-.notify-input{
-  flex:1;min-width:200px;background:var(--surface);
-  border:1px solid var(--hairline);border-radius:var(--radius);
-  padding:.58rem .9rem;color:var(--ink);font-size:.88rem;
-  font-family:var(--font-sans);transition:border-color .2s;
-}
-.notify-input:focus{outline:none;border-color:var(--accent)}
-.notify-input::placeholder{color:var(--muted)}
-.notify-btn{
-  background:var(--accent);color:#0e1016;border:none;
-  border-radius:var(--radius);padding:.58rem 1.1rem;
-  font-weight:700;font-size:.88rem;font-family:var(--font-mono);
-  transition:opacity .2s;
-}
-.notify-btn:hover{opacity:.9}
-.notify-btn:disabled{opacity:.55;cursor:wait}
-#notify-msg{display:none;font-family:var(--font-mono);font-size:.75rem;color:var(--muted);margin-top:.9rem;letter-spacing:.01em}
-#notify-msg{margin-top:.65rem;font-size:.78rem;color:var(--success);display:none}
+
+
+
 
 /* ── Playground section ─────────────────────────── */
 .play-ctas{display:flex;flex-direction:column;gap:.7rem;align-items:flex-start}
@@ -797,7 +777,7 @@ footer{
            writes this SVG; the pause before the gateway answers is how long it
            really took. Self-contained CSS animation — no player, no CDN, and
            it degrades to the finished output under prefers-reduced-motion. -->
-      <img class="term-demo reveal" src="/assets/doctor.svg" width="940" height="403"
+      <img class="term-demo reveal" src="/assets/doctor.svg" width="940" height="403" loading="lazy"
            alt="omniharness doctor checking a live OmniRoute gateway: eleven checks, all passing.">
       <div class="reveal">
         <div class="section-label">Try It Live</div>
@@ -816,7 +796,7 @@ footer{
   <div class="reveal">
     <div class="section-label">Architecture</div>
     <h2>Two front-ends.<br>One Go core.</h2>
-    <p class="section-lead">The orchestration logic lives in Go: runtime, event bus, tool registry, session persistence. Front-ends are thin adapters. The TypeScript TUI ships today; web and desktop share the same core without touching it.</p>
+    <p class="section-lead">The orchestration logic lives in Go: runtime, event bus, tool registry, session persistence. Front-ends are thin adapters: the TypeScript TUI, the embedded web UI and the desktop window all sit on it without touching it.</p>
   </div>
   <div class="code-block reveal">
     <div class="code-hd"><span class="code-lang">tree</span></div>
@@ -832,8 +812,7 @@ footer{
 │   └── src/
 │       ├── ui/             Ink components (termcaps · palette · groups…)
 │       └── agent/          mastraEngine — wires Go runtime to the TUI
-├── <span class="a-warn">web/       (roadmap)</span>    React SPA · browser front-end
-└── <span class="a-warn">desktop/   (roadmap)</span>    Tauri shell · native OS integration</pre>
+└── <span class="a-suc">internal/cli/webui/</span>     browser UI, go:embed-ed  ← serve + desktop</pre>
   </div>
 </div>
 
@@ -841,29 +820,31 @@ footer{
 <div id="coming" class="full-bleed">
   <div class="section-inner" style="text-align:center">
     <div class="reveal">
-      <div class="section-label">Roadmap</div>
+      <div class="section-label">Surfaces</div>
       <h2>Same harness.<br>Any surface.</h2>
-      <p class="section-lead" style="margin:0 auto 2.5rem">The Go core doesn't care where the front-end lives. Web and desktop are coming — the gateway logic, swarm rail, and routing catalog work the same everywhere.</p>
+      <p class="section-lead" style="margin:0 auto 2.5rem">The Go core does not care where the front-end lives. All three run the same runtime, the same policy engine and the same event bus.</p>
     </div>
     <div class="roadmap-grid">
       <div class="roadmap-card reveal">
-        <div class="rc-status">⋯ in progress</div>
-        <span class="rc-icon">[ web ]</span>
-        <h3>Web</h3>
-        <p>Full harness in the browser — same modes, same swarm rail, same route ribbon. Run it from any device without installing anything.</p>
+        <div class="rc-status">ships today</div>
+        <span class="rc-icon">[ terminal ]</span>
+        <h3>Terminal</h3>
+        <p>The TUI: modes, the swarm rail, the route ribbon, scoped approvals. <code>npm i -g omniharness-cli</code>, then <code>omniharness</code>.</p>
       </div>
       <div class="roadmap-card reveal">
-        <div class="rc-status">⋯ planned</div>
+        <div class="rc-status">ships today</div>
+        <span class="rc-icon">[ web ]</span>
+        <h3>Web</h3>
+        <p>The same harness in a browser. <code>omniharness serve</code> hosts it on the same port as the API — embedded in the binary, so it needs no network of its own.</p>
+      </div>
+      <div class="roadmap-card reveal">
+        <div class="rc-status">ships today</div>
         <span class="rc-icon">[ desktop ]</span>
         <h3>Desktop</h3>
-        <p>Native app (Tauri) with OS notifications, system tray, and deep terminal integration. All the premium UX — no browser overhead.</p>
+        <p><code>omniharness desktop</code> opens it in its own window with its own profile. No bundled runtime — a 150MB Electron would undo the single binary it sits in.</p>
       </div>
     </div>
-    <form class="notify-form reveal" id="notify-form" novalidate>
-      <input type="email" class="notify-input" id="notify-email" placeholder="you@example.com" required autocomplete="email">
-      <button class="notify-btn" id="notify-btn" type="submit">Notify me</button>
-    </form>
-    <div id="notify-msg"></div>
+  </div>
   </div>
 </div>
 
@@ -892,11 +873,11 @@ footer{
     <a href="https://www.npmjs.com/package/omniharness-cli" target="_blank" rel="noopener">npm</a>
     <a href="https://github.com/shipking-ai/omniharness/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
     <a href="https://omniroute.ai" target="_blank" rel="noopener">OmniRoute</a>
-    <a href="#coming">Web &amp; Desktop ↑</a>
+    <a href="#coming">Surfaces ↑</a>
   </div>
   <div class="foot-r">
     Go core · TypeScript TUI · MIT<br>
-    <span style="color:var(--accent)">web &amp; desktop coming</span>
+    <span style="color:var(--accent)">terminal · web · desktop</span>
   </div>
 </footer>
 
@@ -1103,39 +1084,6 @@ addTilt('.mode-card',6,700);
 addTilt('.feat',4,900);
 addTilt('.roadmap-card',5,800);
 
-// ── Notify form (Formspree) ───────────────────
-// To activate: sign up free at formspree.io, create a form, paste the ID below.
-const FORMSPREE_ID='mbgjgnkp';
-const notifyForm=document.getElementById('notify-form');
-const notifyMsg=document.getElementById('notify-msg');
-const notifyBtn=document.getElementById('notify-btn');
-notifyForm.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const email=document.getElementById('notify-email').value.trim();
-  if(!email||!email.includes('@')) return;
-  notifyBtn.textContent='...';
-  notifyBtn.disabled=true;
-  try{
-    const r=await fetch(`https://formspree.io/f/${FORMSPREE_ID}`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Accept':'application/json'},
-      body:JSON.stringify({email,_subject:'OmniHarness launch notify'}),
-    });
-    if(r.ok){
-      notifyForm.style.display='none';
-      notifyMsg.textContent="you're on the list — we'll ping you when web/desktop lands.";
-      notifyMsg.style.display='block';
-    } else {
-      throw new Error('server');
-    }
-  } catch{
-    notifyMsg.textContent='something went wrong — try again or open a GitHub issue.';
-    notifyMsg.style.color='var(--error)';
-    notifyMsg.style.display='block';
-    notifyBtn.textContent='Notify me';
-    notifyBtn.disabled=false;
-  }
-});
 </script>
 </body>
 </html>
