@@ -71,7 +71,9 @@ test('todo rows mark state in words, not colour alone', () => {
     { title: 'fix the bug', status: 'active' },
     { title: 'run the tests', status: 'pending' },
   ], 5, 20);
-  assert.deepEqual(rows.map((r) => r.marker), ['x', '>', '-']);
+  // Two characters each: the titles line up, and a finished item says 'ok'
+  // like everywhere else rather than 'x', which reads as failed.
+  assert.deepEqual(rows.map((r) => r.marker), ['ok', '> ', '- ']);
   assert.equal(rows[1]?.active, true);
   assert.equal(rows[0]?.active, false);
 });

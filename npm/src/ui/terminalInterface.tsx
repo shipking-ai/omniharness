@@ -1119,7 +1119,8 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
           <Text dimColor>{taskQueue.filter((item) => item.status === 'done').length}/{taskQueue.length} done</Text>
         </Box>
         {taskQueue.slice(-6).map((item) => {
-          const marker = item.status === 'done' ? 'ok' : item.status === 'active' ? '>' : '-';
+          // Two wide, matching the sidebar, so the titles start in one column.
+          const marker = item.status === 'done' ? 'ok' : item.status === 'active' ? '> ' : '- ';
           const color = item.status === 'done' ? PALETTE.success : item.status === 'active' ? PALETTE.accent : undefined;
           return <Text key={item.id} color={color} dimColor={item.status === 'done'}>{marker} {clip(item.title, contentWidth - 4)}</Text>;
         })}
