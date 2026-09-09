@@ -74,13 +74,8 @@
     display:flex;flex-direction:column;padding:18px 14px;gap:18px;min-height:0;
   }
   .brand{display:flex;align-items:center;gap:9px;padding:2px 6px 0}
-  .brand-dot{
-    width:26px;height:26px;border-radius:8px;flex:none;
-    background:linear-gradient(145deg,var(--accent),var(--accent-dim));
-    box-shadow:0 0 0 1px rgba(45,212,191,.35), 0 4px 14px -4px rgba(45,212,191,.55);
-    display:grid;place-items:center;color:#04231f;font-weight:800;font-size:13px;
-  }
   .brand-name{font-weight:650;letter-spacing:-.015em;font-size:15px}
+  .brand-name .a{color:var(--accent)}
   .brand-ver{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
 
   .new-run{
@@ -110,8 +105,8 @@
   .stat-k{color:var(--ink-3)}
   .stat-v{color:var(--ink-2);font-family:var(--mono);font-size:11.5px}
   .dot{width:6px;height:6px;border-radius:99px;display:inline-block;margin-right:7px;vertical-align:1px}
-  .dot.ok{background:var(--success);box-shadow:0 0 8px rgba(143,214,111,.8)}
-  .dot.bad{background:var(--error);box-shadow:0 0 8px rgba(242,99,126,.8)}
+  .dot.ok{background:var(--success)}
+  .dot.bad{background:var(--error)}
   .dot.idle{background:var(--ink-3)}
 
   /* ── Main column ───────────────────────────────────────────── */
@@ -128,8 +123,7 @@
   .chip.busy{color:var(--warn);border-color:rgba(230,185,85,.3);background:rgba(230,185,85,.08)}
   .chip.ok{color:var(--success);border-color:rgba(143,214,111,.3);background:rgba(143,214,111,.08)}
   .chip.bad{color:var(--error);border-color:rgba(242,99,126,.3);background:rgba(242,99,126,.08)}
-  .pulse{width:6px;height:6px;border-radius:99px;background:currentColor;animation:pulse 1.4s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .chip-mark{font-family:var(--mono);font-size:11px;font-weight:600}
 
   .ghost{
     font:inherit;font-size:13px;cursor:pointer;padding:6px 13px;border-radius:var(--r-sm);
@@ -148,9 +142,7 @@
   .ev{
     display:grid;grid-template-columns:60px 42px 176px minmax(0,1fr);gap:12px;align-items:baseline;
     padding:5px 10px;border-radius:var(--r-sm);
-    animation:in .22s cubic-bezier(.22,1,.36,1) both;
   }
-  @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
   .ev:hover{background:rgba(28,33,44,.5)}
   .ev-t{font-family:var(--mono);font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
   .ev-m{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--ink-3);letter-spacing:.02em}
@@ -163,19 +155,7 @@
 
   /* ── Empty state ───────────────────────────────────────────── */
   .empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:10px;padding-bottom:8vh}
-  .empty h1{
-    font-size:30px;font-weight:660;letter-spacing:-.03em;line-height:1.15;
-    background:linear-gradient(180deg,var(--ink),#9aa4b6);
-    -webkit-background-clip:text;background-clip:text;color:transparent;
-  }
-  .empty p{color:var(--ink-3);font-size:14px;max-width:44ch}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}
-  .suggest{
-    font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink-2);
-    padding:7px 13px;border-radius:99px;border:1px solid var(--line);background:rgba(21,25,34,.7);
-    transition:border-color .15s ease,color .15s ease,transform .12s ease;
-  }
-  .suggest:hover{border-color:var(--accent-dim);color:var(--ink);transform:translateY(-1px)}
+  .empty p{color:var(--ink-3);font-size:13px;max-width:52ch}
 
   /* ── Composer ──────────────────────────────────────────────── */
   .composer{padding:12px 26px 20px}
@@ -214,9 +194,7 @@
   .approval{
     background:rgba(28,33,44,.97);border:1px solid rgba(230,185,85,.4);
     border-radius:var(--r-lg);padding:15px 16px;box-shadow:var(--sh-3);
-    animation:rise .28s cubic-bezier(.22,1,.36,1) both;
   }
-  @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
   .approval-top{display:flex;align-items:center;gap:9px;margin-bottom:4px}
   .approval-tool{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--warn)}
   .approval-risk{font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
@@ -231,7 +209,6 @@
   /* Someone who has asked not to see motion should not have to watch a graph
      spin, a row slide in, or a dot breathe. */
   @media (prefers-reduced-motion:reduce){
-    .pulse,.ev,.approval{animation:none}
     *{transition-duration:.01ms !important}
   }
 </style>
@@ -243,16 +220,15 @@
 <div class="app">
   <nav class="rail">
     <div class="brand">
-      <div class="brand-dot">o</div>
       <div>
-        <div class="brand-name">omniharness</div>
+        <div class="brand-name"><span class="a">omni</span>harness</div>
         <div class="brand-ver" id="version">&nbsp;</div>
       </div>
     </div>
 
-    <button class="new-run" id="new-run">New run</button>
+    <button class="new-run" id="new-run">new run</button>
 
-    <div class="rail-label">Sessions</div>
+    <div class="rail-label">sessions</div>
     <div class="sessions" id="sessions"><div class="sessions-empty">none yet</div></div>
 
     <div class="rail-foot">
@@ -264,23 +240,17 @@
   <div class="main">
     <div class="topbar">
       <div style="min-width:0">
-        <div class="run-title" id="run-title">Ready</div>
+        <div class="run-title" id="run-title">idle</div>
         <div class="run-sub" id="run-sub">nothing running</div>
       </div>
       <span class="spacer"></span>
       <span class="chip" id="chip">idle</span>
-      <button class="ghost danger" id="cancel" hidden>Cancel</button>
+      <button class="ghost danger" id="cancel" hidden>cancel</button>
     </div>
 
     <div class="scroll" id="scroll">
       <div class="empty" id="empty">
-        <h1>What should the harness do?</h1>
-        <p>It plans, picks a strategy, runs agents and verifies the result. Every step shows up here as it happens.</p>
-        <div class="chips">
-          <button class="suggest">Explain what this repository does</button>
-          <button class="suggest">Find the slowest test and say why</button>
-          <button class="suggest">Review my last commit for bugs</button>
-        </div>
+        <p>every model call, tool call and approval appears here as it happens</p>
       </div>
       <div class="stream" id="stream" hidden></div>
     </div>
@@ -288,7 +258,7 @@
     <div class="composer">
       <div class="composer-inner">
         <div class="box">
-          <textarea id="prompt" rows="1" placeholder="Describe the work…" spellcheck="false"></textarea>
+          <textarea id="prompt" rows="1" placeholder="describe the work" spellcheck="false"></textarea>
           <button class="send" id="go" title="Run" aria-label="Run">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M8 13V3M8 3L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
@@ -296,7 +266,7 @@
           </button>
         </div>
         <div class="under">
-          <small><kbd>Enter</kbd> to run · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a newline</small>
+          <small><kbd>enter</kbd> runs · <kbd>shift</kbd>+<kbd>enter</kbd> for a newline</small>
           <small id="gaps" class="gap-note" hidden></small>
         </div>
       </div>

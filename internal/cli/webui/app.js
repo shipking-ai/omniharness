@@ -385,17 +385,17 @@ function renderApprovals() {
 
     const why = document.createElement('div');
     why.className = 'approval-why';
-    why.textContent = a.reason || 'waiting for your decision';
+    why.textContent = a.reason || 'waiting for a decision';
 
     const actions = document.createElement('div');
     actions.className = 'approval-actions';
     const deny = document.createElement('button');
     deny.className = 'deny';
-    deny.textContent = 'Deny';
+    deny.textContent = 'deny';
     deny.onclick = () => answer(a.id, false);
     const grant = document.createElement('button');
     grant.className = 'grant';
-    grant.textContent = 'Approve';
+    grant.textContent = 'approve';
     grant.onclick = () => answer(a.id, true);
     // Deny sits first so approve is never the button under the cursor by
     // accident; approving is the decision that deserves a deliberate move.
@@ -430,9 +430,11 @@ function setRun(title, sub, chipText, tone) {
   chip.className = 'chip ' + (tone || '');
   chip.innerHTML = '';
   if (tone === 'busy') {
-    const dot = document.createElement('span');
-    dot.className = 'pulse';
-    chip.append(dot);
+    // The same running marker the TUI prints, rather than a breathing dot.
+    const mark = document.createElement('span');
+    mark.className = 'chip-mark';
+    mark.textContent = '..';
+    chip.append(mark);
   }
   chip.append(document.createTextNode(chipText));
 }
@@ -583,17 +585,10 @@ function boot() {
     state.sessionId = '';
     state.events = [];
     renderEvents();
-    setRun('Ready', 'nothing running', 'idle', '');
+    setRun('idle', 'nothing running', 'idle', '');
     refreshSessions();
     $('prompt').focus();
   };
-  for (const chip of document.querySelectorAll('.suggest')) {
-    chip.onclick = () => {
-      $('prompt').value = chip.textContent;
-      autosize();
-      $('prompt').focus();
-    };
-  }
   $('prompt').addEventListener('input', autosize);
   $('prompt').addEventListener('keydown', (e) => {
     // Enter sends; Shift+Enter is a newline. The same bargain as the TUI.
