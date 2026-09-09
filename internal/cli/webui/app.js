@@ -302,23 +302,24 @@ function api(path, options) {
   return fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, options));
 }
 
-// The event vocabulary the TUI prints, so the two front-ends read the same.
-// ok / FAIL / .. / - / > — no glyphs, no emoji.
+// The status words are the TUI's own vocabulary — ok / FAIL / .. / - / > — so
+// someone who knows one front-end can read the other without relearning it.
 const MARK = {
-  'task.created': '-', 'task.started': '>', 'task.completed': 'ok',
-  'task.failed': 'FAIL', 'task.cancelled': 'FAIL',
+  'session.started': '-', 'task.created': '-', 'task.analyzed': '-', 'strategy.selected': '-',
+  'task.started': '>', 'task.completed': 'ok', 'task.failed': 'FAIL', 'task.cancelled': 'FAIL',
   'agent.created': '-', 'agent.updated': '..', 'agent.completed': 'ok', 'agent.failed': 'FAIL',
   'model.requested': '..', 'model.responded': 'ok', 'model.failed': 'FAIL',
   'tool.requested': '..', 'tool.completed': 'ok', 'tool.failed': 'FAIL',
   'approval.requested': '>', 'approval.granted': 'ok', 'approval.denied': 'FAIL',
-  'evaluation.completed': 'ok', 'repair.started': '..', 'strategy.selected': '-',
-  'session.started': '-', 'task.analyzed': '-',
+  'evaluation.completed': 'ok', 'repair.started': '..',
 };
 
 function toneOf(type) {
-  if (type.endsWith('.failed') || type.endsWith('.cancelled') || type.endsWith('.denied')) return 'error';
+  if (type.endsWith('.failed') || type.endsWith('.cancelled') || type.endsWith('.denied')) return 'bad';
   if (type.startsWith('approval') || type.startsWith('repair')) return 'warn';
-  return 'idle';
+  if (type.endsWith('.completed') || type.endsWith('.responded') || type.endsWith('.granted')) return 'ok';
+  if (type.endsWith('.requested') || type.endsWith('.updated') || type.endsWith('.started')) return 'busy';
+  return '';
 }
 
 function summarise(e) {
@@ -327,65 +328,80 @@ function summarise(e) {
   if (d.model) return d.model + (d.tokensOut ? ` · ${d.tokensOut} out` : '');
   if (d.tool) return d.tool;
   if (d.strategy) return d.strategy + (d.reason ? ` · ${d.reason}` : '');
-  if (d.status) return d.status;
+  if (d.outcome) return `${d.evaluator || 'evaluator'} · ${d.outcome}`;
   if (d.prompt) return d.prompt;
   if (d.title) return d.title;
-  if (d.outcome) return `${d.evaluator || 'evaluator'}: ${d.outcome}`;
+  if (d.status) return d.status;
   return '';
 }
 
+function clockOf(e) {
+  const t = e.time ? new Date(e.time) : new Date();
+  return isNaN(t) ? '' : t.toTimeString().slice(0, 8);
+}
+
 function renderEvents() {
-  const box = $('stream');
-  box.innerHTML = '';
-  for (const e of state.events.slice(-260)) {
+  const stream = $('stream');
+  const has = state.events.length > 0;
+  $('empty').hidden = has;
+  stream.hidden = !has;
+  stream.innerHTML = '';
+  for (const e of state.events.slice(-400)) {
     const row = document.createElement('div');
-    row.className = 'row ' + toneOf(e.type);
-    const mark = document.createElement('span');
-    mark.className = 'mark';
-    mark.textContent = MARK[e.type] || '-';
-    const type = document.createElement('span');
-    type.className = 'etype';
-    type.textContent = e.type;
-    const text = document.createElement('span');
-    text.className = 'etext';
-    text.textContent = summarise(e);
-    row.append(mark, type, text);
-    box.append(row);
+    row.className = 'ev ' + toneOf(e.type);
+    for (const [cls, text] of [
+      ['ev-t', clockOf(e)],
+      ['ev-m', MARK[e.type] || '-'],
+      ['ev-k', e.type],
+      ['ev-d', summarise(e)],
+    ]) {
+      const cell = document.createElement('span');
+      cell.className = cls;
+      cell.textContent = text;
+      row.append(cell);
+    }
+    stream.append(row);
   }
-  box.scrollTop = box.scrollHeight;
+  const scroll = $('scroll');
+  scroll.scrollTop = scroll.scrollHeight;
 }
 
 function renderApprovals() {
   const box = $('approvals');
   box.innerHTML = '';
-  $('approval-wrap').hidden = state.approvals.length === 0;
   for (const a of state.approvals) {
     const card = document.createElement('div');
     card.className = 'approval';
 
-    const head = document.createElement('div');
-    head.className = 'approval-head';
-    head.textContent = `${a.tool || 'this task'} · ${a.risk || 'unknown'} risk`;
+    const top = document.createElement('div');
+    top.className = 'approval-top';
+    const tool = document.createElement('span');
+    tool.className = 'approval-tool';
+    tool.textContent = a.tool || 'this task';
+    const risk = document.createElement('span');
+    risk.className = 'approval-risk';
+    risk.textContent = (a.risk || 'unknown') + ' risk';
+    top.append(tool, risk);
 
     const why = document.createElement('div');
     why.className = 'approval-why';
-    why.textContent = a.reason || '';
+    why.textContent = a.reason || 'waiting for your decision';
 
     const actions = document.createElement('div');
     actions.className = 'approval-actions';
     const deny = document.createElement('button');
-    deny.className = 'btn deny';
-    deny.textContent = 'deny';
+    deny.className = 'deny';
+    deny.textContent = 'Deny';
     deny.onclick = () => answer(a.id, false);
     const grant = document.createElement('button');
-    grant.className = 'btn grant';
-    grant.textContent = 'approve';
+    grant.className = 'grant';
+    grant.textContent = 'Approve';
     grant.onclick = () => answer(a.id, true);
-    // Deny first: the safe action should not be the one under the cursor by
-    // accident, and approve is the decision worth a deliberate move.
+    // Deny sits first so approve is never the button under the cursor by
+    // accident; approving is the decision that deserves a deliberate move.
     actions.append(deny, grant);
 
-    card.append(head, why, actions);
+    card.append(top, why, actions);
     box.append(card);
   }
 }
@@ -404,13 +420,46 @@ async function refreshApprovals() {
     const body = await r.json();
     state.approvals = body.approvals || [];
     renderApprovals();
-  } catch { /* the stream will bring it round again */ }
+  } catch { /* the stream brings it round again */ }
 }
 
-function setStatus(text, tone) {
-  const el = $('status');
-  el.textContent = text;
-  el.className = 'status ' + (tone || '');
+function setRun(title, sub, chipText, tone) {
+  $('run-title').textContent = title;
+  $('run-sub').textContent = sub;
+  const chip = $('chip');
+  chip.className = 'chip ' + (tone || '');
+  chip.innerHTML = '';
+  if (tone === 'busy') {
+    const dot = document.createElement('span');
+    dot.className = 'pulse';
+    chip.append(dot);
+  }
+  chip.append(document.createTextNode(chipText));
+}
+
+async function refreshSessions() {
+  try {
+    const r = await api('/v1/sessions');
+    const body = await r.json();
+    const list = (body.sessions || []).slice(0, 40);
+    const box = $('sessions');
+    box.innerHTML = '';
+    if (list.length === 0) {
+      const none = document.createElement('div');
+      none.className = 'sessions-empty';
+      none.textContent = 'none yet';
+      box.append(none);
+      return;
+    }
+    for (const s of list) {
+      const item = document.createElement('button');
+      item.className = 'session' + (s.id === state.sessionId ? ' active' : '');
+      item.textContent = s.title || s.name || s.id;
+      item.title = item.textContent;
+      item.onclick = () => { state.sessionId = s.id; refreshSessions(); };
+      box.append(item);
+    }
+  } catch { /* the rail is not worth an error banner */ }
 }
 
 async function submit() {
@@ -421,7 +470,9 @@ async function submit() {
   renderEvents();
   $('go').disabled = true;
   $('cancel').hidden = false;
-  setStatus('running', 'busy');
+  $('prompt').value = '';
+  autosize();
+  setRun(prompt, 'starting', 'running', 'busy');
 
   try {
     const r = await api('/v1/tasks', {
@@ -431,15 +482,17 @@ async function submit() {
     const body = await r.json();
     state.sessionId = body.sessionId || state.sessionId;
     const status = (body.task && body.task.status) || (body.error ? 'failed' : 'unknown');
-    setStatus(status, status === 'completed' ? 'ok' : 'bad');
-  } catch (err) {
-    setStatus('unreachable', 'bad');
+    const detail = body.error ? String(body.error).slice(0, 120) : (state.taskId || '');
+    setRun(prompt, detail, status, status === 'completed' ? 'ok' : 'bad');
+  } catch {
+    setRun(prompt, 'the server did not answer', 'unreachable', 'bad');
   } finally {
     state.running = false;
     state.taskId = '';
     $('go').disabled = false;
     $('cancel').hidden = true;
     refreshApprovals();
+    refreshSessions();
   }
 }
 
@@ -450,10 +503,8 @@ async function cancel() {
 
 function connectStream(scene) {
   const es = new EventSource('/v1/events');
-  es.onopen = () => $('link').textContent = 'stream live';
-  es.onerror = () => $('link').textContent = 'stream lost — retrying';
-
-  es.onmessage = () => { /* unnamed events are pings */ };
+  es.onopen = () => { $('link').textContent = 'live'; };
+  es.onerror = () => { $('link').textContent = 'reconnecting'; };
 
   for (const type of Object.keys(MARK)) {
     es.addEventListener(type, (raw) => {
@@ -473,12 +524,17 @@ function connectStream(scene) {
       if (seq) state.lastSeq = seq;
 
       if (e.taskId) state.taskId = e.taskId;
-      if (type === 'approval.requested' || type === 'approval.granted' || type === 'approval.denied') {
-        refreshApprovals();
+      if (type.startsWith('approval.')) refreshApprovals();
+      if (type === 'strategy.selected' && state.running) {
+        setRun($('run-title').textContent, summarise(e), 'running', 'busy');
       }
       state.events.push(e);
       renderEvents();
-      if (scene) scene.excite(type.startsWith('model') || type.startsWith('tool') ? 0.5 : 0.25, toneOf(type));
+      if (scene) {
+        const tone = toneOf(type);
+        scene.excite(type.startsWith('model') || type.startsWith('tool') ? 0.5 : 0.25,
+          tone === 'bad' ? 'error' : tone === 'warn' ? 'warn' : 'idle');
+      }
     });
   }
 }
@@ -487,13 +543,22 @@ async function health() {
   try {
     const r = await api('/health');
     const h = await r.json();
-    $('version').textContent = h.version || '';
-    $('gateway').textContent = h.omniroute ? 'gateway ok' : 'gateway unreachable';
-    $('gateway').className = 'pill ' + (h.omniroute ? 'ok' : 'bad');
+    $('version').textContent = (h.version || '').replace(/^omniharness /, 'v');
+    $('gw').textContent = h.omniroute ? 'connected' : 'unreachable';
+    $('gw-dot').className = 'dot ' + (h.omniroute ? 'ok' : 'bad');
   } catch {
-    $('gateway').textContent = 'server unreachable';
-    $('gateway').className = 'pill bad';
+    $('gw').textContent = 'no server';
+    $('gw-dot').className = 'dot bad';
   }
+}
+
+// The composer grows with the text instead of scrolling inside a fixed box,
+// which is what makes a multi-line prompt feel like writing rather than typing
+// into a slot.
+function autosize() {
+  const el = $('prompt');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 }
 
 function boot() {
@@ -514,15 +579,33 @@ function boot() {
 
   $('go').onclick = submit;
   $('cancel').onclick = cancel;
+  $('new-run').onclick = () => {
+    state.sessionId = '';
+    state.events = [];
+    renderEvents();
+    setRun('Ready', 'nothing running', 'idle', '');
+    refreshSessions();
+    $('prompt').focus();
+  };
+  for (const chip of document.querySelectorAll('.suggest')) {
+    chip.onclick = () => {
+      $('prompt').value = chip.textContent;
+      autosize();
+      $('prompt').focus();
+    };
+  }
+  $('prompt').addEventListener('input', autosize);
   $('prompt').addEventListener('keydown', (e) => {
-    // Enter sends; Shift+Enter is a newline. Same bargain as the TUI.
+    // Enter sends; Shift+Enter is a newline. The same bargain as the TUI.
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
   });
 
   health();
   refreshApprovals();
+  refreshSessions();
   connectStream(scene);
   setInterval(health, 15000);
+  $('prompt').focus();
 }
 
 if (document.readyState === 'loading') {

@@ -792,31 +792,19 @@ footer{
 <div id="playground" class="full-bleed">
   <div class="section-inner">
     <div class="two-col">
-      <div class="term-demo reveal">
-        <div class="term-bar">
-          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-          <span class="term-title">omniharness doctor</span>
-        </div>
-        <div class="term-body">
-          <div><span class="t-prompt">❯ </span><span id="t-cmd"></span><span class="t-cursor" id="t-cur"></span></div>
-          <div id="t-out" style="display:none">
-            <br>
-            <div><span class="t-lbl">endpoint    </span><span class="t-val">http://localhost:20128</span></div>
-            <div><span class="t-lbl">api key     </span><span class="t-warn">key_9999</span></div>
-            <div><span class="t-lbl">mgmt token  </span><span style="color:var(--muted)">not set</span></div>
-            <div><span class="t-lbl">catalog     </span><span class="t-ok">reachable · 9221 models (38 auto/*)</span></div>
-            <div><span class="t-lbl">combos      </span><span class="t-val">3 configured · free-stack, Kimi Coding, deepseek</span></div>
-            <br>
-            <div class="t-ok">ok — the gateway is reachable.</div>
-          </div>
-        </div>
-      </div>
+      <!-- A real recording. scripts/record-doctor-cast.py runs `omniharness
+           doctor`, captures each line with the time it actually appeared, and
+           writes this SVG; the pause before the gateway answers is how long it
+           really took. Self-contained CSS animation — no player, no CDN, and
+           it degrades to the finished output under prefers-reduced-motion. -->
+      <img class="term-demo reveal" src="/assets/doctor.svg" width="940" height="403"
+           alt="omniharness doctor checking a live OmniRoute gateway: eleven checks, all passing.">
       <div class="reveal">
         <div class="section-label">Try It Live</div>
         <h2>See it run.</h2>
-        <p class="section-lead">A replay of what <code style="font-family:var(--font-mono);color:var(--accent)">omniharness doctor</code> prints against a live OmniRoute gateway — 9,000+ models, three combos, one check.</p>
+        <p class="section-lead">A recording of <code style="font-family:var(--font-mono);color:var(--accent)">omniharness doctor</code> against a live OmniRoute gateway. Eleven checks, real timings — the pause before the gateway answers is how long it actually took.</p>
         <div class="play-ctas">
-          <span class="asci-note">Output reproduced from a real run. A full session recording is not up yet.</span>
+          <span class="asci-note">Captured from a real run. The API key and home directory are redacted; nothing else is edited.</span>
         </div>
       </div>
     </div>
@@ -1008,18 +996,6 @@ document.getElementById('install-btn').addEventListener('click',function(){
   });
 });
 
-// ── Terminal typewriter ───────────────────────
-const tCmd=document.getElementById('t-cmd');
-const tCur=document.getElementById('t-cur');
-const tOut=document.getElementById('t-out');
-const CMD='omniharness doctor';
-let typed=0,started=false;
-
-new IntersectionObserver(entries=>{
-  if(entries[0].isIntersecting&&!started){
-    started=true; type();
-  }
-},{threshold:.5}).observe(document.querySelector('.term-demo'));
 
 function type(){
   if(typed<CMD.length){
