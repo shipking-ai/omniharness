@@ -217,14 +217,20 @@ func (*ModelRequestedData) EventType() Type { return ModelRequested }
 
 // ModelRespondedData accompanies ModelResponded.
 type ModelRespondedData struct {
-	Provider  string        `json:"provider,omitempty"`
-	Model     string        `json:"model"`
-	TaskID    string        `json:"taskId,omitempty"`
-	AgentID   string        `json:"agentId,omitempty"`
-	TokensIn  int64         `json:"tokensIn"`
-	TokensOut int64         `json:"tokensOut"`
-	CostUSD   float64       `json:"costUsd"`
-	Latency   time.Duration `json:"latency"`
+	Provider string `json:"provider,omitempty"`
+	// Model is the ref that was requested, which may be a routing alias.
+	Model string `json:"model"`
+	// ResolvedModel is the model the gateway actually used. For a direct ref
+	// the two are the same; for an alias like "auto/best-coding" this is the
+	// only place the real model appears, and it is what a reader wants to see.
+	// Empty when the gateway did not say.
+	ResolvedModel string        `json:"resolvedModel,omitempty"`
+	TaskID        string        `json:"taskId,omitempty"`
+	AgentID       string        `json:"agentId,omitempty"`
+	TokensIn      int64         `json:"tokensIn"`
+	TokensOut     int64         `json:"tokensOut"`
+	CostUSD       float64       `json:"costUsd"`
+	Latency       time.Duration `json:"latency"`
 }
 
 func (*ModelRespondedData) EventType() Type { return ModelResponded }

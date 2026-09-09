@@ -13,7 +13,7 @@ import (
 // front-end that needed the internet to draw itself would not be the same
 // product.
 //
-//go:embed webui/index.html webui/app.js webui/core.js webui/scene.js webui/theme.css webui/desktop.html webui/desktop.js
+//go:embed webui/index.html webui/app.js webui/core.js webui/scene.js webui/theme.css webui/desktop.html webui/desktop.js webui/route.js
 var webUI embed.FS
 
 // webUIFile is one embedded asset and the type to serve it as.
@@ -48,6 +48,7 @@ var webUIRoutes = map[string]webUIFile{
 	"/scene.js":   {"webui/scene.js", "application/javascript; charset=utf-8"},
 	"/app.js":     {"webui/app.js", "application/javascript; charset=utf-8"},
 	"/desktop.js": {"webui/desktop.js", "application/javascript; charset=utf-8"},
+	"/route.js":   {"webui/route.js", "application/javascript; charset=utf-8"},
 }
 
 // webUIHandler serves the front-end, and nothing else.

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -160,6 +161,31 @@ func runServer(parent context.Context, port int) error {
 			})
 			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
 				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
+				// A session's stored events, which is the only way a client can
+				// show what happened in a run it did not watch live. Without
+				// this the session list is navigation that navigates nowhere:
+				// it looks clickable, and clicking it changes nothing you can
+				// see.
+				if rest, ok := strings.CutSuffix(id, "/events"); ok {
+					id = rest
+					if id == "" {
+						http.NotFound(w, r)
+						return
+					}
+					limit := 2000
+					if raw := r.URL.Query().Get("limit"); raw != "" {
+						if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 20000 {
+							limit = n
+						}
+					}
+					events, err := rt.SessionEvents(id, limit)
+					if err != nil {
+						http.Error(w, "session not found", http.StatusNotFound)
+						return
+					}
+					writeJSON(w, http.StatusOK, map[string]any{"events": events})
+					return
+				}
 				ss, err := rt.Store.GetSession(id)
 				if err != nil {
 					http.Error(w, "session not found", http.StatusNotFound)

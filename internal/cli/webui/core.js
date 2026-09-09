@@ -69,7 +69,13 @@
   function summarise(e) {
     const d = e.data || {};
     if (d.message) return d.message;
-    if (d.model) return d.model + (d.tokensOut ? ' · ' + d.tokensOut + ' out' : '');
+    if (d.model || d.resolvedModel) {
+      const bits = [modelOf(d)];
+      if (d.tokensOut) bits.push(d.tokensOut + ' out');
+      if (typeof d.latency === 'number') bits.push(fmtNanos(d.latency));
+      if (d.costUsd) bits.push(fmtCost(d.costUsd));
+      return bits.filter(Boolean).join(' · ');
+    }
     if (d.tool) return d.tool;
     if (d.strategy) return d.strategy + (d.reason ? ' · ' + d.reason : '');
     if (d.outcome) return (d.evaluator || 'evaluator') + ' · ' + d.outcome;
@@ -80,6 +86,100 @@
     if (d.status) return d.status;
     if (typeof d.tokensAfter === 'number') return d.tokensBefore + ' → ' + d.tokensAfter + ' tokens';
     return '';
+  }
+
+  // ── Saying it in words ─────────────────────────────────────────────────
+  //
+  // The terminal surfaces speak in marks — ok / FAIL / .. / - / > — which is
+  // right for a terminal and wrong here: the window is the surface someone
+  // reaches who has never used the TUI, and "model.requested ..' means nothing
+  // to them. The machine name is kept, moved to a secondary column, so the
+  // event is still greppable and still matches the docs.
+  const PHRASE = {
+    'session.started': 'started a session',
+    'session.ended': 'ended the session',
+    'task.created': 'took the request',
+    'task.analyzed': 'sized up the work',
+    'task.started': 'started work',
+    'task.paused': 'paused',
+    'task.resumed': 'resumed',
+    'task.completed': 'finished',
+    'task.failed': 'gave up',
+    'task.cancelled': 'cancelled',
+    'strategy.selected': 'chose an approach',
+    'agent.created': 'created an agent',
+    'agent.started': 'agent started',
+    'agent.updated': 'agent working',
+    'agent.transcript': 'agent wrote to its transcript',
+    'agent.paused': 'agent paused',
+    'agent.resumed': 'agent resumed',
+    'agent.completed': 'agent done',
+    'agent.failed': 'agent failed',
+    'agent.cancelled': 'agent cancelled',
+    'model.requested': 'asked the model',
+    'model.responded': 'model answered',
+    'model.failed': 'model call failed',
+    'tool.requested': 'wants to run a tool',
+    'tool.started': 'running a tool',
+    'tool.completed': 'tool finished',
+    'tool.failed': 'tool failed',
+    'observation.created': 'noted what it saw',
+    'context.updated': 'updated its context',
+    'context.condensed': 'condensed its history',
+    'evaluation.started': 'checking the result',
+    'evaluation.completed': 'checked the result',
+    'repair.started': 'retrying after a failure',
+    'repair.completed': 'recovered',
+    'approval.requested': 'needs your approval',
+    'approval.granted': 'you approved',
+    'approval.denied': 'you denied',
+    'budget.exceeded': 'ran out of budget',
+    'checkpoint.saved': 'saved a checkpoint',
+    'provider.lost': 'lost a provider',
+    'log.message': 'logged a message',
+  };
+
+  function phraseOf(type) {
+    return PHRASE[type] || type.replace(/\./g, ' ');
+  }
+
+  // A word, not a glyph. The colour still carries the same meaning.
+  const STATE = { ok: 'done', bad: 'failed', warn: 'waiting', busy: 'running', '': 'queued' };
+
+  function stateOf(type) {
+    return STATE[toneOf(type)] || 'queued';
+  }
+
+  // The model that actually answered, not the alias that was asked for.
+  // "auto/best-coding" is a routing request; the run above it resolved to
+  // "inception/mercury-2.5", and showing the alias told the reader nothing
+  // about what produced their answer.
+  function modelOf(d) {
+    if (!d) return '';
+    return d.resolvedModel || d.model || '';
+  }
+
+  // Go marshals a time.Duration as an integer count of nanoseconds, so the
+  // raw payload reads "26520599700" where a person wants "26.5s".
+  function fmtNanos(ns) {
+    if (typeof ns !== 'number' || !isFinite(ns)) return '';
+    return fmtMillis(ns / 1e6);
+  }
+
+  function fmtMillis(ms) {
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    if (ms < 60000) return (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + 's';
+    const m = Math.floor(ms / 60000);
+    return m + 'm' + String(Math.round((ms % 60000) / 1000)).padStart(2, '0') + 's';
+  }
+
+  // Every cost here comes out of EstimateCost, and for a model missing from
+  // the pricing table that is a blended guess rather than a rate. Printing
+  // "$0.0727" lends four decimals of authority to an estimate, so the tilde
+  // stays until the number is sourced from real pricing.
+  function fmtCost(usd) {
+    if (typeof usd !== 'number' || usd <= 0) return '';
+    return '~$' + (usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2));
   }
 
   function clockOf(e) {
@@ -165,6 +265,14 @@
     return body.sessions || [];
   }
 
+  // A past session's stored events. This is what turns the session list from
+  // decoration into navigation.
+  async function sessionEvents(id, limit) {
+    const body = await json('/v1/sessions/' + encodeURIComponent(id) +
+      '/events?limit=' + (limit || 2000));
+    return body.events || [];
+  }
+
   async function approvals() {
     const body = await json('/v1/approvals');
     return body.approvals || [];
@@ -194,6 +302,13 @@
     toneOf: toneOf,
     summarise: summarise,
     clockOf: clockOf,
+    phraseOf: phraseOf,
+    stateOf: stateOf,
+    modelOf: modelOf,
+    fmtNanos: fmtNanos,
+    fmtMillis: fmtMillis,
+    fmtCost: fmtCost,
+    sessionEvents: sessionEvents,
     connect: connect,
     health: health,
     sessions: sessions,

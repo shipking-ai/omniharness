@@ -77,6 +77,12 @@ func desktopArgs(url, profileDir string, width, height int) []string {
 	}
 }
 
+// handoffWindow is how quickly a launched browser process must exit for that
+// exit to mean "an existing browser took this over" rather than "the user
+// closed the window". A real window, even one closed immediately, does not
+// come and go faster than this; a hand-off returns almost at once.
+const handoffWindow = 3 * time.Second
+
 func newDesktopCmd() *cobra.Command {
 	var (
 		port          int
@@ -142,10 +148,28 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 
 			// Whichever ends first ends the other: closing the window shuts the
 			// server down, and a server that dies takes the window with it.
+			//
+			// Except when the process we launched was never the window. A
+			// Chromium already running against this profile directory takes the
+			// --app request, opens the window itself, and the process we
+			// started exits successfully within milliseconds. Treating that
+			// exit as "the user closed the window" shut the server down under a
+			// window that had only just opened, leaving it pointed at a dead
+			// port — which is exactly what a second `omniharness desktop` did.
+			launched := time.Now()
 			done := make(chan error, 1)
 			go func() { done <- win.Wait() }()
 			select {
-			case <-done:
+			case err := <-done:
+				if err == nil && time.Since(launched) < handoffWindow {
+					fmt.Println("a window was opened by a browser that was already running, so closing it cannot stop this server; press ctrl-c when you are done")
+					select {
+					case err := <-serveErr:
+						return err
+					case <-ctx.Done():
+						return nil
+					}
+				}
 				stop()
 				return nil
 			case err := <-serveErr:
