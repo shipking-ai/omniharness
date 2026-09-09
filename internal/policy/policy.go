@@ -239,6 +239,9 @@ func (e *Engine) EvaluateAndExecuteTaskRisk(ctx context.Context, risk tools.Risk
 	if d != Ask {
 		return d, nil
 	}
+	if AutoApproved(ctx) {
+		return Allow, nil
+	}
 	if e.approver == nil {
 		return Block, fmt.Errorf("approval required (%s) but no approver is connected", reason)
 	}
@@ -260,6 +263,12 @@ func (e *Engine) EvaluateAndExecute(ctx context.Context, r Request) (Decision, e
 		return Block, err
 	}
 	if d == Ask {
+		// The run was started with approve-all, so the human already said yes
+		// to everything in it. Checked here rather than by swapping the
+		// approver, so it cannot outlive this context.
+		if AutoApproved(ctx) {
+			return Allow, nil
+		}
 		if e.approver == nil {
 			return Block, fmt.Errorf("approval required (%s) but no approver is connected", reason)
 		}
@@ -301,4 +310,28 @@ func outsideWorkspace(p, root string) bool {
 		return true
 	}
 	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// autoApproveKey marks a context whose run was started with approve-all.
+type autoApproveKey struct{}
+
+// WithAutoApprove marks ctx as pre-approved, for the run it belongs to and
+// nothing else.
+//
+// This replaces swapping the engine's approver for an allow-all one, which was
+// a process-wide, permanent change made on behalf of a single task: on a
+// long-lived server one approve-all request disabled approvals for every task
+// that followed, and for any running beside it. Approval scope belongs to the
+// run, and a context is exactly the thing that is scoped to a run.
+func WithAutoApprove(ctx context.Context) context.Context {
+	return context.WithValue(ctx, autoApproveKey{}, true)
+}
+
+// AutoApproved reports whether ctx belongs to a run started with approve-all.
+func AutoApproved(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(autoApproveKey{}).(bool)
+	return v
 }
