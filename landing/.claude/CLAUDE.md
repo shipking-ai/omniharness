@@ -62,6 +62,20 @@ needs belongs in the plain `<script>` below it, which no CDN can stop.
    ```
 4. Or use the self-hosted `asciinema-player` npm package with a local `.cast` file.
 
+## Social card (assets/og.png)
+
+`assets/og.source.html` is the source; `assets/og.png` is what ships. It is a
+plain HTML page rendered headless, so it stays editable with the same tokens as
+the site rather than living in a binary nobody can change:
+
+```
+chrome --headless=new --disable-gpu --hide-scrollbars   --force-device-scale-factor=1 --virtual-time-budget=5000   --screenshot=assets/og.png --window-size=1200,630   file:///absolute/path/to/assets/og.source.html
+```
+
+The `og:image` / `twitter:image` paths are **relative**, because the site has no
+domain yet (see `docs/landing-brief.md`). Slack, Discord and iMessage resolve
+those; X does not. Make them absolute and add `og:url` when the domain lands.
+
 ## Deployment (Vercel)
 
 1. In Vercel dashboard: create new project → import the GitHub repo

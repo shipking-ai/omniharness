@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ground:#0e1016; --surface:#14171f; --hairline:#262b38;
+    --ink:#c8cdd9; --muted:#8b93a7; --accent:#2dd4bf;
+    --font-mono:'JetBrains Mono','Fira Code',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1200px;height:630px}
+  body{
+    background:var(--ground); color:var(--ink); font-family:var(--font-mono);
+    display:flex; flex-direction:column; justify-content:center;
+    padding:46px 84px 104px; position:relative;
+  }
+  /* A single hairline inset, the same device the site uses for its panels. */
+  .frame{position:absolute;inset:34px;border:1px solid var(--hairline);border-radius:14px}
+  .eyebrow{font-size:20px;letter-spacing:.24em;color:var(--muted);text-transform:uppercase;margin-bottom:30px}
+  h1{font-size:84px;line-height:1.03;font-weight:700;letter-spacing:-.02em}
+  h1 .a{color:var(--accent)}
+  p{font-size:27px;color:var(--muted);margin-top:28px;line-height:1.45}
+  .cmd{
+    margin-top:40px;display:inline-block;align-self:flex-start;
+    font-size:25px;color:var(--ink);background:var(--surface);
+    border:1px solid var(--hairline);border-radius:9px;padding:15px 24px;
+  }
+  .cmd .p{color:var(--accent)}
+  .foot{
+    position:absolute;left:84px;right:84px;bottom:62px;
+    display:flex;justify-content:space-between;font-size:20px;color:var(--muted);
+  }
+</style></head><body>
+  <div class="frame"></div>
+  <div class="eyebrow">built for omniroute</div>
+  <h1><span class="a">Route</span> once.<br>Run anywhere.</h1>
+  <p>Plan, build, research, or turn a parallel swarm loose.<br>The agent harness built for OmniRoute.</p>
+  <div class="cmd"><span class="p">$</span> npm i -g omniharness-cli</div>
+  <div class="foot"><span>omniharness</span><span>Go core · TypeScript TUI · MIT</span></div>
+</body></html>

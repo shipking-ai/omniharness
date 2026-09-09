@@ -8,6 +8,22 @@
 <meta property="og:title" content="OmniHarness — Route once. Run anywhere.">
 <meta property="og:description" content="The agent harness built for OmniRoute. Four modes, a parallel swarm rail, and a premium terminal UI.">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="OmniHarness">
+<!-- Relative on purpose. The Open Graph spec wants an absolute URL and some
+     crawlers (X in particular) will not resolve a relative one, but there is no
+     domain yet — see docs/landing-brief.md — and inventing one would break every
+     unfurl rather than some of them. Slack, Discord and iMessage resolve these
+     against the page URL, so the card works there today. Make these absolute,
+     and add og:url, the moment the domain is decided.
+     Rebuild the image from assets/og.source.html; recipe in .claude/CLAUDE.md. -->
+<meta property="og:image" content="/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="OmniHarness — Route once. Run anywhere. Install with npm i -g omniharness-cli.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OmniHarness — Route once. Run anywhere.">
+<meta name="twitter:description" content="The agent harness built for OmniRoute. Four modes, a parallel swarm rail, and a premium terminal UI.">
+<meta name="twitter:image" content="/assets/og.png">
 <meta name="theme-color" content="#0e1016">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
