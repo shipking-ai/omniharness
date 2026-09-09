@@ -91,6 +91,12 @@ This is a real window â€” no address bar, no tab strip, its own taskbar entry â€
 backed by a Chromium-family browser already on the machine, running against a
 profile of its own so it does not touch the one you browse with.
 
+It is also a different interface from the one ` + "`serve`" + ` prints. The window gets
+three resizable panes that remember their sizes, a waterfall of the run's real
+span timings next to the event log, an inspector showing the whole payload
+behind any line, a ctrl+k command palette, and a desktop notification when an
+approval is waiting or a long run ends while you are in another app.
+
 What it deliberately is not is a bundled runtime. Shipping Electron would add
 roughly 150MB to a binary whose whole promise is that it is one file, and
 docs/architecture.md rules it out. Using the browser that is already installed
@@ -104,7 +110,11 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 			if err != nil {
 				return fmt.Errorf("%w; run `omniharness serve` and open the URL it prints instead", err)
 			}
-			url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+			// The window opens on /desktop, not /. The web view is shaped for a
+			// tab; the shell at /desktop is shaped for a window, and opening the
+			// wrong one would make `desktop` a bookmark rather than an app.
+			base := fmt.Sprintf("http://127.0.0.1:%d/", port)
+			url := base + "desktop"
 			profile, err := desktopProfileDir()
 			if err != nil {
 				return err
@@ -118,7 +128,7 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 			serveErr := make(chan error, 1)
 			go func() { serveErr <- runServer(ctx, port) }()
 
-			if err := waitForServer(ctx, url, 20*time.Second); err != nil {
+			if err := waitForServer(ctx, base, 20*time.Second); err != nil {
 				stop()
 				return err
 			}

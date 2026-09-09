@@ -13,7 +13,7 @@ import (
 // front-end that needed the internet to draw itself would not be the same
 // product.
 //
-//go:embed webui/index.html webui/app.js
+//go:embed webui/index.html webui/app.js webui/core.js webui/scene.js webui/theme.css webui/desktop.html webui/desktop.js
 var webUI embed.FS
 
 // webUIFile is one embedded asset and the type to serve it as.
@@ -22,7 +22,16 @@ type webUIFile struct {
 	contentType string
 }
 
-// webUIRoutes is the whole front-end: two files, listed explicitly.
+// webUIRoutes is the whole front-end, listed explicitly.
+//
+// Two surfaces share this table. / is the web view: one column, readable in a
+// tab at any width, on any browser. /desktop is the window `omniharness
+// desktop` opens: three resizable panes, a waterfall of real span timings, an
+// inspector and a command palette — the things a tab has no room for. They are
+// separate documents rather than one page with a mode flag because the layouts
+// have nothing in common; what they do share (the API client, the event
+// vocabulary, the design tokens) is factored into core.js and theme.css so it
+// cannot drift between them.
 //
 // Explicit rather than an http.FileServer for two reasons. A FileServer
 // redirects /index.html back to / and turns the page into a 301 hop, and its
@@ -33,7 +42,12 @@ type webUIFile struct {
 var webUIRoutes = map[string]webUIFile{
 	"/":           {"webui/index.html", "text/html; charset=utf-8"},
 	"/index.html": {"webui/index.html", "text/html; charset=utf-8"},
+	"/desktop":    {"webui/desktop.html", "text/html; charset=utf-8"},
+	"/theme.css":  {"webui/theme.css", "text/css; charset=utf-8"},
+	"/core.js":    {"webui/core.js", "application/javascript; charset=utf-8"},
+	"/scene.js":   {"webui/scene.js", "application/javascript; charset=utf-8"},
 	"/app.js":     {"webui/app.js", "application/javascript; charset=utf-8"},
+	"/desktop.js": {"webui/desktop.js", "application/javascript; charset=utf-8"},
 }
 
 // webUIHandler serves the front-end, and nothing else.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"omniharness/internal/event"
 	"omniharness/internal/gateway"
 	"omniharness/internal/runtime"
 	"omniharness/internal/telemetry"
@@ -145,6 +146,18 @@ func runServer(parent context.Context, port int) error {
 			mux.HandleFunc("/v1/approvals", approvalsHandler(approvals))
 			mux.HandleFunc("/v1/approvals/", approvalsHandler(approvals))
 			mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
+			// The vocabulary of the stream. A client that subscribes by event
+			// name has to know every name, and the alternative to publishing the
+			// list is a copy of it maintained by hand in each front-end — which
+			// drifts, and whose drift shows up as phantom dropped events rather
+			// than as anything that looks like a missing subscription.
+			mux.HandleFunc("/v1/event-types", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet && r.Method != http.MethodHead {
+					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"types": event.AllTypes()})
+			})
 			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
 				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 				ss, err := rt.Store.GetSession(id)
