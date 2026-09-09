@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -27,12 +28,17 @@ func newServeCmd() *cobra.Command {
 		Long: `Starts a loopback-only HTTP API for programmatic task submission and
 monitoring.
 
-Requests must address the loopback interface by name and carry no Origin
-header, so a web page cannot drive this API through DNS rebinding. POST
+Requests must address the loopback interface by name, and any Origin they
+carry must itself be a loopback origin, so a page on another site cannot drive
+this API through DNS rebinding. POST
 /v1/tasks runs an agent with tool access, so treat the port as trusted: any
 process on this machine can reach it.
 
+The browser UI is served from the same port at http://127.0.0.1:<port>/ and is
+compiled into this binary, so it needs no network of its own.
+
 Endpoints:
+  GET  /                   the browser UI
   GET  /health             liveness + OmniRoute reachability
   POST /v1/tasks           run a task {prompt, sessionId?}
   POST /v1/tasks/{id}/cancel  stop a running task
@@ -48,7 +54,22 @@ SSE id is the bus publish counter, so a gap in it means a client fell behind
 and should re-read the session rather than assume it saw everything.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rt, err := newRuntime(cmd.Context())
+			return runServer(cmd.Context(), port)
+		},
+	}
+	cmd.Flags().IntVar(&port, "port", 20140, "loopback port")
+	return cmd
+}
+
+// runServer builds the runtime, wires every route and blocks until ctx ends.
+//
+// Shared by `serve` and `desktop` so the two cannot drift: a route added for one
+// is present in the other, and the desktop window is talking to exactly the
+// server the docs describe.
+func runServer(parent context.Context, port int) error {
+	{
+		{
+			rt, err := newRuntime(parent)
 			if err != nil {
 				return err
 			}
@@ -64,9 +85,10 @@ and should re-read the session rather than assume it saw everything.`,
 				rt.SetApprover(approvals)
 			}
 			cfg, _ := loadConfig()
-			loadMCPServersFromConfig(cmd.Context(), rt, cfg)
+			loadMCPServersFromConfig(parent, rt, cfg)
 
 			mux := http.NewServeMux()
+			mux.Handle("/", webUIHandler())
 			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 				diag := rt.Gateway.Diagnose(r.Context())
 				writeJSON(w, http.StatusOK, map[string]any{
@@ -145,6 +167,7 @@ and should re-read the session rather than assume it saw everything.`,
 
 			addr := fmt.Sprintf("127.0.0.1:%d", port)
 			fmt.Printf("omniharness serve listening on http://%s\n", addr)
+			fmt.Printf("  ui   http://%s/\n  api  http://%s/v1\n", addr, addr)
 			srv := &http.Server{
 				Addr:    addr,
 				Handler: guardLoopback(mux),
@@ -156,7 +179,7 @@ and should re-read the session rather than assume it saw everything.`,
 				// handler already bounds it at 30.
 			}
 			go func() {
-				<-cmd.Context().Done()
+				<-parent.Done()
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
 				srv.Shutdown(ctx)
@@ -165,10 +188,8 @@ and should re-read the session rather than assume it saw everything.`,
 				return err
 			}
 			return nil
-		},
+		}
 	}
-	cmd.Flags().IntVar(&port, "port", 20140, "loopback port")
-	return cmd
 }
 
 // guardLoopback rejects requests that a local client would never send.
@@ -185,11 +206,20 @@ and should re-read the session rather than assume it saw everything.`,
 //   - The Host header must name the loopback interface. A rebound request
 //     carries the attacker's hostname, because that is what the browser
 //     resolved.
-//   - No Origin header. Browsers attach one to every cross-origin request;
-//     curl, the Go client and the harness itself do not send one at all.
+//   - Any Origin header must itself name the loopback interface. Browsers
+//     attach an Origin to every fetch, so the harness's own UI carries one —
+//     but a rebound page's Origin is the attacker's site, which is not
+//     loopback and is refused. curl and the Go client send none at all.
 func guardLoopback(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" {
+		// A browser sends Origin on every fetch it makes, so rejecting the
+		// header outright locked out the harness's own web UI along with
+		// everything else. What the guard is actually for is DNS rebinding: a
+		// page on evil.com that resolves to 127.0.0.1. That page carries
+		// Origin: http://evil.com, which is not a loopback origin and is still
+		// refused here — and its Host header is not loopback either, so the
+		// check below catches it a second time.
+		if origin := r.Header.Get("Origin"); origin != "" && !isLoopbackOrigin(origin) {
 			http.Error(w, "cross-origin requests are not accepted", http.StatusForbidden)
 			return
 		}
@@ -199,6 +229,23 @@ func guardLoopback(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLoopbackOrigin reports whether an Origin header names this machine over
+// plain HTTP. Only http:// is accepted, and only a loopback host: an https
+// origin cannot be this server (it does not serve TLS), and anything else is
+// somebody else's page.
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" || u.Host == "" {
+		return false
+	}
+	// A URL with a path, query or credentials is not a well-formed Origin;
+	// treating one as valid would accept "http://127.0.0.1@evil.com".
+	if u.Path != "" || u.RawQuery != "" || u.User != nil {
+		return false
+	}
+	return isLoopbackHost(u.Host)
 }
 
 // isLoopbackHost reports whether a Host header names the local machine.
