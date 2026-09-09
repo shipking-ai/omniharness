@@ -175,18 +175,26 @@ func (c *Composer) Compose(in Input) (Output, error) {
 // truncateToTokens trims text to approximately the given token budget. The
 // estimate is characters-per-token, so this is proportional rather than exact —
 // enough to keep an oversized prompt from blowing the window.
+// Characters, not bytes, because Estimate counts characters
+// (len([]rune(s))/charsPerToken) and the two halves of one token model have to
+// agree. Slicing bytes made this trim three to four times more aggressive than
+// intended on CJK or emoji text — the caller asked for a budget Estimate would
+// have measured as well within the window — and could cut a character in half,
+// putting invalid UTF-8 into a model's context.
 func truncateToTokens(sTxt string, tokens int64) string {
 	if tokens <= 0 {
 		return ""
 	}
 	max := int(tokens * charsPerToken)
-	if len(sTxt) <= max {
+	runes := []rune(sTxt)
+	if len(runes) <= max {
 		return sTxt
 	}
-	if max <= len(truncationNote) {
-		return sTxt[:max]
+	noteLen := len([]rune(truncationNote))
+	if max <= noteLen {
+		return string(runes[:max])
 	}
-	return sTxt[:max-len(truncationNote)] + truncationNote
+	return string(runes[:max-noteLen]) + truncationNote
 }
 
 // charsPerToken mirrors the ratio Estimate uses.

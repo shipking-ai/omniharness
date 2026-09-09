@@ -18,6 +18,7 @@ import (
 	"omniharness/internal/mcp"
 	"omniharness/internal/policy"
 	"omniharness/internal/runtime"
+	"omniharness/internal/text"
 	"omniharness/internal/tui"
 	"omniharness/internal/version"
 )
@@ -228,12 +229,6 @@ func formatDuration(d time.Duration) string {
 }
 
 // truncate shortens long strings for tables.
-func truncate(s string, n int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
-}
+func truncate(s string, n int) string { return text.Line(s, n) }
 
 var _ = filepath.Join

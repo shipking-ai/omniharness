@@ -412,17 +412,6 @@ func compactEvent(e event.Event) string {
 	}
 }
 
-func formatDurationMS(ms int64) string {
-	switch {
-	case ms < 1000:
-		return fmt.Sprintf("%dms", ms)
-	case ms < 60000:
-		return fmt.Sprintf("%.1fs", float64(ms)/1000)
-	default:
-		return fmt.Sprintf("%dm%02ds", ms/60000, (ms%60000)/1000)
-	}
-}
-
 // renderCapabilitiesOverlay answers "what can this run actually do?" by
 // capability rather than by tool name. That is the question worth asking when
 // an external provider is involved: the tools are named at runtime, so a list

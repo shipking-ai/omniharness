@@ -9,7 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"omniharness/internal/config"
-	"omniharness/internal/event"
 	"omniharness/internal/runtime"
 	"omniharness/internal/testutil"
 )
@@ -35,17 +34,6 @@ func update(t *testing.T, m *Model, msg tea.Msg) (*Model, tea.Cmd) {
 	t.Helper()
 	updated, cmd := m.Update(msg)
 	return updated.(*Model), cmd
-}
-
-func publish(t *testing.T, m *Model, data any) *Model {
-	t.Helper()
-	e := event.Event{
-		Type:      event.TaskCreated,
-		SessionID: "test-session",
-		TaskID:    "test-task",
-	}
-	m.applyEvent(e)
-	return m
 }
 
 func TestModelRendersWithoutTerminal(t *testing.T) {

@@ -241,11 +241,6 @@ func RecommendStrategy(profileChoice string, history map[string]Performance, min
 	return best, reason, true
 }
 
-// Names returns all supported strategies (for docs and CLI).
-func Names() []Strategy {
-	return []Strategy{Direct, Sequential, Parallel, ResearchSynthesis, PlanImplementVerify, Debate, RepairLoop, MultiAgent, Swarm}
-}
-
 func plan(in Input, s Strategy, reason string) (Plan, error) {
 	steps := stepsFor(in.Profile, s)
 	return Plan{Strategy: s, Reason: reason, Steps: steps}, nil

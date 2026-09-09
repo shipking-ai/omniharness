@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
 	"omniharness/internal/session"
 )
@@ -156,7 +155,3 @@ func (p *ProjectMemories) Recall(projectKey, kind string) (string, bool, error) 
 func (p *ProjectMemories) RecallAll(projectKey string) ([]session.ProjectMemory, error) {
 	return p.store.ListMemory(projectKey)
 }
-
-// TimeSince returns the zero time used for "no window" queries (kept for
-// API symmetry; aggregation currently covers all history).
-func TimeSince(_ time.Duration) time.Time { return time.Time{} }

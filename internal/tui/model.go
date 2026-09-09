@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +22,7 @@ import (
 	"omniharness/internal/session"
 	"omniharness/internal/task"
 	"omniharness/internal/telemetry"
+	"omniharness/internal/text"
 	"omniharness/internal/version"
 )
 
@@ -1135,10 +1135,4 @@ func shortID(id string) string {
 // title that gets persisted, so slicing on a byte boundary would both cut a
 // non-ASCII title to a third the length of an English one and leave a mangled
 // rune behind.
-func truncate(s string, n int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	return string([]rune(s)[:n]) + "…"
-}
+func truncate(s string, n int) string { return text.Line(s, n) }

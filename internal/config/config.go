@@ -282,7 +282,39 @@ func Load(path string) (Config, error) {
 		}
 	}
 	cfg.applyEnv()
+	cfg.expandPaths()
 	return cfg, nil
+}
+
+// expandPaths resolves a leading ~ in path settings.
+//
+// Writing "~/.omniharness" in a config file is the obvious thing to do, and
+// config/omniharness.example.toml — the file people are told to copy — shipped
+// exactly that. Nothing expanded it, so the shell was the only thing that ever
+// had: on Windows there is no shell involved at all, and the harness created a
+// literal directory named "~" wherever it happened to be started, with the
+// session database inside it. One turned up in this repository's own root.
+//
+// Only a leading "~/" or "~\" is expanded. A bare "~" is left alone, because a
+// path that is exactly "~" is more likely a mistake than a request for the home
+// directory, and paths like "~backup" belong to other users on Unix.
+func (c *Config) expandPaths() {
+	c.Persistence.Dir = expandHome(c.Persistence.Dir)
+	c.Policy.WorkspaceRoot = expandHome(c.Policy.WorkspaceRoot)
+}
+
+func expandHome(p string) string {
+	if len(p) < 2 || p[0] != '~' || (p[1] != '/' && p[1] != '\\') {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		// Better a literal "~" than a path silently rooted at the working
+		// directory, which is how a stray "~" directory gets created in the
+		// first place.
+		return p
+	}
+	return filepath.Join(home, p[2:])
 }
 
 // Validate checks configuration invariants.

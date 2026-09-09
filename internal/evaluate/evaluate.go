@@ -18,6 +18,7 @@ import (
 
 	"omniharness/internal/envguard"
 	"omniharness/internal/task"
+	"omniharness/internal/text"
 )
 
 // Outcome of an evaluation.
@@ -413,11 +414,10 @@ func (e *EvidenceEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, s
 	return PassWithWarnings, "no source references or citations found — this scan cannot tell whether this answer needed any", nil
 }
 
+// truncate marks evaluator output that was cut, so a reader can tell a short
+// build log from a long one that was clipped.
 func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "\n…[truncated]"
+	return text.ClipWith(s, n, "\n…[truncated]")
 }
 
 // exitCode extracts a command's exit status, or -1 when the error is not an
