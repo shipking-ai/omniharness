@@ -8,6 +8,12 @@
  * result turns a transcript into a stack of crates.
  */
 
+import { clip } from './clip.js';
+
+// Re-exported because callers of this module reach for it alongside the row
+// helpers; the implementation lives in one place.
+export { clip };
+
 export type ToolStatus = 'running' | 'done' | 'error' | 'denied';
 
 /**
@@ -48,9 +54,4 @@ export function toolHead(verb: string, target: string, width: number, reserve = 
   return clip(head, room);
 }
 
-export function clip(text: string, width: number): string {
-  const flat = text.replace(/\s+/g, ' ');
-  const runes = [...flat];
-  if (runes.length <= width) return flat;
-  return `${runes.slice(0, Math.max(0, width - 1)).join('')}…`;
-}
+

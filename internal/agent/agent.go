@@ -22,6 +22,7 @@ import (
 	"omniharness/internal/policy"
 	"omniharness/internal/session"
 	"omniharness/internal/task"
+	"omniharness/internal/text"
 	"omniharness/internal/tools"
 )
 
@@ -566,7 +567,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: obs,
 			})
 			a.publish(&event.ObservationCreatedData{
-				Tool: tc.Function.Name, AgentID: a.ID, Summary: truncate(obs, 200), OutputLen: len(obs),
+				Tool: tc.Function.Name, AgentID: a.ID, Summary: text.Clip(obs, 200), OutputLen: len(obs),
 			})
 		}
 
@@ -702,7 +703,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 	}
 
 	a.publish(&event.ToolRequestedData{
-		Tool: name, Input: truncate(tc.Function.Arguments, 200), Risk: string(spec.Risk), AgentID: a.ID,
+		Tool: name, Input: text.Clip(tc.Function.Arguments, 200), Risk: string(spec.Risk), AgentID: a.ID,
 	})
 
 	// Validate before policy, not after: a malformed call is the model's
@@ -757,7 +758,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 	if runErr != nil {
 		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Duration: duration, Error: runErr.Error()})
 		_ = a.recordToolCall(name, "failed", spec.Risk, duration.Milliseconds(), runErr.Error())
-		return toolErrorMessage(name, runErr, truncate(result.Output, 2000))
+		return toolErrorMessage(name, runErr, text.Clip(result.Output, 2000))
 	}
 	a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "completed", Duration: duration, OutputLen: len(result.Output)})
 	_ = a.recordToolCall(name, "completed", spec.Risk, duration.Milliseconds(), "")
@@ -840,13 +841,6 @@ func toGatewayMessages(msgs []composer.Message) []gateway.Message {
 		out = append(out, gateway.Message{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, Name: m.Name, Images: m.Images, ToolCalls: m.ToolCalls})
 	}
 	return out
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }
 
 // toolErrorMessage is what the model reads after a failed call. The kind

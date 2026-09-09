@@ -78,6 +78,9 @@ high = "ask"
 critical = "block"
 
 [persistence]
+# A leading ~/ is expanded to your home directory. It is not expanded by a
+# shell here — the harness reads this file itself — so on Windows too this
+# resolves rather than creating a folder literally named "~".
 dir = "~/.omniharness"
 
 [telemetry]

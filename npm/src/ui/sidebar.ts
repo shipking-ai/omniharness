@@ -9,6 +9,10 @@
  * differs where it has to.
  */
 
+import { clip } from './clip.js';
+
+export { clip };
+
 /** Fixed width of the panel, matching the measure OpenCode settled on. */
 export const SIDEBAR_WIDTH = 34;
 
@@ -132,8 +136,3 @@ export function overflowCount(total: number, shown: number): number {
   return Math.max(0, total - shown);
 }
 
-export function clip(text: string, width: number): string {
-  const runes = [...text.replace(/\s+/g, ' ')];
-  if (runes.length <= width) return runes.join('');
-  return `${runes.slice(0, Math.max(0, width - 1)).join('')}…`;
-}

@@ -10,7 +10,8 @@ import { renderMarkdown, type MarkdownSegment } from './markdown.js';
 import { looksLikeDiff, diffSegments } from './diff.js';
 import { palette, type Palette } from './palette.js';
 import { capabilityLine, recentRows, shortenPath, twoColumn, type RecentSession } from './home.js';
-import { conversationWidth, overflowCount, sidebarMode, SIDEBAR_WIDTH, todoRows, usageRows, clip as clipRow, type UsageSummary } from './sidebar.js';
+import { conversationWidth, overflowCount, sidebarMode, SIDEBAR_WIDTH, todoRows, usageRows, type UsageSummary } from './sidebar.js';
+import { clip } from './clip.js';
 import { planViewport } from './viewport.js';
 import { statusMarker, toolHead, type ToolStatus } from './toolrow.js';
 import { contextMeter, meterBar, windowIndex, type WindowIndex } from './modelWindows.js';
@@ -126,7 +127,7 @@ const clamp = (value: number, min: number, max: number): number => Math.min(max,
 const widthOf = (stdout: NodeJS.WriteStream): number => Math.max(48, stdout.columns ?? 80);
 /** Terminal height, floored so the layout maths never goes negative. */
 const rowsOf = (stdout: NodeJS.WriteStream): number => Math.max(8, stdout.rows ?? 24);
-const clip = (text: string, width: number): string => text.length <= width ? text : `${text.slice(0, Math.max(0, width - 1))}…`;
+
 
 /** Word-wrap text to width, honoring existing newlines and hard-breaking long words. */
 function wrap(text: string, width: number): string[] {
@@ -273,7 +274,7 @@ function SidebarPanel(props: SidebarProps): React.ReactElement {
       <Text bold dimColor>agents</Text>
       {agents.slice(-6).map((lane, index) => <Text key={lane.id}>
         <Text color={AGENT_COLORS[index % AGENT_COLORS.length]}>{lane.status === 'error' ? 'FAIL' : lane.status === 'done' ? 'ok  ' : '..  '}</Text>
-        <Text dimColor>{clipRow(lane.label, inner - 5)}</Text>
+        <Text dimColor>{clip(lane.label, inner - 5)}</Text>
       </Text>)}
     </Box>}
 

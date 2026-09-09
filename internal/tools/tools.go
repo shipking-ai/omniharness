@@ -23,9 +23,6 @@ const (
 	RiskCritical Risk = "critical"
 )
 
-// AllRisks lists risk classes in ascending severity.
-func AllRisks() []Risk { return []Risk{RiskLow, RiskMedium, RiskHigh, RiskCritical} }
-
 // Spec is the structured metadata of a tool.
 type Spec struct {
 	Name        string         `json:"name"`
@@ -288,17 +285,4 @@ func StringArg(input map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("argument %q must be a string", key)
 	}
 	return s, nil
-}
-
-// BoolArg extracts an optional boolean argument.
-func BoolArg(input map[string]any, key string, def bool) bool {
-	v, ok := input[key]
-	if !ok {
-		return def
-	}
-	b, ok := v.(bool)
-	if !ok {
-		return def
-	}
-	return b
 }

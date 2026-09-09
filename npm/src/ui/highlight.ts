@@ -43,37 +43,6 @@ const TRUE_FALSE_NULL = new Set(['true', 'false', 'null', 'undefined', 'None', '
 /** Ink color names used for token classes. */
 const COLORS = { keyword: 'magenta', string: 'green', number: 'yellow', comment: 'gray', literal: 'cyan' } as const;
 
-/**
- * Highlight one line of code into styled segments.
- * The line's characters are preserved exactly (segment text concatenates to
- * the input), so callers can still hard-slice long lines by character.
- */
-export function highlightLine(line: string, lang: string): MarkdownSegment[] {
-  const l = normalize(lang);
-  const plain: MarkdownSegment[] = [{ text: line, color: 'cyan' }];
-  if (!HIGHLIGHTERS.has(l)) return plain;
-
-  if (l === 'json') return highlightJson(line);
-  return highlightGeneric(line, l);
-}
-
-function highlightJson(line: string): MarkdownSegment[] {
-  const out: MarkdownSegment[] = [];
-  const re = /("(?:[^"\\]|\\.)*")(\s*:)?|(\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b)|(\btrue\b|\bfalse\b|\bnull\b)/g;
-  let last = 0;
-  for (const m of line.matchAll(re)) {
-    const index = m.index ?? 0;
-    if (index > last) out.push({ text: line.slice(last, index), color: 'cyan' });
-    if (m[1] !== undefined) out.push({ text: m[1], color: COLORS.string });
-    if (m[2] !== undefined) out.push({ text: m[2], color: 'cyan' });
-    if (m[3] !== undefined) out.push({ text: m[3], color: COLORS.number });
-    if (m[4] !== undefined) out.push({ text: m[4], color: COLORS.literal });
-    last = index + m[0].length;
-  }
-  if (last < line.length) out.push({ text: line.slice(last), color: 'cyan' });
-  return out;
-}
-
 interface Token {
   text: string;
   color?: string;

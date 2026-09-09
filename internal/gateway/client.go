@@ -152,13 +152,6 @@ func New(endpoint string, timeout time.Duration, apiKey string) *Client {
 	}
 }
 
-// NewWithHTTP builds a client with a custom HTTP transport (used in tests).
-func NewWithHTTP(endpoint string, timeout time.Duration, apiKey string, hc *http.Client) *Client {
-	c := New(endpoint, timeout, apiKey)
-	c.http = hc
-	return c
-}
-
 // SetAPIKey swaps the credential used on subsequent requests. Intended for
 // interactive startup (the user pastes a key into the harness before any agent
 // runs); call it before starting concurrent work. The key is held in memory

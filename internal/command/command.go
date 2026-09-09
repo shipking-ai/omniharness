@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"omniharness/internal/envguard"
+	"omniharness/internal/text"
 	"omniharness/internal/tools"
 )
 
@@ -198,10 +199,10 @@ func (t *Tool) Run(ctx context.Context, input map[string]any) (tools.Result, err
 	cmd.Stderr = &out
 
 	err := cmd.Run()
-	text := truncate(out.String(), t.spec.MaxOutput)
+	output := truncate(out.String(), t.spec.MaxOutput)
 
 	if runCtx.Err() == context.DeadlineExceeded {
-		return tools.Result{Output: text}, &tools.Error{
+		return tools.Result{Output: output}, &tools.Error{
 			Kind: tools.ErrTimeout, Tool: t.spec.Name,
 			Message: fmt.Sprintf("did not finish within %s", t.spec.Timeout),
 		}
@@ -211,17 +212,17 @@ func (t *Tool) Run(ctx context.Context, input map[string]any) (tools.Result, err
 		if errors.As(err, &exitErr) {
 			// The program ran and failed: ordinary, and its own output is the
 			// most useful thing to hand back.
-			return tools.Result{Output: text}, &tools.Error{
+			return tools.Result{Output: output}, &tools.Error{
 				Kind: tools.ErrFailed, Tool: t.spec.Name,
 				Message: fmt.Sprintf("exited %d", exitErr.ExitCode()),
 			}
 		}
 		// Could not start at all — missing binary, bad directory.
-		return tools.Result{Output: text}, &tools.Error{
+		return tools.Result{Output: output}, &tools.Error{
 			Kind: tools.ErrUnavailable, Tool: t.spec.Name, Message: err.Error(),
 		}
 	}
-	return tools.Result{Output: text}, nil
+	return tools.Result{Output: output}, nil
 }
 
 func stringList(v any) ([]string, error) {
@@ -246,9 +247,8 @@ func stringList(v any) ([]string, error) {
 	return out, nil
 }
 
+// truncate bounds what a command's output can add to a model's context, and
+// says so in the text rather than silently stopping mid-sentence.
 func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "\n…[output truncated]"
+	return text.ClipWith(s, max, "\n…[output truncated]")
 }
