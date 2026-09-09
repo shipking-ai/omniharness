@@ -52,29 +52,26 @@ needs belongs in the plain `<script>` below it, which no CDN can stop.
 | `#architecture`| Repo tree diagram                       |
 | `#coming`      | Web/desktop tease + notify form         |
 
-## Adding asciinema
+## The doctor recording (assets/doctor.svg)
 
-1. Record a session: `asciinema rec demo.cast`
-2. Upload to asciinema.org and get the embed URL
-3. Replace the `<a href="https://asciinema.org" ...>` in `#playground` with:
-   ```html
-   <script src="https://asciinema.org/a/<ID>.js" id="asciicast-<ID>" async></script>
-   ```
-4. Or use the self-hosted `asciinema-player` npm package with a local `.cast` file.
-
-## Social card (assets/og.png)
-
-`assets/og.source.html` is the source; `assets/og.png` is what ships. It is a
-plain HTML page rendered headless, so it stays editable with the same tokens as
-the site rather than living in a binary nobody can change:
+A real recording, not a mock. `scripts/record-doctor-cast.py` runs `omniharness
+doctor`, captures every line with the moment it actually appeared, and writes a
+self-contained animated SVG:
 
 ```
-chrome --headless=new --disable-gpu --hide-scrollbars   --force-device-scale-factor=1 --virtual-time-budget=5000   --screenshot=assets/og.png --window-size=1200,630   file:///absolute/path/to/assets/og.source.html
+python scripts/record-doctor-cast.py capture.json landing/assets/doctor.svg
 ```
 
-The `og:image` / `twitter:image` paths are **relative**, because the site has no
-domain yet (see `docs/landing-brief.md`). Slack, Discord and iMessage resolve
-those; X does not. Make them absolute and add `og:url` when the domain lands.
+An SVG rather than an asciinema cast because a cast needs a player, and the
+player needs a CDN or a vendored bundle — this page depends on neither. The CSS
+animation runs anywhere with no JavaScript, and under
+`prefers-reduced-motion` it shows the finished output instead of an empty box.
+
+**Two things are redacted and must stay redacted:** the masked API key still
+leaks the last four characters of a live credential, and the persistence path
+carries the operator's account name. The generator does both; check its
+`REDACTIONS` before re-recording, and grep the result for your own username
+before committing it.
 
 ## Deployment (Vercel)
 

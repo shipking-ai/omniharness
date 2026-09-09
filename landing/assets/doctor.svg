@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 403"
+     width="940" height="403" role="img"
+     aria-label="A recording of omniharness doctor checking a live OmniRoute gateway: 13 lines, all checks passing.">
+<style>
+  .r { font-family: ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono',Menlo,Consolas,monospace;
+        font-size: 13.5px; white-space: pre; animation-duration: 7.16s;
+        animation-iteration-count: infinite; animation-timing-function: steps(1,end); }
+    .r0 { animation-name: r0; }
+  .r1 { animation-name: r1; }
+  .r2 { animation-name: r2; }
+  .r3 { animation-name: r3; }
+  .r4 { animation-name: r4; }
+  .r5 { animation-name: r5; }
+  .r6 { animation-name: r6; }
+  .r7 { animation-name: r7; }
+  .r8 { animation-name: r8; }
+  .r9 { animation-name: r9; }
+  .r10 { animation-name: r10; }
+  .r11 { animation-name: r11; }
+  .r12 { animation-name: r12; }
+  .r13 { animation-name: r13; }
+    @keyframes r0{0%,0.000%{opacity:0}0.001%,100%{opacity:1}}
+  @keyframes r1{0%,0.573%{opacity:0}0.574%,100%{opacity:1}}
+  @keyframes r2{0%,0.573%{opacity:0}0.574%,100%{opacity:1}}
+  @keyframes r3{0%,0.573%{opacity:0}0.574%,100%{opacity:1}}
+  @keyframes r4{0%,0.796%{opacity:0}0.797%,100%{opacity:1}}
+  @keyframes r5{0%,0.796%{opacity:0}0.797%,100%{opacity:1}}
+  @keyframes r6{0%,0.852%{opacity:0}0.853%,100%{opacity:1}}
+  @keyframes r7{0%,66.215%{opacity:0}66.216%,100%{opacity:1}}
+  @keyframes r8{0%,66.215%{opacity:0}66.216%,100%{opacity:1}}
+  @keyframes r9{0%,66.299%{opacity:0}66.300%,100%{opacity:1}}
+  @keyframes r10{0%,66.313%{opacity:0}66.314%,100%{opacity:1}}
+  @keyframes r11{0%,66.313%{opacity:0}66.314%,100%{opacity:1}}
+  @keyframes r12{0%,66.313%{opacity:0}66.314%,100%{opacity:1}}
+  @keyframes r13{0%,66.313%{opacity:0}66.314%,100%{opacity:1}}
+  .cursor { animation: blink 1.1s steps(1,end) infinite; }
+  @keyframes blink { 0%,50% {opacity:1} 50.001%,100% {opacity:0} }
+  /* Without motion, show the finished output rather than an empty box. */
+  @media (prefers-reduced-motion: reduce) {
+    .r { animation: none; opacity: 1; }
+    .cursor { animation: none; opacity: 0; }
+  }
+</style>
+<rect width="940" height="403" rx="12" fill="#0b0d12" stroke="#232936"/>
+<rect width="940" height="38" rx="12" fill="#151922"/>
+<rect y="26" width="940" height="12" fill="#151922"/>
+<line x1="0" y1="38" x2="940" y2="38" stroke="#232936"/>
+<circle cx="20" cy="19" r="5" fill="#f2637e"/><circle cx="38" cy="19" r="5" fill="#e6b955"/><circle cx="56" cy="19" r="5" fill="#8fd66f"/>
+<text x="470.0" y="24" text-anchor="middle" fill="#6f7889"
+      font-family="ui-monospace,'SF Mono',Consolas,monospace" font-size="11.5">omniharness — doctor</text>
+<text class="r r0" x="26" y="62"><tspan fill="#2dd4bf">$</tspan> <tspan fill="#e6e9f0">omniharness doctor</tspan></text>
+<text class="r r1" x="26" y="83"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   config                       default config valid</tspan></text>
+<text class="r r2" x="26" y="104"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   config validation            valid</tspan></text>
+<text class="r r3" x="26" y="125"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   persistence dir              C:\Users\you\.omniharness</tspan></text>
+<text class="r r4" x="26" y="146"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   go toolchain                 found</tspan></text>
+<text class="r r5" x="26" y="167"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   git                          found</tspan></text>
+<text class="r r6" x="26" y="188"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   runtime                      wired</tspan></text>
+<text class="r r7" x="26" y="209"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   omniroute endpoint           http://127.0.0.1:20128 reachable (HTTP 200)</tspan></text>
+<text class="r r8" x="26" y="230"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   omniroute auth               authenticated [key_9999] (reachable and authenticated)</tspan></text>
+<text class="r r9" x="26" y="251"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   omniroute routing quality    2 models tracked, none degraded</tspan></text>
+<text class="r r10" x="26" y="272"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   store                        24 sessions, 22 tasks, 170 model calls</tspan></text>
+<text class="r r11" x="26" y="293"><tspan fill="#8fd66f">ok</tspan><tspan fill="#6f7889">   version                      omniharness 0.1.112 (b688a58)</tspan></text>
+<text class="r r12" x="26" y="314"></text>
+<text class="r r13" x="26" y="335"><tspan fill="#e6e9f0">11 of 11 checks passed</tspan></text>
+<rect class="cursor" x="26" y="352" width="8" height="15" fill="#2dd4bf" opacity="0.9"/>
+</svg>
