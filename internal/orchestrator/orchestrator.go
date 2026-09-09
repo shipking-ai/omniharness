@@ -74,9 +74,15 @@ type Result struct {
 // Orchestrator runs tasks end to end.
 type Orchestrator struct {
 	deps Deps
-	// cancel is set while a task is running to support graceful cancellation.
+	// cancels holds one cancel function per running task, keyed by task id.
+	//
+	// This was a single field, which quietly assumed one task at a time. It is
+	// not: `omniharness serve` accepts concurrent POST /v1/tasks, and each run
+	// overwrote the previous run's cancel function — so the only cancel handle
+	// in the process pointed at whichever task started last, and every earlier
+	// one became uncancellable.
 	cancelMu sync.Mutex
-	cancel   context.CancelFunc
+	cancels  map[string]context.CancelFunc
 }
 
 // New builds an orchestrator.
@@ -96,13 +102,19 @@ func (o *Orchestrator) SetModelSelector(sel *model.Selector) {
 	o.deps.ModelSel = sel
 }
 
-// Cancel requests graceful cancellation of the running task.
-func (o *Orchestrator) Cancel() {
+// CancelTask requests graceful cancellation of one running task and reports
+// whether it was running. Addressed by task id rather than "the current task",
+// so a second client — or a second run — cannot cancel something it did not
+// mean to.
+func (o *Orchestrator) CancelTask(taskID string) bool {
 	o.cancelMu.Lock()
-	if o.cancel != nil {
-		o.cancel()
+	defer o.cancelMu.Unlock()
+	cancel, ok := o.cancels[taskID]
+	if !ok {
+		return false
 	}
-	o.cancelMu.Unlock()
+	cancel()
+	return true
 }
 
 func (o *Orchestrator) taskEvent(t *task.Task, p event.Payload) {
@@ -136,12 +148,15 @@ func (o *Orchestrator) Run(ctx context.Context, sessionID string, spec task.Spec
 
 	runCtx, cancel := context.WithCancel(ctx)
 	o.cancelMu.Lock()
-	o.cancel = cancel
+	if o.cancels == nil {
+		o.cancels = map[string]context.CancelFunc{}
+	}
+	o.cancels[tsk.ID] = cancel
 	o.cancelMu.Unlock()
 	defer func() {
 		cancel()
 		o.cancelMu.Lock()
-		o.cancel = nil
+		delete(o.cancels, tsk.ID)
 		o.cancelMu.Unlock()
 	}()
 
