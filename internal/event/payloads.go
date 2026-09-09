@@ -332,6 +332,11 @@ func (*RepairCompletedData) EventType() Type { return RepairCompleted }
 
 // ApprovalData accompanies ApprovalRequested/Granted/Denied.
 type ApprovalData struct {
+	// ID addresses one pending approval. A client that sees the request on the
+	// event stream needs something to answer with; without it the only
+	// possible reply is "approve whatever is currently waiting", which is a
+	// race as soon as two agents ask at once.
+	ID        string `json:"id,omitempty"`
 	Tool      string `json:"tool,omitempty"`
 	Action    string `json:"action,omitempty"`
 	Risk      string `json:"risk,omitempty"`

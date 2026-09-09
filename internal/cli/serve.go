@@ -36,6 +36,8 @@ Endpoints:
   GET  /health             liveness + OmniRoute reachability
   POST /v1/tasks           run a task {prompt, sessionId?}
   POST /v1/tasks/{id}/cancel  stop a running task
+  GET  /v1/approvals       questions waiting for an answer
+  POST /v1/approvals/{id}  answer one {granted: true|false}
   GET  /v1/events          live event stream (SSE); ?session= and ?types= filter
   GET  /v1/sessions        list sessions
   GET  /v1/sessions/{id}   session detail with metrics
@@ -51,7 +53,16 @@ and should re-read the session rather than assume it saw everything.`,
 				return err
 			}
 			defer rt.Close()
-			installApprover(rt, rootOpts.Yes)
+			// The terminal prompter is useless here: it writes to the server's
+			// stderr and reads the server's stdin, neither of which belongs to the
+			// client that asked. Questions go to the event stream instead, and
+			// answers come back over /v1/approvals.
+			approvals := newApprovalBroker(rt.Bus, defaultApprovalTimeout)
+			if rootOpts.Yes {
+				installApprover(rt, true)
+			} else {
+				rt.SetApprover(approvals)
+			}
 			cfg, _ := loadConfig()
 			loadMCPServersFromConfig(cmd.Context(), rt, cfg)
 
@@ -109,6 +120,8 @@ and should re-read the session rather than assume it saw everything.`,
 				writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID, "task": tsk})
 			})
 			mux.HandleFunc("/v1/tasks/", cancelTaskHandler(rt))
+			mux.HandleFunc("/v1/approvals", approvalsHandler(approvals))
+			mux.HandleFunc("/v1/approvals/", approvalsHandler(approvals))
 			mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
 			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
 				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")

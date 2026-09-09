@@ -386,9 +386,10 @@ func (r *Runtime) RunTask(ctx context.Context, sessionID, prompt string, opts Ru
 		Deadline:  time.Now().Add(opts.Deadline).UTC(),
 	}
 	if opts.ApproveAll {
-		r.Policy.SetApprover(policy.ApproverFunc(func(context.Context, policy.Request, string) (bool, error) {
-			return true, nil
-		}))
+		// Scoped to this run's context. Replacing the engine's approver here
+		// changed the whole process permanently, so one approve-all task left
+		// every later task on a `serve` process auto-approving.
+		ctx = policy.WithAutoApprove(ctx)
 	}
 	if opts.Deadline > 0 {
 		var cancel context.CancelFunc
