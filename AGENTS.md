@@ -4,7 +4,7 @@ Instructions for an autonomous coding agent working in this repository — GitHu
 
 ## What this is
 
-Two programs, one version line. The Go tree (`cmd/`, `internal/`) is the orchestration engine and a scriptable CLI. `npm/` is a separate TypeScript program — the terminal UI, published as `omniharness-cli`. Everything routes through OmniRoute; `internal/gateway` is the only package that talks to it. Do not add an HTTP client anywhere else.
+Two programs, one version line. The Go tree (`cmd/`, `internal/`) is the orchestration engine, a scriptable CLI, a loopback HTTP API, and two browser surfaces compiled into the binary (`internal/cli/webui`). `npm/` is a separate TypeScript program — the terminal UI, published as `omniharness-cli`. Everything routes through OmniRoute; `internal/gateway` is the only package that talks to it. Do not add an HTTP client anywhere else.
 
 ## Build
 
@@ -42,6 +42,30 @@ See [SECURITY.md](SECURITY.md) for the complete list of what is guaranteed and w
 ## Terminal UI changes need to actually be rendered
 
 `tsc` cannot see that a value is one column too wide, that a label has run into its own text, or that a panel has drawn the same list twice — all three have shipped past a clean typecheck in this repository. If you change anything under `npm/src/ui/`, render it (see `test/streams.ts` for the fake-terminal harness other tests use) at a few widths before calling the change done, and prefer a test that asserts on the actual rendered frame over one that only checks component props.
+
+## Browser surfaces need to actually be loaded
+
+The same rule as the TUI, for the same reason, learned the same way. `go test`
+proves the bytes are served; it cannot see that a pane is blank, that a label
+is stranded outside its track, or that a flex column has squashed every row in
+a list below the height of its own text. All three shipped past a clean Go
+suite in this repository, and the last one shipped past a screenshot review
+too, because the evidence was dismissed as capture blur instead of being
+cropped and looked at.
+
+If you change anything under `internal/cli/webui/`:
+
+- Serve it and load both `/` and `/desktop`. A missing asset route does not
+  fail loudly — it serves a page that loads and then does nothing.
+- Read the browser console. Every render bug found here announced itself there
+  first, and one of them threw on every frame while the page still looked
+  plausible.
+- Run a real task through it against a live gateway, and look at the result at
+  full resolution. Crop into the region you are judging rather than squinting
+  at a downscaled screenshot.
+
+`node --check` each `.js` file before building; there is no bundler to catch a
+syntax error, and an embedded broken script is a silent dead page.
 
 ## Commits and PRs
 
