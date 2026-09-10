@@ -102,9 +102,26 @@ approach was wrong is the most valuable line on the screen. Several functions
 here carry a note about the bug that shaped them — keep those alive, and add to
 them when you learn something the hard way.
 
-The interface avoids decoration. Plain words rather than glyphs (`ok`, `FAIL`,
-`no`), an ASCII spinner, terse lowercase copy, no gradients and no exclamation
-marks. The CLI follows [clig.dev](https://clig.dev).
+The terminal surfaces avoid decoration. Plain words rather than glyphs (`ok`,
+`FAIL`, `no`), an ASCII spinner, terse lowercase copy, no gradients and no
+exclamation marks. The CLI follows [clig.dev](https://clig.dev). This covers
+`internal/cli`, `internal/tui`, `npm/src`, and the landing page.
+
+**The desktop shell (`internal/cli/webui/desktop.*`) is deliberately outside
+that rule**, at the owner's direction. A window is not a terminal, and it is
+the surface someone meets who has never opened the TUI: it leads rows with
+sentences rather than marks, animates, and draws a 3D route graph. What it
+still refuses is decoration that carries nothing. Motion there tracks state —
+a bar lengthens because time is passing, a node glows because a model is
+working, a packet crosses an edge only while a call is genuinely in flight —
+and nothing animates on a timer for its own sake.
+
+Two rules apply to any animation, whichever surface:
+
+- Animate `transform` and `opacity` only. `width`, `height`, `top` and `left`
+  run through layout on every frame; the timeline bars did exactly that until
+  they were rebuilt on `transform`.
+- Honour `prefers-reduced-motion` with no exceptions, opacity included.
 
 Never show a number nobody computed. If a figure is not measured, leave the row
 out rather than print a zero — `$0` reads as "this run was free", not as "not

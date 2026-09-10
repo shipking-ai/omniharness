@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniHarness</title>
+<link rel="stylesheet" href="/theme.css">
+<!-- The workspace application.
+     Laid out the way an editor is laid out, because that is the shape people
+     already know: an activity rail, a side bar, an editor group with tabs, a
+     panel underneath, a status bar along the bottom. The agent lives in its
+     own pane rather than a modal, because it is the thing you are working
+     with, not a thing you summon. -->
+<style>
+  /* The column track is explicit. Without it the implicit one is auto-sized,
+     which means max-content: one long line in an open file grew the grid to
+     5194px inside a 1500px window and pushed the conversation pane clean off
+     the screen. minmax(0,1fr) is what lets the panes shrink and the code
+     scroll instead. */
+  .app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+    grid-template-columns:minmax(0,1fr);font-size:13px}
+
+  /* ── Title bar ─────────────────────────────────────────────── */
+  .bar{display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;flex:none;
+    background:var(--s1);border-bottom:1px solid var(--line);-webkit-app-region:drag;user-select:none}
+  .bar button,.bar .no-drag{-webkit-app-region:no-drag}
+  .brand{font-size:12.5px;font-weight:var(--w-semi);letter-spacing:var(--track-lg);color:var(--ink-2);flex:none}
+  .brand i{color:var(--accent);font-style:normal}
+  .brand b{color:var(--ink);font-weight:var(--w-semi)}
+  .vsep{width:1px;height:15px;background:var(--line);flex:none}
+  .proj{font-size:12px;color:var(--ink-2);flex:none;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;max-width:30ch}
+  .spacer{flex:1}
+  .state{display:inline-flex;align-items:center;gap:1px;flex:none;font-size:11px;
+    font-weight:var(--w-med);padding:2px 9px;border-radius:99px;border:1px solid var(--line);
+    background:var(--s2);color:var(--ink-3);
+    transition:color var(--t-med) var(--ease-out),border-color var(--t-med) var(--ease-out),
+               background var(--t-med) var(--ease-out)}
+  .state.running{color:var(--info);border-color:rgba(90,169,255,.4);background:rgba(90,169,255,.1)}
+  .state.done{color:var(--success);border-color:rgba(110,231,168,.4);background:rgba(110,231,168,.1)}
+  .state.failed{color:var(--error);border-color:rgba(255,107,138,.4);background:rgba(255,107,138,.1)}
+  .ticks{font-family:var(--mono);width:1.1em;display:inline-block;text-align:left}
+  .state.running .ticks::after{content:'.';animation:ticks 1.4s steps(1,end) infinite}
+  @keyframes ticks{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+  .kbtn{font:inherit;font-size:11px;font-weight:var(--w-med);color:var(--ink-3);cursor:pointer;
+    background:var(--s2);border:1px solid var(--line);border-radius:var(--r-sm);padding:2px 8px;
+    display:flex;align-items:center;gap:5px;flex:none;
+    transition:color var(--t-fast) ease,border-color var(--t-fast) ease,background var(--t-fast) ease}
+  .kbtn:hover{color:var(--ink);border-color:var(--line-strong);background:var(--s3)}
+  kbd{font-family:var(--mono);font-size:9.5px;background:var(--s3);color:var(--ink-2);
+    border:1px solid var(--line);border-radius:var(--r-xs);padding:0 4px}
+
+  /* ── Frame ─────────────────────────────────────────────────── */
+  .frame{display:flex;min-height:0;min-width:0}
+
+  /* Activity rail. Icons only, like every editor: it is muscle memory, and it
+     costs 46px instead of a whole column. */
+  .rail{width:46px;flex:none;background:var(--ground);border-right:1px solid var(--line-soft);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:2px}
+  .act{width:38px;height:38px;border:0;background:transparent;cursor:pointer;border-radius:var(--r-sm);
+    display:grid;place-items:center;color:var(--ink-4);position:relative;
+    transition:color var(--t-fast) ease,background var(--t-fast) ease}
+  .act:hover{color:var(--ink-2);background:var(--s2)}
+  .act:active{transform:none}
+  .act.on{color:var(--ink)}
+  .act.on::before{content:'';position:absolute;left:-6px;top:8px;bottom:8px;width:2px;
+    background:var(--accent);border-radius:2px}
+  .act .badge{position:absolute;right:4px;top:4px;min-width:14px;height:14px;border-radius:99px;
+    background:var(--error);color:#2a0a12;font-size:9px;font-weight:var(--w-semi);
+    display:grid;place-items:center;padding:0 3px}
+
+  .side{width:250px;flex:none;background:var(--s1);border-right:1px solid var(--line-soft);
+    display:flex;flex-direction:column;min-height:0}
+  .center{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+  .chat{width:410px;flex:none;background:var(--s1);border-left:1px solid var(--line-soft);
+    display:flex;flex-direction:column;min-height:0}
+  .split{flex:none;width:5px;margin:0 -2px;cursor:col-resize;z-index:6;background:transparent;
+    transition:background var(--t-fast) ease}
+  .split:hover,.split.dragging{background:var(--accent-dim)}
+  .splitv{flex:none;height:5px;margin:-2px 0;cursor:row-resize;z-index:6;background:transparent;
+    transition:background var(--t-fast) ease}
+  .splitv:hover,.splitv.dragging{background:var(--accent-dim)}
+  body.resizing{cursor:col-resize;user-select:none}
+  body.resizing-v{cursor:row-resize;user-select:none}
+
+  .head{display:flex;align-items:center;gap:8px;padding:0 12px;height:34px;flex:none;
+    border-bottom:1px solid var(--line-soft)}
+  .head-title{font-size:10.5px;font-weight:var(--w-semi);color:var(--ink-3);
+    text-transform:uppercase;letter-spacing:.08em}
+  .head-note{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-4);flex:none}
+
+  /* ── Side bar views ────────────────────────────────────────── */
+  .view{flex:1;overflow:auto;min-height:0;display:none;flex-direction:column}
+  .view.on{display:flex}
+  .tree{padding:4px 0 12px}
+  .node{display:flex;align-items:center;gap:5px;width:100%;border:0;background:transparent;
+    color:var(--ink-2);font:inherit;font-size:12.5px;padding:2px 10px;cursor:pointer;
+    text-align:left;white-space:nowrap;line-height:1.7;
+    transition:background var(--t-fast) ease,color var(--t-fast) ease}
+  .node:hover{background:var(--s2);color:var(--ink)}
+  .node:active{transform:none}
+  .node.on{background:var(--s3);color:var(--ink)}
+  .node .tw{flex:none;width:9px;color:var(--ink-4);font-size:8px;line-height:1;
+    transition:transform var(--t-fast) var(--ease-out)}
+  .node .tw.open{transform:rotate(90deg)}
+  .node .ic{flex:none;width:13px;display:grid;place-items:center;color:var(--ink-4)}
+  .node.dir .ic{color:var(--info)}
+  .node .nm{overflow:hidden;text-overflow:ellipsis}
+  .empty-note{padding:12px;color:var(--ink-4);font-size:11.5px;line-height:1.6}
+
+  .find{margin:10px 12px;display:flex}
+  .find input{flex:1;font:inherit;font-size:12px;background:var(--s2);color:var(--ink);
+    border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 9px;outline:none}
+  .find input:focus{border-color:var(--accent-dim);box-shadow:var(--focus)}
+  .hit{display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
+    padding:5px 12px;color:var(--ink-2);font:inherit;font-size:12px;
+    transition:background var(--t-fast) ease}
+  .hit:hover{background:var(--s2);color:var(--ink)}
+  .hit:active{transform:none}
+  .hit .p{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);display:block}
+
+  .cap{padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+  .cap b{display:block;font-size:12px;color:var(--ink);font-weight:var(--w-med)}
+  .cap span{font-size:11px;color:var(--ink-4)}
+
+  /* ── Editor ────────────────────────────────────────────────── */
+  .tabs{display:flex;flex:none;height:34px;background:var(--s1);
+    border-bottom:1px solid var(--line-soft);overflow-x:auto}
+  .tab{display:flex;align-items:center;gap:7px;padding:0 11px;flex:none;cursor:pointer;
+    font-size:12px;color:var(--ink-3);background:transparent;border:0;
+    border-right:1px solid var(--line-soft);white-space:nowrap;
+    transition:background var(--t-fast) ease,color var(--t-fast) ease}
+  .tab:hover{color:var(--ink-2);background:var(--s2)}
+  .tab:active{transform:none}
+  .tab.on{color:var(--ink);background:var(--ground);box-shadow:inset 0 -1px 0 var(--accent)}
+  .tab .x{color:var(--ink-4);font-family:var(--mono);font-size:11px;padding:0 3px;border-radius:3px}
+  .tab .x:hover{color:var(--ink);background:var(--s4)}
+  .crumb{flex:none;height:26px;display:flex;align-items:center;gap:6px;padding:0 14px;
+    font-family:var(--mono);font-size:10.5px;color:var(--ink-4);
+    border-bottom:1px solid var(--line-soft);background:var(--ground)}
+  .code{flex:1;overflow:auto;min-height:0;min-width:0;background:var(--ground)}
+  .code pre{font-family:var(--mono);font-size:12.5px;line-height:1.55;padding:8px 0 40px;
+    tab-size:4;white-space:pre}
+  .ln{display:block;padding-right:20px}
+  .ln::before{content:attr(data-n);display:inline-block;width:54px;padding-right:16px;
+    text-align:right;color:var(--ink-4);user-select:none;font-variant-numeric:tabular-nums}
+  .ln:hover{background:var(--s1)}
+  .ln.touched{background:rgba(45,212,191,.07);box-shadow:inset 3px 0 0 var(--accent-dim)}
+  .tc{color:#6b7a8f;font-style:italic}
+  .ts{color:#8fd6a8}
+  .tk{color:#c99bf5}
+  .tn{color:#7cc4ff}
+  .tf{color:var(--accent-hi)}
+  .blank{flex:1;display:grid;place-items:center;color:var(--ink-4);font-size:12.5px;
+    text-align:center;padding:0 30px;line-height:1.7}
+
+  /* ── Bottom panel ──────────────────────────────────────────── */
+  .panel{flex:none;height:190px;min-height:0;display:flex;flex-direction:column;
+    background:var(--s1);border-top:1px solid var(--line)}
+  .panel.collapsed{height:34px}
+  .ptabs{display:flex;align-items:center;gap:2px;height:34px;flex:none;padding:0 8px;
+    border-bottom:1px solid var(--line-soft)}
+  .ptab{font:inherit;font-size:11px;font-weight:var(--w-med);cursor:pointer;padding:3px 9px;
+    border-radius:var(--r-sm);background:transparent;color:var(--ink-4);border:0;
+    text-transform:uppercase;letter-spacing:.06em;
+    transition:color var(--t-fast) ease,background var(--t-fast) ease}
+  .ptab:hover{color:var(--ink-2)} .ptab:active{transform:none}
+  .ptab.on{color:var(--ink);background:var(--s3)}
+  .pbody{flex:1;overflow:auto;min-height:0;min-width:0}
+  .pview{display:none;padding:6px 0 10px} .pview.on{display:block}
+  .prow{display:grid;grid-template-columns:56px 116px minmax(0,1fr) auto;gap:10px;
+    align-items:baseline;padding:2px 14px;font-size:11.5px}
+  .prow:hover{background:var(--s2)}
+  .prow .s{font-weight:var(--w-med);color:var(--ink-3)}
+  .prow.ok .s{color:var(--success)} .prow.bad .s{color:var(--error)}
+  .prow.warn .s{color:var(--warn)} .prow.busy .s{color:var(--info)}
+  .prow .k{font-family:var(--mono);font-size:10.5px;color:var(--ink-4)}
+  .prow .d{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow .t{font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+  .pempty{padding:14px;color:var(--ink-4);font-size:11.5px}
+
+  /* ── Conversation ──────────────────────────────────────────── */
+  .thread{flex:1;overflow-y:auto;min-height:0;padding:12px 12px 4px;
+    display:flex;flex-direction:column;gap:16px}
+  .turn{display:flex;flex-direction:column;gap:7px}
+  .turn.fresh{animation:arrive var(--t-slow) var(--ease-out)}
+  @keyframes arrive{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .who{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:var(--w-med);color:var(--ink-2)}
+  .who .av{width:15px;height:15px;border-radius:4px;flex:none;display:grid;place-items:center;
+    font-size:8.5px;font-weight:var(--w-semi);color:var(--ground);background:var(--ink-3)}
+  .turn.you .av{background:var(--info)} .turn.oh .av{background:var(--accent)}
+  .who .home{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--ink-4)}
+  .said{font-size:13px;line-height:1.62;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+  .turn.you .said{color:var(--ink-2)}
+  .steps{border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--ground)}
+  .steps summary{list-style:none;cursor:pointer;padding:5px 9px;font-size:11px;color:var(--ink-3);
+    display:flex;align-items:center;gap:7px;transition:color var(--t-fast) ease}
+  .steps summary::-webkit-details-marker{display:none}
+  .steps summary:hover{color:var(--ink-2)}
+  .steps summary .tw{font-size:8px;color:var(--ink-4);transition:transform var(--t-fast) var(--ease-out)}
+  .steps[open] summary .tw{transform:rotate(90deg)}
+  .steps .cost{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+  .sstep{display:grid;grid-template-columns:52px 1fr auto;gap:8px;align-items:baseline;
+    padding:2px 9px;font-size:11px;border-top:1px solid var(--line-soft)}
+  .sstep .s{font-weight:var(--w-med);color:var(--ink-3)}
+  .sstep.ok .s{color:var(--success)} .sstep.bad .s{color:var(--error)}
+  .sstep.warn .s{color:var(--warn)} .sstep.busy .s{color:var(--info)}
+  .sstep .w{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sstep .d{font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+  .thread-empty{margin:auto;text-align:center;color:var(--ink-4);font-size:12px;line-height:1.7;max-width:32ch}
+
+  .composer{flex:none;padding:9px 12px 12px;border-top:1px solid var(--line-soft)}
+  .box{display:flex;align-items:flex-end;gap:8px;padding:8px 8px 8px 11px;
+    background:var(--s2);border:1px solid var(--line);border-radius:var(--r);
+    transition:border-color var(--t-med) var(--ease-out),box-shadow var(--t-med) var(--ease-out)}
+  .box:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-ghost)}
+  textarea{flex:1;resize:none;background:transparent;color:var(--ink);border:0;outline:none;
+    font:inherit;font-size:13px;line-height:1.55;max-height:170px;min-height:20px;padding:2px 0}
+  textarea:focus-visible{box-shadow:none}
+  textarea::placeholder{color:var(--ink-4)}
+  .send{flex:none;width:28px;height:28px;border-radius:var(--r-sm);border:0;cursor:pointer;
+    background:var(--accent);color:#04231f;display:grid;place-items:center;
+    transition:filter var(--t-fast) ease,opacity var(--t-fast) ease}
+  .send:hover{filter:brightness(1.1)}
+  .send:disabled{opacity:.3;cursor:default}
+  .hint{display:flex;justify-content:space-between;margin-top:6px;padding:0 2px;
+    font-size:10px;color:var(--ink-4)}
+
+  /* ── Status bar ────────────────────────────────────────────── */
+  .status{flex:none;display:flex;align-items:center;gap:14px;height:24px;padding:0 10px;
+    background:var(--s1);border-top:1px solid var(--line);font-size:11px;color:var(--ink-4)}
+  .status .g{display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .status .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .status .right{margin-left:auto;display:flex;gap:14px}
+  .dot{width:6px;height:6px;border-radius:99px;display:inline-block;
+    transition:background var(--t-med) ease,box-shadow var(--t-med) ease}
+  .dot.ok{background:var(--success);box-shadow:0 0 0 3px rgba(110,231,168,.14)}
+  .dot.bad{background:var(--error);box-shadow:0 0 0 3px rgba(255,107,138,.14)}
+  .dot.idle{background:var(--ink-4)}
+  /* Spend is the number no other editor will show you. It is an estimate and
+     the tilde says so. */
+  .spend{color:var(--ink-2)}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <span class="brand"><i>omni</i><b>harness</b></span>
+    <span class="vsep"></span>
+    <span class="proj" id="proj">&nbsp;</span>
+    <span class="spacer"></span>
+    <span class="state" id="state">idle<span class="ticks"></span></span>
+    <button class="kbtn no-drag" id="pal-open">go to <kbd>ctrl</kbd><kbd>p</kbd></button>
+  </header>
+
+  <div class="frame">
+    <nav class="rail" id="rail">
+      <button class="act on" data-view="explorer" title="Explorer">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+          <path d="M1.5 3.2c0-.4.3-.7.7-.7h3.3l1.3 1.6h6.1c.4 0 .7.3.7.7v7.5c0 .4-.3.7-.7.7H2.2a.7.7 0 0 1-.7-.7z"/>
+        </svg>
+      </button>
+      <button class="act" data-view="search" title="Search">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+          <circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2 14 14"/>
+        </svg>
+      </button>
+      <button class="act" data-view="caps" title="Capabilities">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/>
+          <rect x="2" y="9" width="5" height="5" rx="1"/><path d="M11.5 9.5v4M9.5 11.5h4"/>
+        </svg>
+      </button>
+    </nav>
+
+    <aside class="side" id="side">
+      <div class="head"><span class="head-title" id="side-title">Explorer</span><span class="head-note" id="side-note"></span></div>
+
+      <div class="view on" id="view-explorer"><div class="tree" id="tree"><div class="empty-note">reading the workspace…</div></div></div>
+
+      <div class="view" id="view-search">
+        <div class="find"><input id="q" placeholder="find a file" spellcheck="false"></div>
+        <div id="hits"><div class="empty-note">type to find files by name</div></div>
+      </div>
+
+      <div class="view" id="view-caps">
+        <div id="caps"><div class="empty-note">reading what this harness can do…</div></div>
+      </div>
+    </aside>
+    <div class="split" id="split-side" role="separator" aria-orientation="vertical"></div>
+
+    <main class="center">
+      <div class="tabs" id="tabs"></div>
+      <div class="crumb" id="crumb" hidden></div>
+      <div class="code" id="code" hidden></div>
+      <div class="blank" id="blank">open a file from the explorer — the agent works on this same tree, so what you read is what it reads</div>
+
+      <div class="splitv" id="split-panel" role="separator" aria-orientation="horizontal"></div>
+      <section class="panel" id="panel">
+        <div class="ptabs">
+          <button class="ptab on" data-p="events">Events</button>
+          <button class="ptab" data-p="route">Route</button>
+          <button class="ptab" data-p="checks">Checks</button>
+          <span class="spacer"></span>
+          <button class="kbtn" id="panel-toggle">hide</button>
+        </div>
+        <div class="pbody">
+          <div class="pview on" id="p-events"><div class="pempty">every model call, tool call and approval lands here as it happens</div></div>
+          <div class="pview" id="p-route"><div class="pempty">how the gateway routed each call — which provider answered, retries, failover</div></div>
+          <div class="pview" id="p-checks"><div class="pempty">build and test results the harness ran against its own work</div></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="split" id="split-chat" role="separator" aria-orientation="vertical"></div>
+
+    <aside class="chat">
+      <div class="head"><span class="head-title">Conversation</span><span class="head-note" id="thread-note"></span></div>
+      <div class="thread" id="thread">
+        <div class="thread-empty" id="thread-empty">ask a question, or describe a change you want made to this workspace</div>
+      </div>
+      <div class="composer">
+        <div class="box">
+          <textarea id="prompt" rows="1" placeholder="ask, or describe the work" spellcheck="false"></textarea>
+          <button class="send" id="go" title="send" aria-label="send">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 13V3M8 3L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="hint">
+          <span><kbd>enter</kbd> sends · <kbd>shift</kbd>+<kbd>enter</kbd> newline</span>
+          <span id="gaps" hidden></span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="status">
+    <span class="g"><span class="dot idle" id="gw-dot"></span><span id="gw">checking</span></span>
+    <span class="g mono" id="model">no model yet</span>
+    <span class="right">
+      <span class="g mono spend" id="spend" title="estimated, from the pricing table">~$0.00</span>
+      <span class="g mono" id="tokens">0 tok</span>
+      <span class="g mono" id="pos">—</span>
+      <span class="g mono" id="version">&nbsp;</span>
+    </span>
+  </footer>
+</div>
+
+<script src="/core.js"></script>
+<script src="/highlight.js"></script>
+<script src="/workspace.js"></script>
+</body>
+</html>

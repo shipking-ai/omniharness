@@ -102,6 +102,13 @@ type ChatRequest struct {
 
 // ChatResponse is an OpenAI-style chat completion response.
 type ChatResponse struct {
+	// Model is what actually served the request, which is not what was asked
+	// for. A request for a routing alias like "auto/best-coding" comes back
+	// with the model the router picked ("anthropic/claude-sonnet-5"), and
+	// discarding that field meant every surface reported the alias as though
+	// it were the model — and priced the call off a name no pricing table
+	// knows.
+	Model   string `json:"model,omitempty"`
 	Choices []struct {
 		Index        int     `json:"index"`
 		Message      Message `json:"message"`

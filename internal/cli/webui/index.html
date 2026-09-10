@@ -7,57 +7,8 @@
 <!-- Everything is served from the binary: no CDN, no webfont, no analytics.
      A harness you can run on a plane should not need the internet to draw
      itself. The type stack below is entirely system fonts for that reason. -->
+<link rel="stylesheet" href="/theme.css">
 <style>
-  :root{
-    /* Surfaces climb in four steps rather than two, which is what lets a card
-       sit on a panel sit on the ground without a border doing all the work. */
-    --ground:#0b0d12;
-    --s1:#101319;
-    --s2:#151922;
-    --s3:#1c212c;
-    --line:#232936;
-    --line-soft:#1a1f29;
-
-    --ink:#e6e9f0;
-    --ink-2:#a8b0c0;
-    --ink-3:#6f7889;
-
-    --accent:#2dd4bf;
-    --accent-dim:#1c8a7d;
-    --info:#56b6ff;
-    --success:#8fd66f;
-    --warn:#e6b955;
-    --error:#f2637e;
-
-    /* UI in a system sans, code in a system mono. Setting an entire interface
-       in monospace is the loudest tell that nobody designed it: it flattens
-       every level of hierarchy into one texture. */
-    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI Variable Text','Segoe UI',
-           Inter,Roboto,'Helvetica Neue',Arial,sans-serif;
-    --mono:ui-monospace,'SF Mono','Cascadia Mono','JetBrains Mono',Menlo,Consolas,monospace;
-
-    --r-sm:6px; --r:10px; --r-lg:14px;
-    /* One shadow scale. Depth is what separates a card from a coloured box. */
-    --sh-1:0 1px 2px rgba(0,0,0,.4);
-    --sh-2:0 4px 16px -4px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.3);
-    --sh-3:0 18px 48px -12px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.4);
-  }
-  *{margin:0;padding:0;box-sizing:border-box}
-  /* A class that sets display beats the user agent's [hidden] rule on
-     specificity, so .empty{display:flex} kept the hidden empty state in
-     the layout and pushed the transcript down the page. */
-  [hidden]{display:none !important}
-  html,body{height:100%}
-  body{
-    background:var(--ground); color:var(--ink);
-    font-family:var(--sans); font-size:14px; line-height:1.5;
-    -webkit-font-smoothing:antialiased; overflow:hidden;
-  }
-  ::selection{background:rgba(45,212,191,.28)}
-  ::-webkit-scrollbar{width:10px;height:10px}
-  ::-webkit-scrollbar-thumb{background:var(--s3);border-radius:99px;border:3px solid transparent;background-clip:content-box}
-  ::-webkit-scrollbar-thumb:hover{background:var(--line);background-clip:content-box}
-
   #bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block}
   /* The scene is ambience, not wallpaper: present at the top where the shell is
      thin, near-solid behind the reading column. */
@@ -79,6 +30,7 @@
   .brand-ver{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
 
   .new-run{
+    flex:none;
     display:flex;align-items:center;justify-content:center;gap:8px;
     width:100%;padding:9px 12px;border-radius:var(--r);cursor:pointer;
     background:var(--s3);color:var(--ink);border:1px solid var(--line);
@@ -88,9 +40,14 @@
   .new-run:hover{background:#222836;border-color:#2d3444}
   .new-run:active{transform:translateY(1px)}
 
-  .rail-label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:0 6px}
+  .rail-label{flex:none;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:0 6px}
   .sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:2px;margin-top:-8px}
+  /* Every direct child of a flex column shrinks by default. With more sessions
+     than fit the rail, each row was squashed below the height of its own text
+     and the labels overlapped into an unreadable smear — the list did not
+     scroll, it compressed. flex:none is what makes the scroller scroll. */
   .session{
+    flex:none;
     display:block;width:100%;text-align:left;border:0;background:transparent;
     color:var(--ink-2);font:inherit;font-size:13px;padding:7px 10px;border-radius:var(--r-sm);
     cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -100,7 +57,7 @@
   .session.active{background:var(--s3);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
   .sessions-empty{font-size:12.5px;color:var(--ink-3);padding:4px 10px}
 
-  .rail-foot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line-soft);padding-top:14px}
+  .rail-foot{flex:none;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line-soft);padding-top:14px}
   .stat{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:0 6px}
   .stat-k{color:var(--ink-3)}
   .stat-v{color:var(--ink-2);font-family:var(--mono);font-size:11.5px}
@@ -276,6 +233,8 @@
 
 <div class="approvals" id="approvals"></div>
 
+<script src="/core.js"></script>
+<script src="/scene.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
