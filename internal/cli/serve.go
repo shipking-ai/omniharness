@@ -203,6 +203,35 @@ func NewAPIHandler(parent context.Context) (http.Handler, func(), error) {
 	// The workspace, read-only, confined to exactly the tree the filesystem
 	// tools are confined to. The explorer showing a file the agent cannot touch
 	// would be a lie about what this window is looking at.
+	mux.HandleFunc("/v1/fs/find", fsFindHandler(fsRoot(cfg.Policy.WorkspaceRoot)))
+	// What this harness can actually do, addressed by capability rather than by
+	// tool name. The editor calls these extensions; here they are whatever the
+	// registry holds, including anything an MCP server contributed.
+	mux.HandleFunc("/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tools": rt.Tools.List()})
+	})
+	// The gateway's own account of how it routed each call: which provider
+	// actually answered, how long it took, whether it retried, whether it fell
+	// back. The harness has always been able to read this and no surface ever
+	// showed it.
+	mux.HandleFunc("/v1/route", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		ex, err := rt.Gateway.ExplainRouting(r.Context(), 60)
+		if err != nil {
+			// A gateway that will not explain itself is not an error worth
+			// breaking the page over; the pane says so instead.
+			writeJSON(w, http.StatusOK, map[string]any{"unavailable": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, ex)
+	})
 	mux.HandleFunc("/v1/fs/tree", fsTreeHandler(fsRoot(cfg.Policy.WorkspaceRoot)))
 	mux.HandleFunc("/v1/fs/file", fsFileHandler(fsRoot(cfg.Policy.WorkspaceRoot)))
 	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {

@@ -223,3 +223,60 @@ func languageOf(path string) string {
 		return "text"
 	}
 }
+
+// maxFindHits bounds a search. Someone typing "e" in a large repository does
+// not want every file in it, and the walk that produced them would be the
+// slowest thing the window ever did.
+const maxFindHits = 200
+
+// fsFindHandler finds files by name.
+//
+// Name only, not contents: a content search over a repository is a different
+// tool with different costs, and the thing this replaces — scrolling a tree
+// looking for a file you can already name — is by far the more common need.
+func fsFindHandler(workspaceRoot string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+		if q == "" {
+			writeJSON(w, http.StatusOK, map[string]any{"hits": []fsEntry{}})
+			return
+		}
+		root, err := tools.ResolveInWorkspace(workspaceRoot, ".")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+
+		hits := make([]fsEntry, 0, 32)
+		filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				// An unreadable directory is skipped, not fatal: one
+				// permission-denied subtree should not empty the results.
+				return nil
+			}
+			if d.IsDir() {
+				if skipDirs[d.Name()] {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if len(hits) >= maxFindHits {
+				return filepath.SkipAll
+			}
+			if !strings.Contains(strings.ToLower(d.Name()), q) {
+				return nil
+			}
+			rel, err := filepath.Rel(root, p)
+			if err != nil {
+				return nil
+			}
+			hits = append(hits, fsEntry{Name: d.Name(), Path: filepath.ToSlash(rel)})
+			return nil
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
+	}
+}
