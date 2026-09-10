@@ -30,6 +30,7 @@
   .brand-ver{font-size:11px;color:var(--ink-3);font-family:var(--mono)}
 
   .new-run{
+    flex:none;
     display:flex;align-items:center;justify-content:center;gap:8px;
     width:100%;padding:9px 12px;border-radius:var(--r);cursor:pointer;
     background:var(--s3);color:var(--ink);border:1px solid var(--line);
@@ -39,9 +40,14 @@
   .new-run:hover{background:#222836;border-color:#2d3444}
   .new-run:active{transform:translateY(1px)}
 
-  .rail-label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:0 6px}
+  .rail-label{flex:none;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:0 6px}
   .sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:2px;margin-top:-8px}
+  /* Every direct child of a flex column shrinks by default. With more sessions
+     than fit the rail, each row was squashed below the height of its own text
+     and the labels overlapped into an unreadable smear — the list did not
+     scroll, it compressed. flex:none is what makes the scroller scroll. */
   .session{
+    flex:none;
     display:block;width:100%;text-align:left;border:0;background:transparent;
     color:var(--ink-2);font:inherit;font-size:13px;padding:7px 10px;border-radius:var(--r-sm);
     cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -51,7 +57,7 @@
   .session.active{background:var(--s3);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
   .sessions-empty{font-size:12.5px;color:var(--ink-3);padding:4px 10px}
 
-  .rail-foot{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line-soft);padding-top:14px}
+  .rail-foot{flex:none;display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line-soft);padding-top:14px}
   .stat{display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:0 6px}
   .stat-k{color:var(--ink-3)}
   .stat-v{color:var(--ink-2);font-family:var(--mono);font-size:11.5px}

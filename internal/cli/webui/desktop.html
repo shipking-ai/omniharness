@@ -96,15 +96,21 @@
 
   /* ── Rail ──────────────────────────────────────────────────── */
   .new-run{
+    flex:none;
     display:block;width:100%;padding:9px 13px;border-radius:var(--r-sm);cursor:pointer;
     background:var(--s3);color:var(--ink);border:1px solid var(--line);
     font:inherit;font-size:13px;font-weight:550;text-align:left;
     transition:background .15s ease,border-color .15s ease;
   }
   .new-run:hover{background:#232a38;border-color:#333c4e}
-  .rail-label{font-size:11px;font-weight:600;color:var(--ink-3);padding:0 7px}
+  .rail-label{flex:none;font-size:11px;font-weight:600;color:var(--ink-3);padding:0 7px}
   .sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:1px;margin-top:-8px}
+  /* Every direct child of a flex column shrinks by default. With more sessions
+     than fit the rail, each row was squashed below the height of its own text
+     and the labels overlapped into an unreadable smear — the list did not
+     scroll, it compressed. flex:none is what makes the scroller scroll. */
   .session{
+    flex:none;
     display:block;width:100%;text-align:left;border:0;background:transparent;
     color:var(--ink-2);font:inherit;font-size:12.5px;padding:7px 10px;border-radius:var(--r-sm);
     cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -113,7 +119,7 @@
   .session:hover{background:var(--s2);color:var(--ink)}
   .session.active{background:var(--s3);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
   .sessions-empty{font-size:12px;color:var(--ink-3);padding:5px 10px}
-  .rail-foot{border-top:1px solid var(--line-soft);padding-top:12px;display:flex;flex-direction:column;gap:7px}
+  .rail-foot{flex:none;border-top:1px solid var(--line-soft);padding-top:12px;display:flex;flex-direction:column;gap:7px}
   .stat{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;padding:0 7px}
   .stat-k{color:var(--ink-3)} .stat-v{color:var(--ink-2);font-family:var(--mono);font-size:11px}
   .dot{width:6px;height:6px;border-radius:99px;display:inline-block;margin-right:6px;vertical-align:1px}

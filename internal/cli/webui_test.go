@@ -103,3 +103,41 @@ func TestTheTwoSurfacesAreDistinct(t *testing.T) {
 		}
 	}
 }
+
+// A flex column shrinks its children by default. The session rail is a flex
+// column holding one button per session, and without flex:none each row was
+// compressed below the height of its own text once the list outgrew the rail —
+// the labels overlapped into an unreadable smear instead of the list
+// scrolling. It looked like a rendering glitch and it was a one-word CSS bug.
+//
+// Asserted on the stylesheet because there is no DOM to measure here; the
+// point is that the declaration cannot be dropped again without a test saying
+// so.
+func TestScrollingListsDoNotShrinkTheirRows(t *testing.T) {
+	// Each entry is a rule that must carry flex:none, on each page that has it.
+	shrinkable := []string{".session{", ".new-run{", ".rail-label{", ".rail-foot{"}
+
+	for _, page := range []string{"webui/index.html", "webui/desktop.html"} {
+		raw, err := webUI.ReadFile(page)
+		if err != nil {
+			t.Fatalf("read %s: %v", page, err)
+		}
+		css := string(raw)
+		for _, rule := range shrinkable {
+			at := strings.Index(css, rule)
+			if at < 0 {
+				t.Errorf("%s has no %s rule; this test is checking a selector that no longer exists", page, rule)
+				continue
+			}
+			end := strings.Index(css[at:], "}")
+			if end < 0 {
+				t.Errorf("%s: %s rule is never closed", page, rule)
+				continue
+			}
+			if !strings.Contains(css[at:at+end], "flex:none") {
+				t.Errorf("%s: %s is a child of a flex column and does not set flex:none; "+
+					"it will be squashed below its content height when the rail overflows", page, rule)
+			}
+		}
+	}
+}
