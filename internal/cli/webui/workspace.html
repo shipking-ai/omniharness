@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniHarness</title>
+<link rel="stylesheet" href="/theme.css">
+<!-- The workspace application.
+     Files on the left, what you are reading in the middle, the agent on the
+     right. This is the surface for working *in*, which is why it is shaped
+     like an editor and not like a dashboard: the conversation is the point,
+     the code is the context, and the machinery is folded away until asked
+     for. -->
+<style>
+  .app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+
+  /* ── Title bar ─────────────────────────────────────────────── */
+  .bar{display:flex;align-items:center;gap:14px;height:46px;padding:0 14px;flex:none;
+    background:var(--s1);border-bottom:1px solid var(--line);-webkit-app-region:drag;user-select:none}
+  .bar button,.bar .no-drag{-webkit-app-region:no-drag}
+  .brand{font-size:13.5px;font-weight:var(--w-semi);letter-spacing:var(--track-lg);color:var(--ink-2);flex:none}
+  .brand i{color:var(--accent);font-style:normal}
+  .brand b{color:var(--ink);font-weight:var(--w-semi)}
+  .sep{width:1px;height:16px;background:var(--line);flex:none}
+  .cwd{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);flex:none;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:38ch}
+  .spacer{flex:1}
+  .state{display:inline-flex;align-items:center;gap:1px;flex:none;font-size:11.5px;
+    font-weight:var(--w-med);padding:3px 10px;border-radius:99px;border:1px solid var(--line);
+    background:var(--s2);color:var(--ink-3);
+    transition:color var(--t-med) var(--ease-out),border-color var(--t-med) var(--ease-out),
+               background var(--t-med) var(--ease-out)}
+  .state.running{color:var(--info);border-color:rgba(90,169,255,.4);background:rgba(90,169,255,.1)}
+  .state.done{color:var(--success);border-color:rgba(110,231,168,.4);background:rgba(110,231,168,.1)}
+  .state.failed{color:var(--error);border-color:rgba(255,107,138,.4);background:rgba(255,107,138,.1)}
+  .ticks{font-family:var(--mono);width:1.15em;display:inline-block;text-align:left}
+  .state.running .ticks::after{content:'.';animation:ticks 1.4s steps(1,end) infinite}
+  @keyframes ticks{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+  .kbtn{font:inherit;font-size:11.5px;font-weight:var(--w-med);color:var(--ink-3);cursor:pointer;
+    background:var(--s2);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px 9px;
+    display:flex;align-items:center;gap:6px;flex:none;
+    transition:color var(--t-fast) ease,border-color var(--t-fast) ease,background var(--t-fast) ease}
+  .kbtn:hover{color:var(--ink);border-color:var(--line-strong);background:var(--s3)}
+  kbd{font-family:var(--mono);font-size:10px;background:var(--s3);color:var(--ink-2);
+    border:1px solid var(--line);border-radius:var(--r-xs);padding:1px 5px}
+
+  /* ── Three panes ───────────────────────────────────────────── */
+  .panes{display:flex;min-height:0}
+  .files{width:232px;flex:none;background:var(--s1);border-right:1px solid var(--line-soft);
+    display:flex;flex-direction:column;min-height:0}
+  .middle{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;background:var(--ground)}
+  .chat{width:440px;flex:none;background:var(--s1);border-left:1px solid var(--line-soft);
+    display:flex;flex-direction:column;min-height:0}
+  .split{flex:none;width:5px;margin:0 -2px;cursor:col-resize;z-index:5;background:transparent;
+    transition:background var(--t-fast) ease}
+  .split:hover,.split.dragging{background:var(--accent-dim)}
+  body.resizing{cursor:col-resize;user-select:none}
+
+  .head{display:flex;align-items:center;gap:10px;padding:0 12px;height:38px;flex:none;
+    border-bottom:1px solid var(--line-soft);background:var(--s1)}
+  .head-title{font-size:11px;font-weight:var(--w-med);color:var(--ink-3);
+    text-transform:uppercase;letter-spacing:.07em}
+  .head-note{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-4);flex:none}
+
+  /* ── Explorer ──────────────────────────────────────────────── */
+  .tree{flex:1;overflow:auto;min-height:0;padding:6px 0 12px}
+  .node{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;
+    color:var(--ink-2);font:inherit;font-size:12.5px;padding:3px 12px;cursor:pointer;
+    text-align:left;white-space:nowrap;transition:background var(--t-fast) ease,color var(--t-fast) ease}
+  .node:hover{background:var(--s2);color:var(--ink)}
+  .node:active{transform:none}
+  .node.on{background:var(--s3);color:var(--ink)}
+  .node .tw{flex:none;width:10px;color:var(--ink-4);font-family:var(--mono);font-size:9px;
+    transition:transform var(--t-fast) var(--ease-out)}
+  .node .tw.open{transform:rotate(90deg)}
+  .node .nm{overflow:hidden;text-overflow:ellipsis}
+  .node.dir .nm{color:var(--ink-2)}
+  .tree-empty{padding:14px 12px;color:var(--ink-4);font-size:12px}
+
+  /* ── Editor ────────────────────────────────────────────────── */
+  .tabs{display:flex;flex:none;height:36px;background:var(--s1);border-bottom:1px solid var(--line-soft);
+    overflow-x:auto}
+  .tab{display:flex;align-items:center;gap:8px;padding:0 12px;flex:none;cursor:pointer;
+    font-size:12px;color:var(--ink-3);background:transparent;border:0;border-right:1px solid var(--line-soft);
+    transition:background var(--t-fast) ease,color var(--t-fast) ease}
+  .tab:hover{color:var(--ink-2);background:var(--s2)}
+  .tab:active{transform:none}
+  .tab.on{color:var(--ink);background:var(--ground);box-shadow:inset 0 -1px 0 var(--accent)}
+  .tab .x{color:var(--ink-4);font-family:var(--mono);font-size:11px;padding:0 2px;border-radius:3px}
+  .tab .x:hover{color:var(--ink);background:var(--s4)}
+  .code{flex:1;overflow:auto;min-height:0;background:var(--ground)}
+  .code pre{font-family:var(--mono);font-size:12.5px;line-height:1.62;padding:12px 0 40px;
+    tab-size:4;white-space:pre}
+  .ln{display:block;padding:0 18px 0 0}
+  .ln::before{content:attr(data-n);display:inline-block;width:52px;padding-right:16px;
+    text-align:right;color:var(--ink-4);user-select:none}
+  .ln:hover{background:var(--s1)}
+  .tc{color:var(--ink-4);font-style:italic}
+  .ts{color:var(--success)}
+  .tk{color:#c99bf5}
+  .tn{color:var(--info)}
+  .tf{color:var(--accent-hi)}
+  .blank{flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink-4);
+    font-size:12.5px;text-align:center;padding:0 30px;line-height:1.6}
+
+  /* ── Conversation ──────────────────────────────────────────── */
+  /* The thread is the app. A turn is what you asked and what came back; the
+     machinery that produced it collapses into one line you can open. */
+  .thread{flex:1;overflow-y:auto;min-height:0;padding:14px 14px 6px;
+    display:flex;flex-direction:column;gap:18px}
+  .turn{display:flex;flex-direction:column;gap:9px}
+  .turn.fresh{animation:arrive var(--t-slow) var(--ease-out)}
+  @keyframes arrive{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .who{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:var(--w-med);color:var(--ink-3)}
+  .who .av{width:16px;height:16px;border-radius:5px;flex:none;display:grid;place-items:center;
+    font-size:9px;font-weight:var(--w-semi);color:var(--ground);background:var(--ink-3)}
+  .turn.you .av{background:var(--info)}
+  .turn.oh .av{background:var(--accent)}
+  .who .model{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-4)}
+  .said{font-size:13.5px;line-height:1.62;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+  .turn.you .said{color:var(--ink-2)}
+  .said code{font-family:var(--mono);font-size:12.5px;background:var(--s3);
+    border-radius:var(--r-xs);padding:1px 5px}
+
+  /* The steps behind one turn, folded. Open it and the machinery is all
+     still there — this hides it, it does not throw it away. */
+  .steps{border:1px solid var(--line-soft);border-radius:var(--r-sm);background:var(--ground)}
+  .steps summary{list-style:none;cursor:pointer;padding:6px 10px;font-size:11.5px;
+    color:var(--ink-3);display:flex;align-items:center;gap:8px;
+    transition:color var(--t-fast) ease}
+  .steps summary::-webkit-details-marker{display:none}
+  .steps summary:hover{color:var(--ink-2)}
+  .steps summary .tw{font-family:var(--mono);font-size:9px;color:var(--ink-4);
+    transition:transform var(--t-fast) var(--ease-out)}
+  .steps[open] summary .tw{transform:rotate(90deg)}
+  .steps .cost{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-4)}
+  .step{display:grid;grid-template-columns:54px 1fr auto;gap:10px;align-items:baseline;
+    padding:3px 10px;font-size:11.5px;border-top:1px solid var(--line-soft)}
+  .step .s{font-weight:var(--w-med);color:var(--ink-3)}
+  .step.ok .s{color:var(--success)} .step.bad .s{color:var(--error)}
+  .step.warn .s{color:var(--warn)} .step.busy .s{color:var(--info)}
+  .step .w{color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step .d{font-family:var(--mono);font-size:10.5px;color:var(--ink-4)}
+  .thread-empty{margin:auto;text-align:center;color:var(--ink-4);font-size:12.5px;line-height:1.7;max-width:34ch}
+
+  /* ── Composer ──────────────────────────────────────────────── */
+  .composer{flex:none;padding:10px 14px 14px;border-top:1px solid var(--line-soft)}
+  .box{display:flex;align-items:flex-end;gap:9px;padding:9px 9px 9px 12px;
+    background:var(--s2);border:1px solid var(--line);border-radius:var(--r-lg);
+    transition:border-color var(--t-med) var(--ease-out),box-shadow var(--t-med) var(--ease-out)}
+  .box:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-ghost)}
+  textarea{flex:1;resize:none;background:transparent;color:var(--ink);border:0;outline:none;
+    font:inherit;font-size:13.5px;line-height:1.55;max-height:180px;min-height:22px;padding:3px 0}
+  textarea:focus-visible{box-shadow:none}
+  textarea::placeholder{color:var(--ink-4)}
+  .send{flex:none;width:30px;height:30px;border-radius:var(--r);border:0;cursor:pointer;
+    background:var(--accent);color:#04231f;display:grid;place-items:center;
+    transition:filter var(--t-fast) ease,opacity var(--t-fast) ease}
+  .send:hover{filter:brightness(1.1)}
+  .send:disabled{opacity:.3;cursor:default}
+  .hint{display:flex;justify-content:space-between;margin-top:7px;padding:0 3px;
+    font-size:10.5px;color:var(--ink-4)}
+
+  /* ── Status bar ────────────────────────────────────────────── */
+  .status{flex:none;display:flex;align-items:center;gap:16px;height:26px;padding:0 12px;
+    background:var(--s1);border-top:1px solid var(--line);font-size:11px;color:var(--ink-4)}
+  .status .g{display:flex;align-items:center;gap:6px}
+  .dot{width:6px;height:6px;border-radius:99px;display:inline-block;
+    transition:background var(--t-med) ease,box-shadow var(--t-med) ease}
+  .dot.ok{background:var(--success);box-shadow:0 0 0 3px rgba(110,231,168,.14)}
+  .dot.bad{background:var(--error);box-shadow:0 0 0 3px rgba(255,107,138,.14)}
+  .dot.idle{background:var(--ink-4)}
+  .status .mono{font-family:var(--mono)}
+  .status .right{margin-left:auto;display:flex;gap:16px}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <span class="brand"><i>omni</i><b>harness</b></span>
+    <span class="sep"></span>
+    <span class="cwd" id="cwd">&nbsp;</span>
+    <span class="spacer"></span>
+    <span class="state" id="state">idle<span class="ticks"></span></span>
+    <button class="kbtn no-drag" id="pal-open">go to <kbd>ctrl</kbd><kbd>k</kbd></button>
+  </header>
+
+  <div class="panes">
+    <nav class="files" id="files">
+      <div class="head"><span class="head-title">Explorer</span><span class="head-note" id="tree-note"></span></div>
+      <div class="tree" id="tree"><div class="tree-empty">reading the workspace…</div></div>
+    </nav>
+    <div class="split" id="split-files" role="separator" aria-orientation="vertical"></div>
+
+    <main class="middle">
+      <div class="tabs" id="tabs"></div>
+      <div class="code" id="code" hidden></div>
+      <div class="blank" id="blank">open a file to read it here — the agent works on the same tree, so what you see is what it sees</div>
+    </main>
+
+    <div class="split" id="split-chat" role="separator" aria-orientation="vertical"></div>
+
+    <aside class="chat">
+      <div class="head">
+        <span class="head-title">Conversation</span>
+        <span class="head-note" id="thread-note"></span>
+      </div>
+      <div class="thread" id="thread">
+        <div class="thread-empty" id="thread-empty">ask for something, or describe a change you want made to this workspace</div>
+      </div>
+      <div class="composer">
+        <div class="box">
+          <textarea id="prompt" rows="1" placeholder="ask, or describe the work" spellcheck="false"></textarea>
+          <button class="send" id="go" title="send" aria-label="send">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 13V3M8 3L3.5 7.5M8 3l4.5 4.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="hint">
+          <span><kbd>enter</kbd> sends · <kbd>shift</kbd>+<kbd>enter</kbd> newline</span>
+          <span id="gaps" hidden></span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="status">
+    <span class="g"><span class="dot idle" id="gw-dot"></span><span id="gw">checking</span></span>
+    <span class="g">stream <span class="mono" id="link">connecting</span></span>
+    <span class="right">
+      <span class="mono" id="model">&nbsp;</span>
+      <span class="mono" id="version">&nbsp;</span>
+    </span>
+  </footer>
+</div>
+
+<script src="/core.js"></script>
+<script src="/highlight.js"></script>
+<script src="/workspace.js"></script>
+</body>
+</html>

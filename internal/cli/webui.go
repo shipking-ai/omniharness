@@ -13,7 +13,7 @@ import (
 // front-end that needed the internet to draw itself would not be the same
 // product.
 //
-//go:embed webui/index.html webui/app.js webui/core.js webui/scene.js webui/theme.css webui/desktop.html webui/desktop.js webui/route.js
+//go:embed webui/index.html webui/app.js webui/core.js webui/scene.js webui/theme.css webui/desktop.html webui/desktop.js webui/route.js webui/workspace.html webui/workspace.js webui/highlight.js
 var webUI embed.FS
 
 // webUIFile is one embedded asset and the type to serve it as.
@@ -40,15 +40,18 @@ type webUIFile struct {
 // come back 200 with a page in it, which a client parses as JSON and reports as
 // a confusing error far from the cause.
 var webUIRoutes = map[string]webUIFile{
-	"/":           {"webui/index.html", "text/html; charset=utf-8"},
-	"/index.html": {"webui/index.html", "text/html; charset=utf-8"},
-	"/desktop":    {"webui/desktop.html", "text/html; charset=utf-8"},
-	"/theme.css":  {"webui/theme.css", "text/css; charset=utf-8"},
-	"/core.js":    {"webui/core.js", "application/javascript; charset=utf-8"},
-	"/scene.js":   {"webui/scene.js", "application/javascript; charset=utf-8"},
-	"/app.js":     {"webui/app.js", "application/javascript; charset=utf-8"},
-	"/desktop.js": {"webui/desktop.js", "application/javascript; charset=utf-8"},
-	"/route.js":   {"webui/route.js", "application/javascript; charset=utf-8"},
+	"/":             {"webui/index.html", "text/html; charset=utf-8"},
+	"/index.html":   {"webui/index.html", "text/html; charset=utf-8"},
+	"/desktop":      {"webui/desktop.html", "text/html; charset=utf-8"},
+	"/theme.css":    {"webui/theme.css", "text/css; charset=utf-8"},
+	"/core.js":      {"webui/core.js", "application/javascript; charset=utf-8"},
+	"/scene.js":     {"webui/scene.js", "application/javascript; charset=utf-8"},
+	"/app.js":       {"webui/app.js", "application/javascript; charset=utf-8"},
+	"/desktop.js":   {"webui/desktop.js", "application/javascript; charset=utf-8"},
+	"/route.js":     {"webui/route.js", "application/javascript; charset=utf-8"},
+	"/app":          {"webui/workspace.html", "text/html; charset=utf-8"},
+	"/workspace.js": {"webui/workspace.js", "application/javascript; charset=utf-8"},
+	"/highlight.js": {"webui/highlight.js", "application/javascript; charset=utf-8"},
 }
 
 // webUIHandler serves the front-end, and nothing else.

@@ -63,172 +63,207 @@ and should re-read the session rather than assume it saw everything.`,
 	return cmd
 }
 
+// NewAPIHandler wires the runtime and every route, and hands back the plain
+// handler plus the func that closes the runtime.
+//
+// Extracted from runServer so the desktop application can mount exactly the
+// same API in-process, with no socket at all. A second copy of this wiring
+// would drift: a route added for one surface would quietly be missing from the
+// other, which is the class of bug that makes a client look broken when the
+// server is simply older than it.
+//
+// The handler returned here is unguarded. `serve` wraps it in guardLoopback
+// before putting it on a listener, because anything reachable over TCP needs
+// that protection. The application never listens, so there is nothing for a
+// rebound page to reach.
+func NewAPIHandler(parent context.Context) (http.Handler, func(), error) {
+	rt, err := newRuntime(parent)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The terminal prompter is useless here: it writes to the server's
+	// stderr and reads the server's stdin, neither of which belongs to the
+	// client that asked. Questions go to the event stream instead, and
+	// answers come back over /v1/approvals.
+	approvals := newApprovalBroker(rt.Bus, defaultApprovalTimeout)
+	if rootOpts.Yes {
+		installApprover(rt, true)
+	} else {
+		rt.SetApprover(approvals)
+	}
+	cfg, _ := loadConfig()
+	loadMCPServersFromConfig(parent, rt, cfg)
+
+	mux := http.NewServeMux()
+	mux.Handle("/", webUIHandler())
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		diag := rt.Gateway.Diagnose(r.Context())
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":              true,
+			"version":         version.String(),
+			"omniroute":       diag.State == gateway.AuthOK || diag.State == gateway.AuthNotRequired,
+			"authState":       string(diag.State),
+			"omnirouteDetail": diag.Detail,
+		})
+	})
+	mux.HandleFunc("/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Prompt     string `json:"prompt"`
+			SessionID  string `json:"sessionId,omitempty"`
+			ApproveAll bool   `json:"approveAll,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(req.Prompt) == "" {
+			http.Error(w, "prompt is required", http.StatusBadRequest)
+			return
+		}
+		sessionID := req.SessionID
+		if sessionID == "" {
+			ss, err := rt.NewSession("", truncate(req.Prompt, 60))
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			sessionID = ss.ID
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+		defer cancel()
+		tsk, err := rt.RunTask(ctx, sessionID, req.Prompt, runtime.RunOptions{
+			ApproveAll: req.ApproveAll,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"sessionId": sessionID,
+				"task":      tsk,
+				"error":     err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID, "task": tsk})
+	})
+	mux.HandleFunc("/v1/tasks/", cancelTaskHandler(rt))
+	mux.HandleFunc("/v1/approvals", approvalsHandler(approvals))
+	mux.HandleFunc("/v1/approvals/", approvalsHandler(approvals))
+	mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
+	// The vocabulary of the stream. A client that subscribes by event
+	// name has to know every name, and the alternative to publishing the
+	// list is a copy of it maintained by hand in each front-end — which
+	// drifts, and whose drift shows up as phantom dropped events rather
+	// than as anything that looks like a missing subscription.
+	mux.HandleFunc("/v1/event-types", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"types": event.AllTypes()})
+	})
+	mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
+		// A session's stored events, which is the only way a client can
+		// show what happened in a run it did not watch live. Without
+		// this the session list is navigation that navigates nowhere:
+		// it looks clickable, and clicking it changes nothing you can
+		// see.
+		if rest, ok := strings.CutSuffix(id, "/events"); ok {
+			id = rest
+			if id == "" {
+				http.NotFound(w, r)
+				return
+			}
+			limit := 2000
+			if raw := r.URL.Query().Get("limit"); raw != "" {
+				if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 20000 {
+					limit = n
+				}
+			}
+			events, err := rt.SessionEvents(id, limit)
+			if err != nil {
+				http.Error(w, "session not found", http.StatusNotFound)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"events": events})
+			return
+		}
+		ss, err := rt.Store.GetSession(id)
+		if err != nil {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		tasks, _ := rt.Store.TasksBySession(id)
+		m, _ := telemetry.ForSession(rt.Store, id)
+		writeJSON(w, http.StatusOK, map[string]any{"session": ss, "tasks": tasks, "metrics": m})
+	})
+	// The workspace, read-only, confined to exactly the tree the filesystem
+	// tools are confined to. The explorer showing a file the agent cannot touch
+	// would be a lie about what this window is looking at.
+	mux.HandleFunc("/v1/fs/tree", fsTreeHandler(fsRoot(cfg.Policy.WorkspaceRoot)))
+	mux.HandleFunc("/v1/fs/file", fsFileHandler(fsRoot(cfg.Policy.WorkspaceRoot)))
+	mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
+		sessions, err := rt.ListSessions(50)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+	})
+
+	return mux, func() { rt.Close() }, nil
+}
+
+// Serve runs the loopback HTTP server until ctx ends.
+//
+// Exported for the desktop application. Server-Sent Events need a
+// ResponseWriter that flushes, and the webview's own asset server does not
+// provide one — the stream came back 500 and the window sat in a reconnect
+// loop with a live gateway behind it. A real socket is what makes the event
+// spine work, so the application runs the same guarded server every other
+// client talks to.
+func Serve(ctx context.Context, port int) error {
+	return runServer(ctx, port)
+}
+
 // runServer builds the runtime, wires every route and blocks until ctx ends.
 //
 // Shared by `serve` and `desktop` so the two cannot drift: a route added for one
 // is present in the other, and the desktop window is talking to exactly the
 // server the docs describe.
 func runServer(parent context.Context, port int) error {
-	{
-		{
-			rt, err := newRuntime(parent)
-			if err != nil {
-				return err
-			}
-			defer rt.Close()
-			// The terminal prompter is useless here: it writes to the server's
-			// stderr and reads the server's stdin, neither of which belongs to the
-			// client that asked. Questions go to the event stream instead, and
-			// answers come back over /v1/approvals.
-			approvals := newApprovalBroker(rt.Bus, defaultApprovalTimeout)
-			if rootOpts.Yes {
-				installApprover(rt, true)
-			} else {
-				rt.SetApprover(approvals)
-			}
-			cfg, _ := loadConfig()
-			loadMCPServersFromConfig(parent, rt, cfg)
-
-			mux := http.NewServeMux()
-			mux.Handle("/", webUIHandler())
-			mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-				diag := rt.Gateway.Diagnose(r.Context())
-				writeJSON(w, http.StatusOK, map[string]any{
-					"ok":              true,
-					"version":         version.String(),
-					"omniroute":       diag.State == gateway.AuthOK || diag.State == gateway.AuthNotRequired,
-					"authState":       string(diag.State),
-					"omnirouteDetail": diag.Detail,
-				})
-			})
-			mux.HandleFunc("/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-				var req struct {
-					Prompt     string `json:"prompt"`
-					SessionID  string `json:"sessionId,omitempty"`
-					ApproveAll bool   `json:"approveAll,omitempty"`
-				}
-				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-					return
-				}
-				if strings.TrimSpace(req.Prompt) == "" {
-					http.Error(w, "prompt is required", http.StatusBadRequest)
-					return
-				}
-				sessionID := req.SessionID
-				if sessionID == "" {
-					ss, err := rt.NewSession("", truncate(req.Prompt, 60))
-					if err != nil {
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					sessionID = ss.ID
-				}
-				ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
-				defer cancel()
-				tsk, err := rt.RunTask(ctx, sessionID, req.Prompt, runtime.RunOptions{
-					ApproveAll: req.ApproveAll,
-				})
-				if err != nil {
-					writeJSON(w, http.StatusOK, map[string]any{
-						"sessionId": sessionID,
-						"task":      tsk,
-						"error":     err.Error(),
-					})
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID, "task": tsk})
-			})
-			mux.HandleFunc("/v1/tasks/", cancelTaskHandler(rt))
-			mux.HandleFunc("/v1/approvals", approvalsHandler(approvals))
-			mux.HandleFunc("/v1/approvals/", approvalsHandler(approvals))
-			mux.HandleFunc("/v1/events", eventStreamHandler(rt.Bus))
-			// The vocabulary of the stream. A client that subscribes by event
-			// name has to know every name, and the alternative to publishing the
-			// list is a copy of it maintained by hand in each front-end — which
-			// drifts, and whose drift shows up as phantom dropped events rather
-			// than as anything that looks like a missing subscription.
-			mux.HandleFunc("/v1/event-types", func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet && r.Method != http.MethodHead {
-					http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]any{"types": event.AllTypes()})
-			})
-			mux.HandleFunc("/v1/sessions/", func(w http.ResponseWriter, r *http.Request) {
-				id := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
-				// A session's stored events, which is the only way a client can
-				// show what happened in a run it did not watch live. Without
-				// this the session list is navigation that navigates nowhere:
-				// it looks clickable, and clicking it changes nothing you can
-				// see.
-				if rest, ok := strings.CutSuffix(id, "/events"); ok {
-					id = rest
-					if id == "" {
-						http.NotFound(w, r)
-						return
-					}
-					limit := 2000
-					if raw := r.URL.Query().Get("limit"); raw != "" {
-						if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 20000 {
-							limit = n
-						}
-					}
-					events, err := rt.SessionEvents(id, limit)
-					if err != nil {
-						http.Error(w, "session not found", http.StatusNotFound)
-						return
-					}
-					writeJSON(w, http.StatusOK, map[string]any{"events": events})
-					return
-				}
-				ss, err := rt.Store.GetSession(id)
-				if err != nil {
-					http.Error(w, "session not found", http.StatusNotFound)
-					return
-				}
-				tasks, _ := rt.Store.TasksBySession(id)
-				m, _ := telemetry.ForSession(rt.Store, id)
-				writeJSON(w, http.StatusOK, map[string]any{"session": ss, "tasks": tasks, "metrics": m})
-			})
-			mux.HandleFunc("/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
-				sessions, err := rt.ListSessions(50)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
-			})
-
-			addr := fmt.Sprintf("127.0.0.1:%d", port)
-			fmt.Printf("omniharness serve listening on http://%s\n", addr)
-			fmt.Printf("  ui   http://%s/\n  api  http://%s/v1\n", addr, addr)
-			srv := &http.Server{
-				Addr:    addr,
-				Handler: guardLoopback(mux),
-				// A connection that never finishes sending its headers would
-				// otherwise occupy the server indefinitely.
-				ReadHeaderTimeout: 10 * time.Second,
-				IdleTimeout:       120 * time.Second,
-				// No WriteTimeout: a task legitimately runs for minutes, and the
-				// handler already bounds it at 30.
-			}
-			go func() {
-				<-parent.Done()
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				srv.Shutdown(ctx)
-			}()
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				return err
-			}
-			return nil
-		}
+	mux, closeRuntime, err := NewAPIHandler(parent)
+	if err != nil {
+		return err
 	}
+	defer closeRuntime()
+
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	fmt.Printf("omniharness serve listening on http://%s\n", addr)
+	fmt.Printf("  ui   http://%s/\n  api  http://%s/v1\n", addr, addr)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: guardLoopback(mux),
+		// A connection that never finishes sending its headers would
+		// otherwise occupy the server indefinitely.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		// No WriteTimeout: a task legitimately runs for minutes, and the
+		// handler already bounds it at 30.
+	}
+	go func() {
+		<-parent.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+	}()
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 // guardLoopback rejects requests that a local client would never send.
