@@ -17,93 +17,115 @@
      On motion: bars lengthen because time is passing and nodes swell because a
      model is working. Nothing here animates on a timer for its own sake. -->
 <style>
+  /* Layout and motion for the window. Tokens live in /theme.css.
+
+     The proportions follow what the dark product UIs that feel expensive
+     actually do — Linear's published system most directly: a deep canvas, a
+     surface ladder instead of shadows, hairline borders, a narrow 400–510
+     weight band, and tracking that tightens as type grows. Motion follows
+     Vercel's animation guidance: nothing over 300ms, exits shorter than
+     entrances, and only transform and opacity animated, because animating
+     width or left runs layout on every single frame. */
+
   .shell{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 
   /* ── Title bar ─────────────────────────────────────────────── */
   /* In app mode the browser's own title bar is empty chrome, so this one
      carries what a title bar is for: what is running, and for how long. */
   .titlebar{
-    display:flex;align-items:center;gap:16px;height:48px;padding:0 16px;
-    background:var(--s1);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:14px;height:50px;padding:0 16px;
+    background:linear-gradient(var(--s1),var(--s1));
+    border-bottom:1px solid var(--line);
     -webkit-app-region:drag;user-select:none;
   }
   .titlebar button,.titlebar .no-drag{-webkit-app-region:no-drag}
-  .tb-brand{font-size:14px;font-weight:650;letter-spacing:-.02em;color:var(--ink-2);flex:none}
-  .tb-brand b{color:var(--ink)}
+  .tb-brand{font-size:14px;font-weight:var(--w-semi);letter-spacing:var(--track-lg);color:var(--ink-2);flex:none}
+  .tb-brand b{color:var(--ink);font-weight:var(--w-semi)}
   .tb-brand i{color:var(--accent);font-style:normal}
   .tb-sep{width:1px;height:18px;background:var(--line);flex:none}
 
   .state{
-    display:inline-flex;align-items:center;gap:2px;flex:none;
-    font-size:12px;font-weight:600;
-    padding:4px 10px;border-radius:99px;border:1px solid var(--line);
+    display:inline-flex;align-items:center;gap:1px;flex:none;
+    font-size:12px;font-weight:var(--w-med);letter-spacing:0;
+    padding:4px 11px;border-radius:99px;border:1px solid var(--line);
     background:var(--s2);color:var(--ink-3);
+    transition:color var(--t-med) var(--ease-out),
+               border-color var(--t-med) var(--ease-out),
+               background var(--t-med) var(--ease-out);
   }
-  .state.running{color:var(--info);border-color:rgba(86,182,255,.35);background:rgba(86,182,255,.09)}
-  .state.done{color:var(--success);border-color:rgba(143,214,111,.35);background:rgba(143,214,111,.09)}
-  .state.failed{color:var(--error);border-color:rgba(242,99,126,.35);background:rgba(242,99,126,.09)}
-  .state.waiting{color:var(--warn);border-color:rgba(230,185,85,.35);background:rgba(230,185,85,.09)}
-  /* The only moving thing in the chrome, and it moves only while work is in
-     flight. */
-  .ticks{font-family:var(--mono);width:1.1em;display:inline-block;text-align:left}
+  .state.running{color:var(--info);border-color:rgba(90,169,255,.4);background:rgba(90,169,255,.1)}
+  .state.done{color:var(--success);border-color:rgba(110,231,168,.4);background:rgba(110,231,168,.1)}
+  .state.failed{color:var(--error);border-color:rgba(255,107,138,.4);background:rgba(255,107,138,.1)}
+  .state.waiting{color:var(--warn);border-color:rgba(240,194,100,.4);background:rgba(240,194,100,.1)}
+  /* Advances only while work is in flight. */
+  .ticks{font-family:var(--mono);width:1.15em;display:inline-block;text-align:left}
   .state.running .ticks::after{content:'.';animation:ticks 1.4s steps(1,end) infinite}
   @keyframes ticks{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
 
-  .tb-what{font-size:13.5px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tb-what{font-size:13.5px;color:var(--ink);letter-spacing:var(--track-sm);
+    min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tb-time{font-family:var(--mono);font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;flex:none}
   .tb-spacer{flex:1}
 
   .kbtn{
-    font:inherit;font-size:12px;color:var(--ink-3);cursor:pointer;
+    font:inherit;font-size:12px;font-weight:var(--w-med);color:var(--ink-3);cursor:pointer;
     background:var(--s2);border:1px solid var(--line);border-radius:var(--r-sm);
     padding:4px 9px;display:flex;align-items:center;gap:6px;flex:none;
-    transition:color .12s ease,border-color .12s ease,background .12s ease;
+    transition:color var(--t-fast) ease,border-color var(--t-fast) ease,
+               background var(--t-fast) ease,transform var(--t-fast) var(--ease-out);
   }
-  .kbtn:hover{color:var(--ink);border-color:#333c4e;background:var(--s3)}
+  .kbtn:hover{color:var(--ink);border-color:var(--line-strong);background:var(--s3)}
   kbd{
     font-family:var(--mono);font-size:10px;background:var(--s3);color:var(--ink-2);
-    border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+    border:1px solid var(--line);border-radius:var(--r-xs);padding:1px 5px;
   }
   .ghost{
-    font:inherit;font-size:12.5px;cursor:pointer;padding:5px 12px;border-radius:var(--r-sm);
+    font:inherit;font-size:12.5px;font-weight:var(--w-med);cursor:pointer;
+    padding:5px 12px;border-radius:var(--r-sm);
     background:transparent;color:var(--ink-2);border:1px solid var(--line);flex:none;
-    transition:background .15s ease,color .15s ease,border-color .15s ease;
+    transition:background var(--t-fast) ease,color var(--t-fast) ease,
+               border-color var(--t-fast) ease,transform var(--t-fast) var(--ease-out);
   }
   .ghost:hover{background:var(--s2);color:var(--ink)}
-  .ghost.danger:hover{color:var(--error);border-color:rgba(242,99,126,.45);background:rgba(242,99,126,.08)}
+  .ghost.danger:hover{color:var(--error);border-color:rgba(255,107,138,.5);background:rgba(255,107,138,.1)}
 
   /* ── Panes ─────────────────────────────────────────────────── */
   .body{display:flex;min-height:0}
-  .rail{width:246px;flex:none;background:var(--s1);border-right:1px solid var(--line-soft);
+  .rail{width:250px;flex:none;background:var(--s1);border-right:1px solid var(--line-soft);
     display:flex;flex-direction:column;min-height:0;padding:14px 12px;gap:14px}
-  .center{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
-  .details{width:360px;flex:none;background:var(--s1);border-left:1px solid var(--line-soft);
+  .center{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;background:var(--ground)}
+  .details{width:368px;flex:none;background:var(--s1);border-left:1px solid var(--line-soft);
     display:flex;flex-direction:column;min-height:0}
 
-  .split{flex:none;width:5px;margin:0 -2px;cursor:col-resize;z-index:5;background:transparent;transition:background .12s ease}
+  .split{flex:none;width:5px;margin:0 -2px;cursor:col-resize;z-index:5;background:transparent;
+    transition:background var(--t-fast) ease}
   .split:hover,.split.dragging{background:var(--accent-dim)}
-  .split-h{flex:none;height:5px;margin:-2px 0;cursor:row-resize;z-index:5;background:transparent;transition:background .12s ease}
+  .split-h{flex:none;height:5px;margin:-2px 0;cursor:row-resize;z-index:5;background:transparent;
+    transition:background var(--t-fast) ease}
   .split-h:hover,.split-h.dragging{background:var(--accent-dim)}
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing-v{cursor:row-resize;user-select:none}
 
   .pane-head{
     display:flex;align-items:center;gap:12px;padding:9px 16px;flex:none;
-    border-bottom:1px solid var(--line-soft);background:var(--s1);min-height:42px;
+    border-bottom:1px solid var(--line-soft);background:var(--s1);min-height:44px;
   }
-  .pane-title{font-size:12.5px;font-weight:600;color:var(--ink-2)}
-  .pane-note{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums;flex:none}
+  .pane-title{font-size:12.5px;font-weight:var(--w-med);color:var(--ink-2);letter-spacing:var(--track-sm)}
+  .pane-note{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;
+    font-variant-numeric:tabular-nums;flex:none}
 
   /* ── Rail ──────────────────────────────────────────────────── */
   .new-run{
     flex:none;
-    display:block;width:100%;padding:9px 13px;border-radius:var(--r-sm);cursor:pointer;
+    display:block;width:100%;padding:9px 13px;border-radius:var(--r);cursor:pointer;
     background:var(--s3);color:var(--ink);border:1px solid var(--line);
-    font:inherit;font-size:13px;font-weight:550;text-align:left;
-    transition:background .15s ease,border-color .15s ease;
+    font:inherit;font-size:13px;font-weight:var(--w-med);text-align:left;
+    letter-spacing:var(--track-sm);
+    transition:background var(--t-fast) ease,border-color var(--t-fast) ease,
+               transform var(--t-fast) var(--ease-out);
   }
-  .new-run:hover{background:#232a38;border-color:#333c4e}
-  .rail-label{flex:none;font-size:11px;font-weight:600;color:var(--ink-3);padding:0 7px}
+  .new-run:hover{background:var(--s4);border-color:var(--line-strong)}
+  .rail-label{flex:none;font-size:11px;font-weight:var(--w-med);color:var(--ink-3);padding:0 7px}
   .sessions{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:1px;margin-top:-8px}
   /* Every direct child of a flex column shrinks by default. With more sessions
      than fit the rail, each row was squashed below the height of its own text
@@ -114,24 +136,33 @@
     display:block;width:100%;text-align:left;border:0;background:transparent;
     color:var(--ink-2);font:inherit;font-size:12.5px;padding:7px 10px;border-radius:var(--r-sm);
     cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    transition:background .12s ease,color .12s ease;
+    letter-spacing:var(--track-sm);
+    transition:background var(--t-fast) ease,color var(--t-fast) ease,transform var(--t-fast) var(--ease-out);
   }
   .session:hover{background:var(--s2);color:var(--ink)}
+  .session:active{transform:none}
   .session.active{background:var(--s3);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
   .sessions-empty{font-size:12px;color:var(--ink-3);padding:5px 10px}
-  .rail-foot{flex:none;border-top:1px solid var(--line-soft);padding-top:12px;display:flex;flex-direction:column;gap:7px}
+  .rail-foot{flex:none;border-top:1px solid var(--line-soft);padding-top:12px;
+    display:flex;flex-direction:column;gap:7px}
   .stat{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;padding:0 7px}
   .stat-k{color:var(--ink-3)} .stat-v{color:var(--ink-2);font-family:var(--mono);font-size:11px}
-  .dot{width:6px;height:6px;border-radius:99px;display:inline-block;margin-right:6px;vertical-align:1px}
-  .dot.ok{background:var(--success)} .dot.bad{background:var(--error)} .dot.idle{background:var(--ink-3)}
+  .dot{width:6px;height:6px;border-radius:99px;display:inline-block;margin-right:6px;vertical-align:1px;
+    transition:background var(--t-med) ease,box-shadow var(--t-med) ease}
+  .dot.ok{background:var(--success);box-shadow:0 0 0 3px rgba(110,231,168,.14)}
+  .dot.bad{background:var(--error);box-shadow:0 0 0 3px rgba(255,107,138,.14)}
+  .dot.idle{background:var(--ink-4)}
 
   /* ── Top pane: two views of the same run ───────────────────── */
-  .top{flex:none;height:300px;display:flex;flex-direction:column;min-height:110px;border-bottom:1px solid var(--line-soft)}
+  .top{flex:none;height:308px;display:flex;flex-direction:column;min-height:110px;
+    border-bottom:1px solid var(--line-soft)}
   .tabs{display:flex;gap:2px;flex:none}
   .tab{
-    font:inherit;font-size:12.5px;font-weight:550;cursor:pointer;padding:4px 11px;border-radius:var(--r-sm);
+    font:inherit;font-size:12.5px;font-weight:var(--w-med);cursor:pointer;
+    padding:5px 12px;border-radius:var(--r-sm);letter-spacing:var(--track-sm);
     background:transparent;color:var(--ink-3);border:1px solid transparent;
-    transition:color .12s ease,background .12s ease;
+    transition:color var(--t-fast) ease,background var(--t-fast) ease,
+               border-color var(--t-fast) ease,transform var(--t-fast) var(--ease-out);
   }
   .tab:hover{color:var(--ink-2)}
   .tab.on{color:var(--ink);background:var(--s3);border-color:var(--line)}
@@ -139,37 +170,56 @@
   .view{flex:1;min-height:0;position:relative}
   .view-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     color:var(--ink-3);font-size:12.5px;text-align:center;padding:0 24px}
+  /* Switching views is a cross-fade with a little travel, not a hard cut: the
+     two panes show the same run and the movement says so. */
+  .tl,.route{animation:viewIn var(--t-med) var(--ease-out)}
+  @keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
   /* Timeline — the run on a time axis. A log says what happened; this says
      what happened at the same time as what, and where the minutes went. */
-  .tl{position:absolute;inset:0;overflow-y:auto;padding:8px 0}
-  .tl-row{display:grid;grid-template-columns:210px minmax(0,1fr);align-items:center;gap:12px;padding:0 16px;height:26px}
-  .tl-row:hover{background:rgba(28,33,44,.55)}
+  .tl{position:absolute;inset:0;overflow-y:auto;padding:10px 0}
+  .tl-row{display:grid;grid-template-columns:214px minmax(0,1fr);align-items:center;
+    gap:12px;padding:0 16px;height:27px}
+  .tl-row:hover{background:var(--s1)}
   .tl-name{min-width:0;display:flex;align-items:baseline;gap:6px}
-  .tl-what{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tl-what{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    letter-spacing:var(--track-sm)}
   .tl-row.sel .tl-what{color:var(--ink)}
-  .tl-depth{color:var(--line);flex:none;font-family:var(--mono);font-size:11px}
+  .tl-depth{color:var(--line-strong);flex:none;font-family:var(--mono);font-size:11px}
   .tl-track{position:relative;height:14px}
+  /* The bar is a full-width element scaled down, not a sized one.
+     transform and opacity are the only two properties that animate without
+     going through layout; animating width and left meant a layout pass on
+     every frame of every running bar. */
   .tl-bar{
-    position:absolute;top:2px;height:10px;border-radius:4px;cursor:pointer;
-    background:var(--info);min-width:3px;
-    /* The bar of a running step lengthens as the clock advances. The
-       transition is what makes that read as duration rather than as a
-       redraw. */
-    transition:width .22s linear,left .22s linear,background .2s ease;
+    position:absolute;left:0;top:2px;height:10px;width:100%;
+    border-radius:3px;cursor:pointer;background:var(--info);
+    transform-origin:left center;will-change:transform;
+    transition:transform var(--t-med) linear,background var(--t-med) ease,filter var(--t-fast) ease;
   }
-  .tl-bar:hover{filter:brightness(1.22)}
+  .tl-bar:hover{filter:brightness(1.25)}
   .tl-bar.ok{background:var(--accent-dim)}
   .tl-bar.bad{background:var(--error)}
   .tl-bar.warn{background:var(--warn)}
-  .tl-bar.sel{outline:1px solid var(--ink-2);outline-offset:2px}
-  .tl-dur{position:absolute;top:0;height:14px;line-height:14px;font-family:var(--mono);
-    font-size:10.5px;color:var(--ink-3);padding-left:7px;white-space:nowrap;pointer-events:none;
-    transition:left .22s linear}
-  .tl-grid{position:absolute;inset:0;pointer-events:none;padding:0 16px 0 238px}
+  .tl-bar.live{background:var(--info)}
+  .tl-bar.sel{box-shadow:var(--focus)}
+  /* Full width on purpose: a percentage in translateX resolves against the
+     element's own border box, so a shrink-to-fit label moved a percentage of
+     its own 30px instead of the track's width and sat stranded at the left. */
+  .tl-dur{position:absolute;left:0;top:0;width:100%;height:14px;line-height:14px;
+    font-family:var(--mono);font-size:10.5px;color:var(--ink-3);white-space:nowrap;
+    padding-left:7px;pointer-events:none;will-change:transform;
+    transition:transform var(--t-med) linear}
+  /* A bar that fills the track leaves nowhere to the right for its duration,
+     and the label was pushed off the edge of the pane. The longest step in a
+     run is always that bar, so this was hiding the number the timeline exists
+     to show. Past ~86% the label moves inside the bar's right end instead. */
+  .tl-dur.inside{text-align:right;padding-left:0;padding-right:7px;color:var(--ground)}
+  .tl-bar.live ~ .tl-dur.inside,.tl-bar.bad ~ .tl-dur.inside{color:var(--ink)}
+  .tl-grid{position:absolute;inset:0;pointer-events:none;padding:0 16px 0 242px}
   .tl-grid-inner{position:relative;height:100%}
   .tl-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--line-soft)}
-  .tl-tick span{position:absolute;top:3px;left:5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+  .tl-tick span{position:absolute;top:3px;left:5px;font-family:var(--mono);font-size:9.5px;color:var(--ink-4)}
 
   /* Route — the same steps as a graph of what actually ran. */
   .route{position:absolute;inset:0}
@@ -177,60 +227,70 @@
   .route-labels{position:absolute;inset:0;pointer-events:none}
   .route-label{
     position:absolute;top:0;left:0;font-family:var(--mono);font-size:10.5px;
-    color:var(--ink-3);white-space:nowrap;padding:1px 5px;border-radius:4px;
-    background:rgba(11,13,18,.72);transition:color .2s ease;
+    color:var(--ink-3);white-space:nowrap;padding:2px 6px;border-radius:var(--r-xs);
+    background:rgba(8,9,11,.78);border:1px solid transparent;
+    transition:color var(--t-med) ease,border-color var(--t-med) ease;
   }
   .route-label.model{color:var(--ink-2)}
-  .route-label.live{color:var(--ink)}
-  .route-legend{position:absolute;left:16px;bottom:12px;display:flex;gap:14px;font-size:10.5px;color:var(--ink-3)}
-  .route-legend i{font-style:normal;display:inline-block;width:7px;height:7px;border-radius:99px;margin-right:5px;vertical-align:1px}
+  .route-label.live{color:var(--ink);border-color:var(--line)}
+  .route-legend{position:absolute;left:16px;bottom:12px;display:flex;gap:14px;
+    font-size:10.5px;color:var(--ink-3)}
+  .route-legend i{font-style:normal;display:inline-block;width:7px;height:7px;
+    border-radius:99px;margin-right:5px;vertical-align:1px}
 
   /* ── Event log ─────────────────────────────────────────────── */
   .log{flex:1;display:flex;flex-direction:column;min-height:0}
   .log-body{flex:1;overflow-y:auto;min-height:0;padding:6px 0 10px}
   .ev{
-    display:grid;grid-template-columns:64px 66px minmax(0,1.15fr) minmax(0,2fr) 136px;
+    display:grid;grid-template-columns:64px 68px minmax(0,1.15fr) minmax(0,2fr) 140px;
     gap:12px;align-items:baseline;padding:4px 16px;cursor:pointer;
+    transition:background var(--t-fast) ease;
   }
-  .ev:hover{background:rgba(28,33,44,.55)}
+  .ev:hover{background:var(--s1)}
   .ev.sel{background:var(--s2);box-shadow:inset 2px 0 0 var(--accent)}
   /* Only rows that arrived while you were watching; replayed history must not
-     pretend to be happening now. */
-  .ev.fresh{animation:arrive .18s ease-out}
-  @keyframes arrive{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
-  .ev-t{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-  .ev-s{font-size:11px;font-weight:600;color:var(--ink-3)}
+     pretend to be happening now. Scale starts at .98 rather than 0 — growing
+     from nothing reads as a glitch. */
+  .ev.fresh{animation:arrive var(--t-med) var(--ease-out)}
+  @keyframes arrive{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+  .ev-t{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);font-variant-numeric:tabular-nums}
+  .ev-s{font-size:11px;font-weight:var(--w-med);color:var(--ink-3);letter-spacing:0}
   .ev.ok .ev-s{color:var(--success)} .ev.bad .ev-s{color:var(--error)}
   .ev.warn .ev-s{color:var(--warn)} .ev.busy .ev-s{color:var(--info)}
-  .ev-w{font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev-w{font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    letter-spacing:var(--track-sm)}
   .ev-d{font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* The machine name last and dimmed: still there to grep for and to match the
      docs, no longer the first thing the eye lands on. */
-  .ev-k{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+  .ev-k{font-family:var(--mono);font-size:10.5px;color:var(--ink-4);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;text-align:right}
   .log-empty{padding:20px 16px;color:var(--ink-3);font-size:12.5px}
   .replay{
-    display:flex;align-items:center;gap:10px;padding:7px 16px;flex:none;font-size:12px;
-    background:rgba(86,182,255,.07);border-bottom:1px solid rgba(86,182,255,.2);color:var(--ink-2);
+    display:flex;align-items:center;gap:10px;padding:8px 16px;flex:none;font-size:12px;
+    background:rgba(90,169,255,.08);border-bottom:1px solid rgba(90,169,255,.22);color:var(--ink-2);
+    animation:arrive var(--t-med) var(--ease-out);
   }
-  .replay b{color:var(--ink);font-weight:600}
+  .replay b{color:var(--ink);font-weight:var(--w-med)}
   .replay .ghost{margin-left:auto}
 
   .filter{
     font:inherit;font-size:12px;background:var(--s2);color:var(--ink);
-    border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 9px;width:170px;outline:none;
-    transition:border-color .15s ease;
+    border:1px solid var(--line);border-radius:var(--r-sm);padding:4px 9px;width:174px;outline:none;
+    transition:border-color var(--t-fast) ease,box-shadow var(--t-fast) ease;
   }
-  .filter:focus{border-color:var(--accent-dim)}
-  .filter::placeholder{color:var(--ink-3)}
+  .filter:focus{border-color:var(--accent-dim);box-shadow:var(--focus)}
+  .filter::placeholder{color:var(--ink-4)}
 
   /* ── Details ───────────────────────────────────────────────── */
-  .det-body{flex:1;overflow:auto;min-height:0;padding:14px 16px}
+  .det-body{flex:1;overflow:auto;min-height:0;padding:15px 16px}
+  .det-body>*{animation:arrive var(--t-med) var(--ease-out)}
   .det-empty,.det-k,.det-sub,.approval-why,.sessions-empty,.pal-empty{display:block}
-  .det-empty{color:var(--ink-3);font-size:12.5px;line-height:1.55}
-  .det-k{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:3px;letter-spacing:-.01em;word-break:break-word}
-  .det-sub{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin:12px 0 6px}
-  .det-k + .det-sub{margin-top:0;margin-bottom:14px}
-  .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 14px;margin-bottom:14px}
+  .det-empty{color:var(--ink-3);font-size:12.5px;line-height:1.6}
+  .det-k{font-size:17px;font-weight:var(--w-semi);color:var(--ink);margin-bottom:3px;
+    letter-spacing:var(--track-md);word-break:break-word;line-height:1.25}
+  .det-sub{font-family:var(--mono);font-size:11px;color:var(--ink-4);margin:14px 0 6px}
+  .det-k + .det-sub{margin-top:0;margin-bottom:15px}
+  .kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin-bottom:15px}
   .kv dt{font-size:11.5px;color:var(--ink-3)}
   .kv dd{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);word-break:break-all}
   .kv dd.big{font-size:13px;color:var(--ink)}
@@ -246,64 +306,74 @@
   .composer{flex:none;padding:12px 16px 14px;border-top:1px solid var(--line);background:var(--s1)}
   .box{
     display:flex;align-items:flex-end;gap:10px;padding:9px 9px 9px 13px;
-    background:var(--s2);border:1px solid var(--line);border-radius:var(--r);
-    transition:border-color .18s ease,box-shadow .18s ease;
+    background:var(--s2);border:1px solid var(--line);border-radius:var(--r-lg);
+    transition:border-color var(--t-med) var(--ease-out),box-shadow var(--t-med) var(--ease-out);
   }
-  .box:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px rgba(45,212,191,.09)}
+  .box:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 3px var(--accent-ghost)}
   textarea{
     flex:1;resize:none;background:transparent;color:var(--ink);border:0;outline:none;
     font:inherit;font-size:13.5px;line-height:1.55;max-height:170px;min-height:22px;padding:3px 0;
+    letter-spacing:var(--track-sm);
   }
-  textarea::placeholder{color:var(--ink-3)}
+  textarea::placeholder{color:var(--ink-4)}
+  textarea:focus-visible{box-shadow:none}
   .send{
-    flex:none;width:31px;height:31px;border-radius:8px;border:0;cursor:pointer;
+    flex:none;width:32px;height:32px;border-radius:var(--r);border:0;cursor:pointer;
     background:var(--accent);color:#04231f;display:grid;place-items:center;
-    transition:filter .15s ease,opacity .15s ease;
+    transition:filter var(--t-fast) ease,opacity var(--t-fast) ease,
+               transform var(--t-fast) var(--ease-out);
   }
-  .send:hover{filter:brightness(1.08)}
-  .send:disabled{opacity:.35;cursor:default;filter:none}
+  .send:hover{filter:brightness(1.1)}
+  .send:disabled{opacity:.3;cursor:default;filter:none}
   .under{display:flex;justify-content:space-between;gap:12px;margin-top:8px;padding:0 3px}
-  .under small{font-size:11px;color:var(--ink-3)}
+  .under small{font-size:11px;color:var(--ink-4)}
   .gap-note{color:var(--warn)}
 
   /* ── Command palette ───────────────────────────────────────── */
-  .scrim{position:fixed;inset:0;z-index:40;background:rgba(6,8,11,.62);display:flex;justify-content:center;padding-top:11vh}
-  .palette{width:min(580px,calc(100vw - 48px));height:max-content;max-height:66vh;
-    background:var(--s2);border:1px solid var(--line);border-radius:var(--r-lg);
-    box-shadow:var(--sh-3);display:flex;flex-direction:column;overflow:hidden}
+  .scrim{position:fixed;inset:0;z-index:40;background:rgba(4,5,7,.66);
+    display:flex;justify-content:center;padding-top:11vh;
+    animation:scrimIn var(--t-fast) var(--ease-out)}
+  @keyframes scrimIn{from{opacity:0}to{opacity:1}}
+  .palette{width:min(600px,calc(100vw - 48px));height:max-content;max-height:66vh;
+    background:var(--s2);border:1px solid var(--line-strong);border-radius:var(--r-xl);
+    box-shadow:var(--sh-3);display:flex;flex-direction:column;overflow:hidden;
+    animation:palIn var(--t-med) var(--ease-out)}
+  @keyframes palIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
   .palette input{
-    font:inherit;font-size:14.5px;padding:14px 17px;background:transparent;color:var(--ink);
-    border:0;border-bottom:1px solid var(--line);outline:none;
+    font:inherit;font-size:15px;padding:15px 18px;background:transparent;color:var(--ink);
+    border:0;border-bottom:1px solid var(--line);outline:none;letter-spacing:var(--track-sm);
   }
-  .palette input::placeholder{color:var(--ink-3)}
+  .palette input:focus-visible{box-shadow:none}
+  .palette input::placeholder{color:var(--ink-4)}
   .pal-list{overflow-y:auto;padding:7px}
-  .pal-item{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:var(--r-sm);
-    cursor:pointer;font-size:13px;color:var(--ink-2)}
-  .pal-item.on{background:var(--s3);color:var(--ink)}
-  .pal-kind{font-family:var(--mono);font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;flex:none;width:58px}
+  .pal-item{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r-sm);
+    cursor:pointer;font-size:13px;color:var(--ink-2);letter-spacing:var(--track-sm)}
+  .pal-item.on{background:var(--s4);color:var(--ink)}
+  .pal-kind{font-family:var(--mono);font-size:10px;color:var(--ink-4);text-transform:uppercase;
+    letter-spacing:.06em;flex:none;width:58px}
   .pal-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pal-hint{margin-left:auto;flex:none}
   .pal-empty{padding:15px 13px;color:var(--ink-3);font-size:12.5px}
 
   /* ── Approvals ─────────────────────────────────────────────── */
-  .approvals{position:fixed;right:20px;bottom:100px;z-index:30;display:flex;flex-direction:column;gap:10px;width:min(370px,calc(100vw - 40px))}
-  .approval{background:var(--s3);border:1px solid rgba(230,185,85,.45);border-radius:var(--r);padding:14px 15px;box-shadow:var(--sh-3)}
+  .approvals{position:fixed;right:20px;bottom:104px;z-index:30;display:flex;flex-direction:column;
+    gap:10px;width:min(374px,calc(100vw - 40px))}
+  .approval{background:var(--s3);border:1px solid rgba(240,194,100,.5);border-radius:var(--r-lg);
+    padding:14px 15px;box-shadow:var(--sh-3);
+    animation:approvalIn var(--t-slow) var(--ease-out)}
+  @keyframes approvalIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
   .approval-top{display:flex;align-items:center;gap:9px;margin-bottom:4px}
-  .approval-tool{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--warn)}
-  .approval-risk{font-size:10.5px;color:var(--ink-3);letter-spacing:.05em}
+  .approval-tool{font-family:var(--mono);font-size:12.5px;font-weight:var(--w-semi);color:var(--warn)}
+  .approval-risk{font-size:10.5px;color:var(--ink-4);letter-spacing:.05em}
   .approval-why{font-size:12.5px;color:var(--ink-2);margin-bottom:12px;line-height:1.5}
   .approval-actions{display:flex;gap:8px}
-  .approval-actions button{flex:1;padding:7px 12px;border-radius:var(--r-sm);font:inherit;font-size:12.5px;font-weight:550;cursor:pointer;transition:filter .15s ease}
+  .approval-actions button{flex:1;padding:8px 12px;border-radius:var(--r-sm);font:inherit;
+    font-size:12.5px;font-weight:var(--w-med);cursor:pointer;
+    transition:filter var(--t-fast) ease,transform var(--t-fast) var(--ease-out)}
   .deny{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
-  .deny:hover{color:var(--error);border-color:rgba(242,99,126,.45)}
-  .grant{background:var(--success);color:#0b2408;border:0}
-  .grant:hover{filter:brightness(1.06)}
-
-  /* Someone who has asked not to see motion should not have to watch a bar
-     grow, a row arrive, or a graph turn. */
-  @media (prefers-reduced-motion:reduce){
-    *{transition-duration:.01ms !important;animation:none !important}
-  }
+  .deny:hover{color:var(--error);border-color:rgba(255,107,138,.5)}
+  .grant{background:var(--success);color:#062211;border:0}
+  .grant:hover{filter:brightness(1.07)}
 </style>
 </head>
 <body>

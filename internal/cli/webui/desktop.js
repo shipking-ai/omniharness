@@ -220,16 +220,29 @@ function renderTimeline() {
     const end = s.end || now || s.start;
     const bar = document.createElement('div');
     bar.className = 'tl-bar ' + s.tone + (state.selected === s ? ' sel' : '');
-    const left = 100 * (s.start - state.t0) / total;
-    const width = Math.max(0.4, 100 * (end - s.start) / total);
-    bar.style.left = left + '%';
-    bar.style.width = Math.min(width, 100 - left) + '%';
+    // Fractions of the track, applied as a transform. The bar is a full-width
+    // element translated and scaled rather than a positioned one that is
+    // resized: width and left animate through layout on every frame, and a
+    // running bar redraws four times a second.
+    const at = (s.start - state.t0) / total;
+    const span = Math.max(0.004, Math.min(1 - at, (end - s.start) / total));
+    bar.style.transform = 'translateX(' + (at * 100) + '%) scaleX(' + span + ')';
     bar.title = s.label + ' · ' + OH.fmtMillis(end - s.start);
     bar.onclick = () => select(s);
 
     const dur = document.createElement('div');
-    dur.className = 'tl-dur';
-    dur.style.left = Math.min(left + width, 99) + '%';
+    // The label rides the end of the bar. Its own box is full width and
+    // unscaled, so the text is never stretched with the bar.
+    const finish = at + span;
+    if (finish > 0.86) {
+      // No room to the right: sit inside the bar's right end instead of off
+      // the edge of the pane.
+      dur.className = 'tl-dur inside';
+      dur.style.transform = 'translateX(' + ((finish - 1) * 100) + '%)';
+    } else {
+      dur.className = 'tl-dur';
+      dur.style.transform = 'translateX(' + (finish * 100) + '%)';
+    }
     dur.textContent = OH.fmtMillis(end - s.start);
 
     track.append(bar, dur);
@@ -832,7 +845,7 @@ function boot() {
       last = now;
       // Only while the pane is on screen: a hidden canvas has no business
       // burning a frame budget.
-      if (!$('route').hidden) route.frame(dt);
+      if (!$('route').hidden) route.frame(dt, now);
       requestAnimationFrame(spin);
     };
     requestAnimationFrame(spin);
@@ -907,6 +920,13 @@ function boot() {
       // A live event while reading history means a run started elsewhere. The
       // history stays put rather than being overwritten mid-read.
       if (state.replay) return;
+
+      // A run beginning anywhere else clears the view, exactly as pressing run
+      // in this window does. Without it the new run's steps were laid out
+      // against the previous run's t0: a 25s run drew its bars starting
+      // halfway along a 51s axis. Our own submit has already reset and set
+      // running, so this only fires for a run we did not start.
+      if (e.type === 'task.created' && !state.running) reset();
       if (e.taskId) state.taskId = e.taskId;
       if (e.type.startsWith('approval.')) refreshApprovals();
 
