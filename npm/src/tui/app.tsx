@@ -22,9 +22,10 @@ import { Box, Static, useApp, useInput, useStdin, useStdout } from 'ink';
 import type { MastraEngine } from '../agent/mastraEngine.js';
 import { loadPromptHistory } from '../promptHistory.js';
 import { ownVersion } from '../update.js';
-import { Banner } from './components/banner.js';
+import { Banner, bannerRows } from './components/banner.js';
 import { ApprovalBanner } from './components/approval.js';
 import { Composer, composerTextWidth } from './components/composer.js';
+import { Opening, openingRows } from './components/opening.js';
 import { Rail } from './components/rail.js';
 import { HintLine, StatusLine } from './components/statusline.js';
 import { TranscriptEntry } from './components/transcript.js';
@@ -198,12 +199,22 @@ export function App({ engine }: AppProps): React.ReactElement {
   const box = measure(state.terminal.columns, wantRail);
   const composerWidth = composerTextWidth(box.content);
   const composerLines = layoutEditor(state.composer.value, state.composer.cursor, composerWidth).lines.length;
+  // The opening state: nothing said, nothing running, nothing modal over it.
+  // It is the only state that gets the standing panel and the only one whose
+  // command surface is pushed to the foot of the window.
+  const opening = state.transcript.length === 0
+    && state.phase === 'idle'
+    && state.overlay === undefined
+    && state.approval === undefined
+    && state.lens === 'run';
   const heights = planHeight({
     rows: state.terminal.rows,
     composerLines,
     approval: state.approval !== undefined,
     overlay: state.overlay !== undefined,
-    lensWanted: lensRowsWanted(state.lens, state),
+    lensWanted: opening ? openingRows(state.session) : lensRowsWanted(state.lens, state),
+    printed: bannerRows(state.session),
+    opening,
   });
 
   // -- keyboard --------------------------------------------------------------
@@ -281,20 +292,29 @@ export function App({ engine }: AppProps): React.ReactElement {
               theme={theme}
               glyphs={glyphs}
             />
-          : <Lens
-              state={state}
-              width={box.content}
-              rows={heights.lens}
-              streamRows={heights.stream}
-              theme={theme}
-              glyphs={glyphs}
-              windows={controller.windows}
-              now={now}
-              compact={box.band === 'narrow'}
-            />}
+          : opening
+            ? <Opening
+                session={state.session}
+                width={box.content}
+                rows={heights.lens}
+                theme={theme}
+                glyphs={glyphs}
+              />
+            : <Lens
+                state={state}
+                width={box.content}
+                rows={heights.lens}
+                streamRows={heights.stream}
+                theme={theme}
+                glyphs={glyphs}
+                windows={controller.windows}
+                now={now}
+                compact={box.band === 'narrow'}
+                railed={box.rail > 0}
+              />}
       </Box>
       {box.rail > 0
-        ? <Box marginLeft={2}>
+        ? <Box marginLeft={box.railGap}>
             <Rail
               state={state}
               width={box.rail}
@@ -305,6 +325,10 @@ export function App({ engine }: AppProps): React.ReactElement {
           </Box>
         : null}
     </Box>
+
+    {/* Blank rows that sit the opening state's command surface on the floor of
+        the window. Zero in every other state, where content is what fills it. */}
+    {heights.pad > 0 ? <Box height={heights.pad} /> : null}
 
     {state.approval !== undefined
       ? <ApprovalBanner approval={state.approval} width={box.content} theme={theme} glyphs={glyphs} />
@@ -319,9 +343,11 @@ export function App({ engine }: AppProps): React.ReactElement {
       glyphs={glyphs}
       failed={lastEntryFailed(state.transcript)}
     />
+    {/* The instrument row and its hints span the window rather than stopping at
+        the reading measure: they are read by position, not left to right. */}
     <StatusLine
       state={state}
-      width={box.content}
+      width={box.chrome}
       band={box.band}
       theme={theme}
       glyphs={glyphs}
@@ -331,7 +357,7 @@ export function App({ engine }: AppProps): React.ReactElement {
     <HintLine
       state={state}
       focus={focus}
-      width={box.content}
+      width={box.chrome}
       theme={theme}
       glyphs={glyphs}
       kitty={state.terminal.kitty}
@@ -362,14 +388,14 @@ function Lens(props: {
   theme: ReturnType<typeof resolveTheme>;
   glyphs: ReturnType<typeof resolveGlyphs>;
   windows: ReturnType<typeof createController>['windows'];
-  now: number; compact: boolean;
+  now: number; compact: boolean; railed: boolean;
 }): React.ReactElement | null {
-  const { state, width, rows, streamRows, theme, glyphs, windows, now, compact } = props;
+  const { state, width, rows, streamRows, theme, glyphs, windows, now, compact, railed } = props;
   switch (state.lens) {
     case 'run':
       return <RunView
         state={state} width={width} theme={theme} glyphs={glyphs}
-        streamRows={streamRows} lensRows={rows} compact={compact}
+        streamRows={streamRows} lensRows={rows} compact={compact} railed={railed}
       />;
     case 'agents':
       return <AgentsView state={state} width={width} rows={rows} theme={theme} glyphs={glyphs} now={now} />;

@@ -15,7 +15,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { shortPath, since } from '../format/units.js';
 import { clip } from '../format/clip.js';
-import { PERMISSION_LABEL } from '../runtime/controller.js';
+
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { SessionState } from '../state/types.js';
 
@@ -38,26 +38,37 @@ export function capabilities(session: SessionState): string | undefined {
   return parts.length === 0 ? undefined : parts.join(' + ');
 }
 
+/**
+ * Rows the masthead prints. The height plan needs this to know how much of the
+ * window is already spoken for when it sizes the opening state's gap.
+ */
+export function bannerRows(session: SessionState): number {
+  return session.saved.length > 0 ? 3 : 2;
+}
+
 export function Banner({ session, width, theme, glyphs, now }: BannerProps): React.ReactElement {
   const loaded = capabilities(session);
   const recent = session.saved[0];
-  const detail = [
-    session.model,
-    session.mode,
-    session.mode === 'crazy' ? 'bypass' : PERMISSION_LABEL[session.permission],
-    loaded,
-  ].filter((part): part is string => part !== undefined).join(`  ${glyphs.dot}  `);
+  // Where it is operating, and what it can reach from there. The mode, engine
+  // and permission are deliberately absent: they change during the session, the
+  // status line carries them live, and printing them here as well produced the
+  // same three facts twice on one screen, three rows apart.
+  // The path gets whatever the capability summary does not need, rather than a
+  // fixed reservation: on a narrow terminal that reservation was being taken
+  // even when there were no skills to put in it, and shortened the one line
+  // that says where the session is operating down to its last two segments.
+  const tail = loaded === undefined ? '' : `  ${glyphs.dot}  ${loaded}`;
+  const where = shortPath(session.workspace, Math.max(12, width - tail.length)) + tail;
 
   return <Box flexDirection="column">
     <Text>
       <Text bold>OMNIHARNESS</Text>
-      <Text color={theme.muted}> {session.version}</Text>
+      <Text color={theme.muted}>  {session.version}</Text>
     </Text>
-    <Text color={theme.muted}>{clip(shortPath(session.workspace, Math.max(12, width - 12)), width)}</Text>
-    <Text color={theme.muted}>{clip(detail, width)}</Text>
+    <Text color={theme.muted}>{clip(where, width)}</Text>
     {recent !== undefined
       ? <Text color={theme.muted}>
-          {clip(`last session ${recent.name} ${glyphs.dot} ${since(recent.savedAt, now)} ${glyphs.dot} /resume ${recent.name}`, width)}
+          {clip(`last session ${glyphs.dot} ${recent.name} ${glyphs.dot} ${since(recent.savedAt, now)} ${glyphs.dot} /resume ${recent.name}`, width)}
         </Text>
       : null}
   </Box>;

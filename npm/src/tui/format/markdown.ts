@@ -246,7 +246,14 @@ export function renderMarkdown(
       i += 1;
       while (i < src.length && !/^```/.test(src[i])) { code.push(src[i]); i += 1; }
       i += 1; // skip closing fence
-      out.push(...highlightCode(code, fence[1] === '' ? undefined : fence[1], width));
+      // A fenced block gets the same left rule that tool output gets: it marks
+      // machine text as machine text, which indentation alone does not — a code
+      // block set flush with the prose around it reads as another paragraph
+      // that happens to be oddly worded.
+      const rule: MarkdownSegment = { text: style.ascii === true ? '| ' : '│ ', dim: true, atomic: true };
+      for (const row of highlightCode(code, fence[1] === '' ? undefined : fence[1], Math.max(8, width - 2))) {
+        out.push([rule, ...row]);
+      }
       continue;
     }
     if (/^\s*$/.test(line)) {

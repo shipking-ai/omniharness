@@ -56,15 +56,22 @@ test('ends a paragraph at a horizontal rule line', () => {
   assert.deepEqual(textOf(out), 'some text\n' + '─'.repeat(40));
 });
 
-test('renders fenced code blocks verbatim without word wrap', () => {
+test('renders fenced code blocks verbatim, behind a rule, without word wrap', () => {
   const out = renderMarkdown('```\nconst x = 1;\n```', 40);
-  assert.deepEqual(textOf(out), 'const x = 1;');
-  assert.ok(out[0]?.every((s) => s.color === 'cyan'));
+  // The rule marks the block as machine text; the code itself is unchanged.
+  assert.deepEqual(textOf(out), '\u2502 const x = 1;');
+  assert.equal(out[0]?.[0]?.dim, true, 'the rule is secondary to the code beside it');
+  assert.ok(out[0]?.slice(1).every((s) => s.color === 'cyan'), 'every code segment is still code-coloured');
+});
+
+test('a fenced block degrades to an ASCII rule on a terminal that cannot draw one', () => {
+  const out = renderMarkdown('```\nconst x = 1;\n```', 40, { ascii: true });
+  assert.deepEqual(textOf(out), '| const x = 1;');
 });
 
 test('treats unclosed fences as code to the end', () => {
   const out = renderMarkdown('```\nconst x = 1;', 40);
-  assert.deepEqual(textOf(out), 'const x = 1;');
+  assert.deepEqual(textOf(out), '\u2502 const x = 1;');
 });
 
 test('ignores plain asterisks that are not emphasis', () => {

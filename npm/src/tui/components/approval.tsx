@@ -42,16 +42,26 @@ export function ApprovalBanner({
   approval, width, theme, glyphs,
 }: { approval: PendingApproval; width: number; theme: Theme; glyphs: Glyphs }): React.ReactElement {
   const subject = describeCall(approval);
-  return <Box flexDirection="column" marginTop={1} marginBottom={1}>
+  // No bottom margin: the composer under it opens with one, and two gaps left
+  // the band floating between them instead of sitting against the input it is
+  // blocking.
+  return <Box flexDirection="column" marginTop={1}>
+    {/* The tool is named, not just the arguments: which capability is being
+        asked for is the security-relevant half of the question, and "run a
+        command" and "write a file" are not the same decision. */}
     <Text color={theme.attention} bold>
-      {glyphs.attention} approval needed {glyphs.dot} {approval.tool}
+      {glyphs.attention} approval needed <Text color={theme.muted}>{glyphs.dot}</Text> {approval.tool}
     </Text>
     <Gutter theme={theme} ascii={glyphs.ascii}>
       <Plain text={subject} width={Math.max(10, width - 2)} limit={3} />
     </Gutter>
+    {/* The scopes are answers to one question, so they are set as a choice
+        list: the key that picks each one, then what picking it would mean. The
+        numbers carry the accent because the number is what gets typed. */}
     {approval.scopes.map((scope, index) => (
-      <Text key={scope.id} color={theme.muted}>
-        {'  '}{index + 1} {glyphs.dot} {clip(scope.label, Math.max(10, width - 6))}
+      <Text key={scope.id}>
+        {'  '}<Text color={theme.accent} bold>{index + 1}</Text>
+        <Text color={theme.muted}>  {clip(scope.label, Math.max(10, width - 6))}</Text>
       </Text>
     ))}
   </Box>;
