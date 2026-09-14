@@ -17,7 +17,7 @@ The one item still genuinely open is the domain (issue #107).
 - One `provider/model` intent out; routing / quota / failover / provider translation stay in OmniRoute. The only integration point is `internal/gateway` — swap it and the whole test suite runs offline.
 - Four working modes on `Ctrl+E`: plan · build · research · crazy.
 - Permission axis on `Shift+Tab`, independent of mode: manual · accept edits · bypass.
-- CRAZY mode fans an independent plan across parallel worker agents (the swarm rail).
+- CRAZY mode fans an independent plan across parallel worker agents (the agents view).
 - Premium terminal: native-scrollback history, tear-free streaming (DECSET 2026), route ribbon (which provider answered), per-model context meter, per-tool cards with diffs, scoped-trust approvals, input queued during a run, OSC 52 copy / OSC 9 notify.
 - Ships as `omniharness-cli` on npm; Go core + headless CLI in the same repo. The web view and the desktop window ship too — both served by the Go binary, both clients of the same HTTP API.
 
@@ -26,7 +26,7 @@ The one item still genuinely open is the domain (issue #107).
 1. **Hero** — wordmark, one-liner, the animated demo SVG (`.github/assets/omniharness-demo.svg`), primary CTA `npm i -g omniharness-cli` (click-to-copy) + secondary "View on GitHub". Sub-line: "Go core · TypeScript TUI · MIT".
 2. **Why** — the wedge, 2–3 sentences, plus the `provider/model` boundary diagram (reuse the ASCII diagram from the README or redraw as SVG).
 3. **Modes** — 4 cards (plan / build / research / crazy) with the one-line description + a tiny visual (mode-accent border matching the TUI: plan=blue, build=green, research=teal, crazy=red). Note the `Shift+Tab` permission axis below.
-4. **The swarm** — the CRAZY differentiator. Short copy + a still or looping clip of the swarm rail (frame 4 of the demo SVG). "One transcript, many status lines."
+4. **The swarm** — the CRAZY differentiator. Short copy + a still or looping clip of the agents view (frame 4 of the demo SVG, which predates the rebuilt TUI and needs regenerating). "One transcript, many status lines."
 5. **The terminal** — a scannable grid of the premium features (6–8 items, one line each) with the "everything on screen makes agent intent, action, and history legible" framing.
 6. **Install / quickstart** — the npm one-liner, the three env vars, `omniharness doctor` / `models`. Keep it copy-pasteable.
 7. **Architecture** — the two-front-ends-over-one-core diagram; link to `docs/architecture.md`. One paragraph.
@@ -41,7 +41,7 @@ advertise your own work as unbuilt.
 
 The site's palette, aligned to the TUI so the two read as one product.
 
-*Accuracy note:* `npm/src/ui/palette.ts` defines only six of these — `accent`,
+*Accuracy note:* `npm/src/tui/theme/palette.ts` defines only six of these — `accent`,
 `muted`, `success`, `warn`, `error`, `info`. A terminal inherits its background
 and body text from the emulator, so `ground`, `surface`, `hairline` and `ink`
 exist for the web only and have no counterpart there.

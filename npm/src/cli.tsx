@@ -2,12 +2,12 @@
 import React from 'react';
 import { render } from 'ink';
 import { createMastraEngine } from './agent/mastraEngine.js';
-import { TerminalInterface } from './ui/terminalInterface.js';
+import { App } from './tui/app.js';
 import { ownVersion, runUpdate } from './update.js';
 import { readActiveCombo } from './config/settings.js';
 import { OmniRouteClient } from './config/omniRoute.js';
 import { doctor, helpText, models } from './doctor.js';
-import { debounceResizeEvents } from './ui/resizeDebounce.js';
+import { debounceResizeEvents } from './tui/term/resize.js';
 
 // A crash anywhere below would otherwise surface as a raw Node stack trace, or
 // as an unhandled rejection that terminates the process without saying why.
@@ -79,12 +79,12 @@ if (command === 'update') {
     // a tool whose output you are meant to read back, that is the right trade.
     //
     // Coalesce resize delivery before Ink's own internal listener ever sees
-    // it — see resizeDebounce.ts. Only meaningful for a real terminal; a
+    // it — see tui/term/resize.ts. Only meaningful for a real terminal; a
     // non-TTY stdout never emits 'resize' and patching it would be inert.
     const stdout = process.stdout.isTTY ? debounceResizeEvents(process.stdout, 80) : process.stdout;
 
     // The app owns Ctrl+C so idle quits but an in-flight run is cancelled first.
-    const { waitUntilExit } = render(<TerminalInterface engine={engine} />, { stdout, exitOnCtrlC: false });
+    const { waitUntilExit } = render(<App engine={engine} />, { stdout, exitOnCtrlC: false });
     await waitUntilExit();
   })();
 }

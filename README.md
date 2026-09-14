@@ -64,33 +64,65 @@ Cycle with **`Ctrl+E`**. Each reshapes the system frame and what the agent may t
 
 ## The terminal
 
-Everything on screen exists to make agent **intent, action, and history** legible — nothing decorative hides information.
+You have a task. The interface is built around that, and around nothing else:
+the default screen is the task, the answer, the work in flight, and the
+composer. Everything the harness knows beyond that is one keystroke away
+instead of permanently on screen.
 
-- **Native scrollback is the history.** Settled turns flow straight into your terminal's own buffer; on exit the full plain-text transcript is restored to the primary screen — a real audit trail, no parallel log to maintain.
-- **Tear-free streaming** via synchronized output (DECSET 2026), probed at startup alongside the kitty keyboard protocol.
-- **Route ribbon.** Every reply is labelled with the provider it actually came from — `via openrouter (failover)` — and failovers land in the transcript as first-class events.
-- **Context meter** against the *resolved* model's window, green → amber → red at 70 / 90 %.
-- **Per-tool cards** — `$ cmd` with exit-coloured output, `read`, `edit`, unified diffs — collapsed by default, `Ctrl+T` to expand.
-- **Scoped-trust approvals** — `y` once · `n` deny · `t` always · pick a scope: exact command → base command → whole tool.
-- **Swarm rail** — one lane per parallel worker in crazy mode, coloured by identity, with live progress.
-- **Input stays live** during a run: what you type is queued and sent the moment it ends.
-- `Ctrl+Y` copies the last reply over OSC 52 (works through SSH); a bell + OSC 9 notification fire when a long run finishes unfocused.
-- Session resume, prompt history, `/find`, `/chapters`, and a `Ctrl+L` layout-budget overlay.
+- **One default view, four lenses.** `Ctrl+L` cycles **run → agents → plan →
+  route → sessions**; `Esc` returns to the run. A lens replaces the live region
+  and leaves the composer where it is, so switching never costs you your place.
+- **`Ctrl+K` is the command palette** — every command, mode, permission, engine
+  and view in one searchable list. Nothing here is reachable only by a shortcut
+  you had to be told about; the same commands work typed as `/route`, `/save`,
+  `/mode build`.
+- **Native scrollback is the history.** Settled turns are written straight into
+  your terminal's own buffer, so they are still there after you quit — a real
+  audit trail, no parallel log to maintain.
+- **Tear-free streaming** via synchronized output (DECSET 2026), probed at
+  startup alongside the kitty keyboard protocol.
+- **Honest telemetry.** Provider, model, route profile, failover chain, measured
+  latency, tokens and spend live in the **route** lens; the status line carries
+  only `via <provider>` and the context meter. A figure the gateway did not
+  report is absent, never a zero.
+- **Tool calls read as what they did** — `$ go test ./...`, `read
+  gateway/fallback.go` — one row each, with the outcome in the marker and the
+  output behind `Ctrl+T`. Diffs render as diffs.
+- **Approvals are unmissable**: a full-width band above the composer naming the
+  exact call. `y` once · `n` deny · `a` always · a digit picks a trust scope
+  (exact command → base command → whole tool).
+- **Parallel work is legible.** The run view keeps a three-row digest of the
+  swarm; the **agents** lens lists every worker, its state, its latest note and
+  the calls it has made.
+- **Three widths, three designs.** Narrow drops secondary metadata rather than
+  truncating it; wide adds a plan/agents/route rail rather than longer lines.
+- **Input stays live** during a run: what you type is queued and sent the moment
+  it ends.
+- `Ctrl+Y` copies the last reply over OSC 52 (works through SSH); a bell + OSC 9
+  notification fire when a long run finishes unfocused.
 
 <details>
 <summary><b>Keys & slash commands</b></summary>
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+O` | model picker (combos + `auto/*`) |
+| `Ctrl+K` | command palette — everything, searchable |
+| `Ctrl+L` | cycle views (run · agents · plan · route · sessions) |
+| `Ctrl+O` | engine picker (combos + `auto/*`) |
 | `Ctrl+E` | cycle mode |
-| `Ctrl+T` | expand / collapse the latest tool card |
+| `Shift+Tab` | cycle permissions |
+| `Ctrl+T` | expand / collapse the newest tool's output |
 | `Ctrl+Y` | copy the last reply to the clipboard |
-| `Ctrl+L` | layout-budget overlay |
 | `Ctrl+J` | newline (`Shift+Enter` on kitty terminals) |
 | `Ctrl+C` | cancel the run, or quit when idle |
+| `Esc` | close an overlay, or return to the run view |
 
-`/help` · `/clear` · `/sessions` · `/save <name>` · `/forget <name>` · `/attach <files>` · `/find <text>` · `/chapters`
+`/run` · `/agents` · `/plan` · `/route` · `/sessions` · `/model` · `/mode <name>` ·
+`/perms <name>` · `/clear` · `/save <name>` · `/forget <name>` · `/resume <name>` ·
+`/attach <files>` · `/find <text>` · `/copy` · `/cancel` · `/help` · `/quit`
+
+Set `OMNIHARNESS_ASCII=1` for a plain-ASCII marker set, or `NO_COLOR` /
+`OMNIHARNESS_THEME=light` for the colour variants.
 
 </details>
 

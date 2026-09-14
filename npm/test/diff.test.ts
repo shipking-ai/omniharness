@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { diffSegments, looksLikeDiff, parseDiff } from '../src/ui/diff.js';
+import { diffSegments, looksLikeDiff, parseDiff } from '../src/tui/format/diff.js';
 
 const SAMPLE =
   'diff --git a/src/a.ts b/src/a.ts\n'

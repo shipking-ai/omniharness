@@ -13,7 +13,7 @@ In Claude Code, run `preview_start` with name `landing`.
 ## Design tokens
 
 All CSS custom properties live in the `:root` block near the top of `index.html`.
-Pull from `npm/src/ui/palette.ts` to keep site and TUI in sync:
+Pull from `npm/src/tui/theme/palette.ts` to keep site and TUI in sync:
 
 | var        | dark hex  | role                         |
 |------------|-----------|------------------------------|

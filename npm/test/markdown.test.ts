@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { renderMarkdown, type MarkdownSegment } from '../src/ui/markdown.js';
+import { renderMarkdown, type MarkdownSegment } from '../src/tui/format/markdown.js';
 
 const textOf = (lines: MarkdownSegment[][]): string => lines.map((line) => line.map((s) => s.text).join('')).join('\n');
 

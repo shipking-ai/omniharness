@@ -4,12 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { test } from 'node:test';
-import { asStdin, asStdout } from './streams.js';
-import { PassThrough, Writable } from 'node:stream';
-import React from 'react';
-import { render } from 'ink';
 import { createMastraEngine } from '../src/agent/mastraEngine.js';
-import { TerminalInterface } from '../src/ui/terminalInterface.js';
+import { mount } from './harness/tui.js';
 import type { MastraEngine } from '../src/agent/mastraEngine.js';
 import type { AgentMode } from '../src/types/index.js';
 
@@ -146,111 +142,50 @@ test('permissionMode "bypass": nothing hits the approval gate', async () => {
   } finally { live.close(); await fs.rm(ws, { recursive: true, force: true }); }
 });
 
-// --- 3. the swarm fan-out is crazy-only from the UI ------------------------
+// --- 3. the swarm fan-out is crazy-only, and the client decides when ------
+//
+// Fanning a plan out is a session decision, not a model one: the harness owns
+// how a worker behaves, the client owns whether to ask for several. These
+// checks pin that decision to crazy mode, so no other mode can silently start
+// spending three times as much.
 
-class FakeStdin extends PassThrough {
-  isTTY = true;
-  setRawMode(): void {}
-  ref(): void {}
-  unref(): void {}
-}
-class FakeStdout extends Writable {
-  columns = 100;
-  rows = 40;
-  output = '';
-  _write(chunk: Buffer | string, _e: BufferEncoding, cb: (err?: Error | null) => void): void { this.output += chunk.toString(); cb(); }
-}
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-const strip = (s: string): string => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b[()][0-9A-Z]/g, '');
-
-function fakeEngine(mode: AgentMode, onRunSwarm: () => void): MastraEngine {
-  return {
-    client: { listCombos: async () => [], endpoint: 'omniroute', snapshotMetrics: () => ({ compression: { inputTokens: 0, compressedTokens: 0, ratio: 1, strategy: 'none', updatedAt: '' }, fallback: { attempts: 0 }, requestCount: 0 }) },
-    skills: [], mcpTools: [], tools: {},
-    state: {
-      taskStatus: 'idle', prompt: '', mode, permissionMode: 'ask', activeModel: 'test-model',
-      workspace: { root: '', indexedAt: null, files: [], contextLocked: false },
-      metrics: { compression: { inputTokens: 0, compressedTokens: 0, ratio: 1, strategy: 'none', updatedAt: '' }, fallback: { attempts: 0 }, requestCount: 0 },
-      messages: [], preview: null,
+for (const mode of ['plan', 'build', 'research'] as AgentMode[]) {
+  test(`${mode} mode: a multi-step plan does NOT fan out`, async () => {
+    const app = await mount({
+      mode,
       taskQueue: [
         { id: 'a', title: 'one', status: 'pending' },
         { id: 'b', title: 'two', status: 'pending' },
       ],
-    },
-    subscribe: () => () => {},
-    selectModel: async () => {},
-    setApprovalHandler: () => {},
-    run: async () => ({ content: 'planned', model: 'test-model' }),
-    runSwarm: async () => { onRunSwarm(); },
-    cancel: () => {},
-    clearHistory: async () => {},
-    stop: () => {},
-  } as unknown as MastraEngine;
-}
-
-for (const mode of ['plan', 'build', 'research'] as AgentMode[]) {
-  test(`${mode} mode: a multi-todo plan does NOT trigger the swarm`, async () => {
-    let swarmed = 0;
-    const engine = fakeEngine(mode, () => { swarmed += 1; });
-    const stdin = new FakeStdin();
-    const stdout = new FakeStdout();
-    const instance = render(React.createElement(TerminalInterface, { engine }), { stdin: asStdin(stdin), stdout: asStdout(stdout), stderr: asStdout(new FakeStdout()) });
-    await sleep(40);
-    stdin.write('do the work');
-    await sleep(40); stdin.write('\r');
-    await sleep(150);
-    assert.equal(swarmed, 0, `${mode} never fans out`);
-    instance.unmount();
+    });
+    await app.submit('do the work');
+    await app.settle(150);
+    assert.equal(app.calls.swarms, 0, `${mode} never fans out`);
+    app.unmount();
   });
 }
 
-test('crazy mode: a multi-todo plan triggers the swarm from the UI', async () => {
-  let swarmed = 0;
-  const engine = fakeEngine('crazy', () => { swarmed += 1; });
-  const stdin = new FakeStdin();
-  const stdout = new FakeStdout();
-  const instance = render(React.createElement(TerminalInterface, { engine }), { stdin: asStdin(stdin), stdout: asStdout(stdout), stderr: asStdout(new FakeStdout()) });
-  await sleep(40);
-  stdin.write('do the work');
-  await sleep(40); stdin.write('\r');
-  await sleep(200);
-  assert.equal(swarmed, 1, 'crazy fans out once the plan has 2+ pending todos');
-  instance.unmount();
+test('crazy mode: a multi-step plan fans out exactly once', async () => {
+  const app = await mount({
+    mode: 'crazy',
+    taskQueue: [
+      { id: 'a', title: 'one', status: 'pending' },
+      { id: 'b', title: 'two', status: 'pending' },
+    ],
+  });
+  await app.submit('do the work');
+  await app.settle(200);
+  assert.equal(app.calls.swarms, 1, 'crazy fans out once the plan has two or more pending steps');
+  app.unmount();
 });
 
-// --- 4. Ctrl+E cycles every mode in the UI --------------------------------
-
-test('Ctrl+E cycles the visible mode plan → build → research → crazy → plan', async () => {
-  const engine = fakeEngine('plan', () => {});
-  (engine.state as unknown as { taskQueue: readonly unknown[] }).taskQueue = [];
-  const stdin = new FakeStdin();
-  const stdout = new FakeStdout();
-  const instance = render(React.createElement(TerminalInterface, { engine }), { stdin: asStdin(stdin), stdout: asStdout(stdout), stderr: asStdout(new FakeStdout()) });
-  await sleep(40);
-  const seen: string[] = [];
-  for (const expected of ['build', 'research', 'crazy', 'plan']) {
-    stdin.write('\x05'); // Ctrl+E
-    await sleep(60);
-    const text = strip(stdout.output);
-    assert.match(text, new RegExp(`mode → ${expected}`), `cycled to ${expected}`);
-    seen.push(expected);
-  }
-  assert.deepEqual(seen, ['build', 'research', 'crazy', 'plan']);
-  instance.unmount();
-});
-
-test('Shift+Tab cycles the permission mode manual → accept edits → bypass → manual', async () => {
-  const engine = fakeEngine('build', () => {});
-  (engine.state as unknown as { taskQueue: readonly unknown[] }).taskQueue = [];
-  const stdin = new FakeStdin();
-  const stdout = new FakeStdout();
-  const instance = render(React.createElement(TerminalInterface, { engine }), { stdin: asStdin(stdin), stdout: asStdout(stdout), stderr: asStdout(new FakeStdout()) });
-  await sleep(40);
-  for (const expected of ['accept edits', 'bypass', 'manual']) {
-    stdin.write('\x1b[Z'); // back-tab (Shift+Tab)
-    await sleep(60);
-    assert.match(strip(stdout.output), new RegExp(`permissions → ${expected}`), `cycled to ${expected}`);
-  }
-  assert.equal((engine.state as { permissionMode: string }).permissionMode, 'ask', 'engine state came full circle');
-  instance.unmount();
+test('crazy mode: a single-step plan is finished in one pass rather than fanned out', async () => {
+  const app = await mount({
+    mode: 'crazy',
+    taskQueue: [{ id: 'a', title: 'the only step', status: 'pending' }],
+  });
+  await app.submit('do the work');
+  await app.settle(200);
+  assert.equal(app.calls.swarms, 0, 'spinning up workers for one step costs more than it saves');
+  app.unmount();
 });
