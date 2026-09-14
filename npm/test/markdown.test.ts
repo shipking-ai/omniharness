@@ -144,3 +144,37 @@ test('clamps deep ragged indentation to a flat depth', () => {
   const out = renderMarkdown('        - deep\n  - shallow', 40);
   assert.deepEqual(textOf(out), '    ▪ deep\n  ◦ shallow');
 });
+
+test('a styled token and the punctuation after it stay one word', () => {
+  // `x.go`: used to render as "x.go :" — every inline code span, link and bold
+  // run followed by a comma or colon gained a space it never had.
+  const rows = renderMarkdown('The race is in `gateway/fallback.go`: the retry loop.', 60);
+  const text = rows.map((row) => row.map((segment) => segment.text).join('')).join('\n');
+  assert.match(text, /gateway\/fallback\.go: the retry loop\./);
+  assert.ok(!text.includes('.go :'), text);
+});
+
+test('a glued piece keeps its own styling', () => {
+  const rows = renderMarkdown('see `code`, then more', 60);
+  const flat = rows[0] ?? [];
+  const code = flat.find((segment) => segment.text === 'code');
+  assert.ok(code?.color !== undefined, 'the code span is still styled');
+  assert.equal(flat.map((segment) => segment.text).join(''), 'see code, then more');
+});
+
+test('paragraph breaks survive, collapsed to one blank row', () => {
+  const rows = renderMarkdown('One.\n\n\n\nTwo.\n\nThree.', 60);
+  assert.deepEqual(rows.map((row) => row.map((s) => s.text).join('')), ['One.', '', 'Two.', '', 'Three.']);
+});
+
+test('a reply never opens or closes on a blank row', () => {
+  const rows = renderMarkdown('\n\nOnly this.\n\n\n', 60);
+  assert.deepEqual(rows.map((row) => row.map((s) => s.text).join('')), ['Only this.']);
+});
+
+test('an ASCII terminal gets bullets and rules it can actually draw', () => {
+  const rows = renderMarkdown('- one\n- two\n\n---', 40, { ascii: true });
+  const text = rows.map((row) => row.map((s) => s.text).join('')).join('\n');
+  assert.ok(!/[^\x20-\x7e\n]/.test(text), `non-ASCII survived: ${JSON.stringify(text)}`);
+  assert.match(text, /^- one$/m);
+});

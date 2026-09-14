@@ -1,21 +1,24 @@
 /**
- * The secondary column, on wide terminals only.
+ * The secondary column, on terminals wide enough to hold one beside the full
+ * reading measure.
  *
- * It exists to use space that would otherwise be empty, so it is only drawn
- * when it has something to say: no plan, no workers and no route decision means
- * no rail, and the reading column gets the width back. Filling a wide terminal
- * with labelled empty panels is the failure mode this guards against.
+ * It carries *work* — the plan and the workers — and nothing else. Routing
+ * telemetry used to live here too, and a permanent five-row provider/model/
+ * latency panel is exactly the monitoring dashboard this interface is not: the
+ * status line already says which provider answered, and the route lens has the
+ * detail for the moment anyone actually wants it.
+ *
+ * It is drawn only when it has something to say, so an ordinary conversational
+ * turn on a wide terminal shows no empty labelled panel.
  */
 
 import React from 'react';
 import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
-import { millis } from '../format/units.js';
-import { Heading, Marker, meterBar } from './atoms.js';
+import { Heading, Marker } from './atoms.js';
 import { agentMarker } from '../views/agents.js';
 import { visibleSteps } from '../views/run.js';
-import { agentProgress, contextUse, planProgress } from '../state/selectors.js';
-import type { WindowIndex } from '../format/context.js';
+import { agentProgress, planProgress } from '../state/selectors.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { AppState } from '../state/types.js';
 
@@ -25,18 +28,15 @@ export interface RailProps {
   readonly rows: number;
   readonly theme: Theme;
   readonly glyphs: Glyphs;
-  readonly windows: WindowIndex;
 }
 
-export function Rail({ state, width, rows, theme, glyphs, windows }: RailProps): React.ReactElement | null {
+export function Rail({ state, width, rows, theme, glyphs }: RailProps): React.ReactElement | null {
   const plan = planProgress(state.plan);
   const agents = agentProgress(state);
-  const route = state.route.current;
-  const meter = contextUse(state, windows);
-  if (plan.total === 0 && agents.total === 0 && route === undefined) return null;
+  if (plan.total === 0 && agents.total === 0) return null;
 
   const inner = Math.max(10, width - 1);
-  const planRows = plan.total === 0 ? 0 : Math.max(1, Math.min(plan.total, Math.floor((rows - 6) / 2)));
+  const planRows = plan.total === 0 ? 0 : Math.max(1, Math.min(plan.total, Math.max(2, rows - 8)));
 
   return <Box flexDirection="column" width={width}>
     {plan.total > 0
@@ -72,27 +72,6 @@ export function Rail({ state, width, rows, theme, glyphs, windows }: RailProps):
               <Text color={theme.muted}>{clip(agent.note ?? agent.label, inner - 2)}</Text>
             </Text>
           ))}
-        </Box>
-      : null}
-
-    {route !== undefined
-      ? <Box flexDirection="column" marginTop={1}>
-          <Heading theme={theme}>route</Heading>
-          {route.provider !== undefined
-            ? <Text color={route.fallback ? theme.warn : theme.muted}>
-                {clip(route.fallback ? `${route.provider} (failover)` : route.provider, inner)}
-              </Text>
-            : null}
-          {route.model !== undefined ? <Text color={theme.muted}>{clip(route.model, inner)}</Text> : null}
-          {route.strategy !== undefined ? <Text color={theme.muted}>{clip(route.strategy, inner)}</Text> : null}
-          {millis(route.latencyMs) !== undefined
-            ? <Text color={theme.muted}>{millis(route.latencyMs)}</Text>
-            : null}
-          {meter !== undefined
-            ? <Text color={meter.zone === 'danger' ? theme.error : meter.zone === 'warn' ? theme.warn : theme.muted}>
-                {meterBar(meter.fraction, Math.min(12, inner - 5), glyphs)} {Math.round(meter.fraction * 100)}%
-              </Text>
-            : null}
         </Box>
       : null}
   </Box>;

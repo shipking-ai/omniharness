@@ -30,7 +30,7 @@ export interface RouteViewProps {
 
 export function RouteView({ state, width, rows, theme, glyphs, windows }: RouteViewProps): React.ReactElement {
   const route = routeFields(state);
-  const usage = usageFields(state);
+  const usage = usageFields(state, glyphs.dot);
   const fallbacks = fallbackHistory(state);
   const meter = contextUse(state, windows);
 

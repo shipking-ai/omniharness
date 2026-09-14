@@ -58,6 +58,8 @@ export interface AppProps {
 /** How long the kitty probe waits before "no answer" becomes the answer. */
 const KITTY_TIMEOUT_MS = 300;
 
+type StaticItem = { kind: 'banner' } | { kind: 'entry'; entry: Entry };
+
 export function App({ engine }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -96,6 +98,10 @@ export function App({ engine }: AppProps): React.ReactElement {
   useEffect(() => {
     if (state.phase === 'idle') return;
     const timer = setInterval(() => setNow(Date.now()), 250);
+    // Unreferenced: a clock is not a reason for the process to stay alive. Ink
+    // holds the loop open through stdin while the interface is mounted, and an
+    // interval that outlived an unmount would keep a finished process running.
+    timer.unref?.();
     return () => clearInterval(timer);
   }, [state.phase]);
 
@@ -186,7 +192,9 @@ export function App({ engine }: AppProps): React.ReactElement {
   }, [state.phase, stdout]);
 
   // -- layout ----------------------------------------------------------------
-  const wantRail = railHasContent(state) && state.overlay === undefined;
+  // The rail is secondary context for the run view. Beside the plan or agents
+  // lens it would draw the very list the user just opened, twice.
+  const wantRail = state.lens === 'run' && state.overlay === undefined && railHasContent(state);
   const box = measure(state.terminal.columns, wantRail);
   const composerWidth = composerTextWidth(box.content);
   const composerLines = layoutEditor(state.composer.value, state.composer.cursor, composerWidth).lines.length;
@@ -215,8 +223,13 @@ export function App({ engine }: AppProps): React.ReactElement {
     },
     quit: exit,
   };
+  // Mirrored into a ref after each commit rather than during render: the two
+  // input listeners are registered once and must see the state as it is now,
+  // and writing a ref while rendering is a side effect in the render pass.
+  // Effects run before the loop can deliver the next keystroke, so there is no
+  // window in which a handler sees a stale snapshot.
   const depsRef = useRef(deps);
-  depsRef.current = deps;
+  useEffect(() => { depsRef.current = deps; });
 
   useInput((value, key) => {
     const intent = fromInk(value, key);
@@ -234,14 +247,18 @@ export function App({ engine }: AppProps): React.ReactElement {
   }, [stdin]);
 
   // -- render ----------------------------------------------------------------
+  // One `<Static>`, ever: Ink keeps a single static node per app, so a second
+  // one is silently dropped. The opening lines are the first item in it, which
+  // is also what makes them print exactly once — the region is never remounted,
+  // because the transcript behind it only ever grows.
   const items: StaticItem[] = useMemo(
     () => [{ kind: 'banner' as const }, ...state.transcript.map((entry) => ({ kind: 'entry' as const, entry }))],
     [state.transcript],
   );
   const focus = focusOf(state);
 
-  return <Box flexDirection="column" width={state.terminal.columns} paddingX={box.gutter}>
-    <Static key={state.epoch} items={items}>
+  return <Box flexDirection="column" width={state.terminal.columns} paddingLeft={box.gutter}>
+    <Static items={items}>
       {(item) => item.kind === 'banner'
         ? <Banner key="banner" session={state.session} width={box.content} theme={theme} glyphs={glyphs} now={now} />
         : <TranscriptEntry
@@ -250,12 +267,11 @@ export function App({ engine }: AppProps): React.ReactElement {
             width={box.content}
             theme={theme}
             glyphs={glyphs}
-            expanded={item.entry.kind === 'tool' && state.expanded.includes(item.entry.tool.id)}
           />}
     </Static>
 
-    <Box flexDirection="row" width={box.frame}>
-      <Box flexDirection="column" width={box.content} flexGrow={box.rail > 0 ? 0 : 1}>
+    <Box flexDirection="row">
+      <Box flexDirection="column" width={box.content}>
         {state.overlay !== undefined
           ? <OverlayView
               overlay={state.overlay}
@@ -285,7 +301,6 @@ export function App({ engine }: AppProps): React.ReactElement {
               rows={heights.lens + heights.stream}
               theme={theme}
               glyphs={glyphs}
-              windows={controller.windows}
             />
           </Box>
         : null}
@@ -317,14 +332,12 @@ export function App({ engine }: AppProps): React.ReactElement {
       state={state}
       focus={focus}
       width={box.content}
-      band={box.band}
       theme={theme}
+      glyphs={glyphs}
       kitty={state.terminal.kitty}
     />
   </Box>;
 }
-
-type StaticItem = { kind: 'banner' } | { kind: 'entry'; entry: Entry };
 
 /**
  * Rows each lens would use if the terminal had them to give. The height plan

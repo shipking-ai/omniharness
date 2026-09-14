@@ -33,9 +33,11 @@ export function Line({
 
 /** Markdown, word-wrapped to `width`. */
 export function Prose({
-  text, width, color, dim, limit,
-}: { text: string; width: number; color?: string; dim?: boolean; limit?: number }): React.ReactElement {
-  const rows = renderMarkdown(text, Math.max(8, width));
+  text, width, color, dim, limit, ascii,
+}: {
+  text: string; width: number; color?: string; dim?: boolean; limit?: number; ascii?: boolean;
+}): React.ReactElement {
+  const rows = renderMarkdown(text, Math.max(8, width), { ascii: ascii === true });
   const shown = limit === undefined ? rows : rows.slice(-Math.max(1, limit));
   return <>{shown.map((segments, index) => <Line key={index} segments={segments} color={color} dim={dim} />)}</>;
 }

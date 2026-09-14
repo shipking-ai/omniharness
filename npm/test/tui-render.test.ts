@@ -211,24 +211,46 @@ test('unmounting stops the engine', async () => {
 
 // --- resilience -------------------------------------------------------------
 
-test('a dropped connection is reported, and the next prompt still runs', async () => {
+test('a dropped connection says what to do about it, and the next prompt still runs', async () => {
   let attempt = 0;
   const app = await mount({
     columns: 100,
+    endpoint: 'http://localhost:20128',
     run: async () => {
       attempt += 1;
-      if (attempt === 1) throw new Error('fetch failed: ECONNREFUSED 127.0.0.1:20128');
+      // What Node's fetch actually throws when nothing is listening.
+      if (attempt === 1) throw new Error('fetch failed');
       return { content: 'back online', model: 'auto/coding' };
     },
   });
-  await app.submit('first');
-  await app.settle(150);
-  assert.match(app.screen(), /ECONNREFUSED/);
+  try {
+    await app.submit('first');
+    await app.settle(150);
+    const screen = app.screen();
+    assert.match(screen, /cannot reach OmniRoute at http:\/\/localhost:20128/);
+    assert.match(screen, /check that it is running/);
+    assert.ok(!/^\s*fetch failed\s*$/m.test(screen), '"fetch failed" on its own tells nobody anything');
 
-  await app.submit('second');
-  await app.settle(150);
-  assert.deepEqual(app.calls.runs, ['first', 'second'], 'the interface is still usable after a failure');
-  app.unmount();
+    await app.submit('second');
+    await app.settle(150);
+    assert.deepEqual(app.calls.runs, ['first', 'second'], 'the interface is still usable after a failure');
+  } finally {
+    app.unmount();
+  }
+});
+
+test('an error that already says something useful is passed through unchanged', async () => {
+  const app = await mount({
+    columns: 100,
+    run: async () => { throw new Error('too many tool turns (limit 40)'); },
+  });
+  try {
+    await app.submit('go');
+    await app.settle(150);
+    assert.match(app.screen(), /too many tool turns \(limit 40\)/);
+  } finally {
+    app.unmount();
+  }
 });
 
 test('an event the interface does not recognise is ignored, not rendered as a blank row', async () => {
@@ -263,4 +285,57 @@ test('a cancelled run returns the interface to a usable state', async () => {
   await app.settle(200);
   assert.match(app.screen(), /describe the work/, 'the composer is back');
   app.unmount();
+});
+
+test('a cancelled turn reads as cancelled, not as the assistant saying so', async () => {
+  const app = await mount({
+    columns: 100,
+    // Long enough that the keystroke lands while the turn is genuinely running.
+    run: () => new Promise((resolve) => setTimeout(() => resolve({ content: '(cancelled)', model: 'm' }), 400)),
+  });
+  try {
+    await app.submit('take your time');
+    await app.type('\x03'); // Ctrl+C
+    // What the engine does on an abort: closes the turn with a placeholder.
+    assert.equal(app.calls.cancels, 1, 'the engine was asked to stop');
+    app.emit({ type: 'text', content: '(cancelled)', model: 'm' });
+    await app.settle(600);
+    const screen = app.screen();
+    assert.match(screen, /cancelled/);
+    assert.ok(!screen.includes('(cancelled)'), 'the placeholder the engine closes with is not a reply');
+  } finally {
+    app.unmount();
+  }
+});
+
+test('the wide-terminal rail never repeats the lens the user just opened', async () => {
+  const app = await mount({ columns: 160, rows: 40, run: () => new Promise<never>(() => { /* running */ }) });
+  try {
+    await app.submit('go');
+    app.emit({ type: 'todos', todos: [{ id: '1', title: 'a distinctive step title', status: 'active' }] });
+    await app.settle(80);
+    const onRun = app.screen().split('\n').filter((line) => line.includes('a distinctive step title'));
+    assert.ok(onRun.length >= 1, 'the run view shows it, in the body and the rail');
+
+    await app.type('\x0c'); // Ctrl+L → agents
+    await app.type('\x0c'); // → plan
+    await app.settle(80);
+    const frame = app.screen().slice(app.screen().lastIndexOf('OMNIHARNESS'));
+    const perRow = frame.split('\n').map((line) => line.split('a distinctive step title').length - 1);
+    assert.ok(perRow.every((n) => n <= 1), 'the plan lens and the rail drew the same list side by side');
+  } finally {
+    app.unmount();
+  }
+});
+
+test('notice severity survives a terminal with no colour', async () => {
+  const app = await mount({ columns: 100, run: async () => { throw new Error('something broke'); } });
+  try {
+    await app.submit('go');
+    await app.settle(150);
+    const row = app.screen().split('\n').find((line) => line.includes('something broke')) ?? '';
+    assert.match(row.trimStart(), /^✗/, 'the marker, not the colour, says this is a failure');
+  } finally {
+    app.unmount();
+  }
 });

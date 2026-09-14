@@ -48,6 +48,13 @@ export function targetFor(input: unknown): string {
   return '';
 }
 
+/**
+ * Calls whose only effect is something the interface already draws. Showing
+ * "plan: add step" beside the step it just added is the same fact twice, and a
+ * six-step plan rendered six bookkeeping rows above its own six-row summary.
+ */
+const BOOKKEEPING = new Set(['update_todo']);
+
 const compressionOf = (info: {
   ratio: number; strategy: string; savedTokens: number;
 } | undefined): CompressionSummary | undefined => {
@@ -100,6 +107,7 @@ export function ingest(event: HarnessEvent, at: number): readonly Action[] {
     }
 
     case 'tool_start':
+      if (BOOKKEEPING.has(event.tool)) return [];
       return [{
         type: 'tool/start',
         // Older engines emitted no id. Falling back to the tool name keeps the
@@ -113,11 +121,17 @@ export function ingest(event: HarnessEvent, at: number): readonly Action[] {
       }];
 
     case 'tool_result':
+      // A bookkeeping call that worked leaves its result on screen already —
+      // the plan section *is* the row. One that failed is still worth a line,
+      // because then the plan on screen is not what the harness intended.
+      if (BOOKKEEPING.has(event.tool) && (event.status ?? 'ok') === 'ok') return [];
       return [{
         type: 'tool/end',
         id: event.id ?? `${event.tool}`,
         outcome: event.status ?? 'ok',
         at,
+        name: event.tool,
+        verb: verbFor(event.tool),
         ...(event.summary !== '' ? { summary: event.summary } : {}),
         ...(event.detail !== undefined ? { detail: event.detail } : {}),
       }];

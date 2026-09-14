@@ -25,6 +25,7 @@ import {
 } from './editor.js';
 import { accept, completions, isSlash, parseSlash } from '../commands/slash.js';
 import { search } from '../commands/registry.js';
+import { hasUnseenOutput } from '../state/selectors.js';
 import type { CommandContext } from '../commands/registry.js';
 import type { Intent } from './keymap.js';
 import type { PromptHistory } from './history.js';
@@ -244,11 +245,8 @@ function composerKeys(intent: Intent, deps: RouterDeps): void {
       const next = PERMISSION_ORDER[(at + 1) % PERMISSION_ORDER.length] as PermissionMode;
       return controller.setPermission(next);
     }
-    case 'expandTool': {
-      const newest = newestToolId(state);
-      if (newest !== undefined) dispatch({ type: 'tool/toggleExpanded', id: newest });
-      return;
-    }
+    case 'expandTool':
+      return revealOutput(deps);
     case 'copyReply': {
       const command = search('copy')[0];
       command?.run(deps, '');
@@ -297,10 +295,28 @@ function browsingHistory(state: AppState, history: PromptHistory): boolean {
 }
 
 /**
- * The call Ctrl+T opens: the newest one still in the live region. A call that
- * has already gone to scrollback is frozen there — Ink writes those rows once —
- * so toggling it would change state and nothing on screen.
+ * Print the output of the newest call that has some and has not been printed
+ * yet, walking backwards — so pressing the key repeatedly reveals successively
+ * older calls, which is what "show me more" means here.
+ *
+ * It prints rather than expands on purpose. A row already in scrollback cannot
+ * be redrawn (Ink writes each one once), so a toggle would change state and
+ * nothing on screen. Appending the output below is both honest about what the
+ * terminal can do and the thing a terminal user already expects from `cat`.
  */
-function newestToolId(state: AppState): string | undefined {
-  return state.live.tools[state.live.tools.length - 1]?.id;
+function revealOutput(deps: RouterDeps): void {
+  const { state, dispatch } = deps;
+  for (let i = state.transcript.length - 1; i >= 0; i -= 1) {
+    const entry = state.transcript[i]!;
+    if (entry.kind !== 'tool') continue;
+    if (!hasUnseenOutput(entry.tool, state.revealed)) continue;
+    dispatch({ type: 'tool/reveal', id: entry.tool.id, at: Date.now() });
+    return;
+  }
+  dispatch({
+    type: 'notice', level: 'info', at: Date.now(),
+    text: state.transcript.some((entry) => entry.kind === 'tool')
+      ? 'nothing left to show — every call has already said what it had to'
+      : 'no tool output yet',
+  });
 }

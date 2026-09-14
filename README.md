@@ -86,8 +86,10 @@ instead of permanently on screen.
   only `via <provider>` and the context meter. A figure the gateway did not
   report is absent, never a zero.
 - **Tool calls read as what they did** — `$ go test ./...`, `read
-  gateway/fallback.go` — one row each, with the outcome in the marker and the
-  output behind `Ctrl+T`. Diffs render as diffs.
+  gateway/fallback.go` — one row each, in the order the work happened, with the
+  outcome in the marker. A failure prints its output straight away; a success
+  keeps it until `Ctrl+T` asks, which prints it below rather than reflowing
+  what you have already read. Diffs render as diffs.
 - **Approvals are unmissable**: a full-width band above the composer naming the
   exact call. `y` once · `n` deny · `a` always · a digit picks a trust scope
   (exact command → base command → whole tool).
@@ -111,7 +113,7 @@ instead of permanently on screen.
 | `Ctrl+O` | engine picker (combos + `auto/*`) |
 | `Ctrl+E` | cycle mode |
 | `Shift+Tab` | cycle permissions |
-| `Ctrl+T` | expand / collapse the newest tool's output |
+| `Ctrl+T` | print the output of the newest call that has not shown it yet |
 | `Ctrl+Y` | copy the last reply to the clipboard |
 | `Ctrl+J` | newline (`Shift+Enter` on kitty terminals) |
 | `Ctrl+C` | cancel the run, or quit when idle |

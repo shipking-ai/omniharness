@@ -5,7 +5,9 @@
  *
  *  Width — three bands, not one design squeezed. Narrow drops secondary
  *  metadata entirely rather than truncating it to noise; wide gets a second
- *  column rather than a longer line.
+ *  column beside the reading column rather than a longer line. The margin is
+ *  constant so that nothing already in scrollback can fall out of alignment
+ *  with what is drawn after it.
  *
  *  Height — Ink redraws its live region by walking the cursor up over the rows
  *  it wrote last time. That accounting only holds while the frame fits on
@@ -16,24 +18,30 @@
 
 export type Band = 'narrow' | 'normal' | 'wide';
 
-/** Below this a second column cannot hold anything worth reading. */
-export const WIDE_MIN = 120;
 /** Below this only the task and the composer survive. */
 export const NARROW_MAX = 71;
+/** At and above this the status line and hint line show their full detail. */
+export const WIDE_MIN = 120;
 
 export function band(columns: number): Band {
   if (columns <= NARROW_MAX) return 'narrow';
   return columns >= WIDE_MIN ? 'wide' : 'normal';
 }
 
-/** Width of the secondary column on a wide terminal. */
+/**
+ * The widest the reading column is allowed to get. Past roughly this the eye
+ * loses the start of a line on the way back from the end of it.
+ */
+export const MAX_MEASURE = 96;
+/** Constant side margin. See {@link measure} for why it is constant. */
+export const GUTTER = 2;
+/** Width of the secondary column on a terminal wide enough to hold one. */
 export const RAIL_WIDTH = 32;
+const GAP = 2;
 
 export interface Measure {
   readonly band: Band;
-  /** Total columns the interface draws into, centred in the terminal. */
-  readonly frame: number;
-  /** Left/right padding that centres the frame. */
+  /** Left margin. Constant for a given terminal width. */
   readonly gutter: number;
   /** Columns available to the primary (reading) column. */
   readonly content: number;
@@ -42,22 +50,33 @@ export interface Measure {
 }
 
 /**
- * Split the terminal into a reading column and, on a wide terminal, a rail.
- * `railWanted` is false when there is nothing to put in the rail — an empty
- * column is worse than a wider one.
+ * Split the terminal into a reading column and, when there is room beside it, a
+ * rail.
+ *
+ * Two rules, both learned from watching the thing run:
+ *
+ *  1. **Left-aligned, constant margin.** Centring made the margin a function of
+ *     how wide the frame happened to be, and the frame changes when the rail
+ *     appears — so the transcript already written into scrollback kept the old
+ *     margin while everything after it shifted, and a 170-column window jumped
+ *     seventeen columns mid-run. A terminal is left-aligned; centring one is a
+ *     web instinct that costs stability and buys nothing.
+ *  2. **The rail is never taken out of the reading column.** It appears only
+ *     when the terminal can hold the full measure *and* a rail beside it, so
+ *     the text column is the same width whether or not there is a rail — which
+ *     is what stops content re-wrapping the moment a plan arrives.
  */
 export function measure(columns: number, railWanted: boolean): Measure {
   const cols = Math.max(20, Math.floor(columns));
-  const size = band(cols);
-  const rail = size === 'wide' && railWanted ? RAIL_WIDTH : 0;
-  const frame = Math.min(cols, MAX_FRAME + (rail > 0 ? rail + GAP : 0));
-  const gutter = Math.max(0, Math.floor((cols - frame) / 2));
-  const content = Math.max(16, frame - (rail > 0 ? rail + GAP : 0));
-  return { band: size, frame, gutter, content, rail };
+  const gutter = cols > GUTTER * 2 + 16 ? GUTTER : 0;
+  const usable = Math.max(16, cols - gutter * 2);
+  const content = Math.min(MAX_MEASURE, usable);
+  const rail = railWanted && usable - content - GAP >= RAIL_WIDTH ? RAIL_WIDTH : 0;
+  return { band: band(cols), gutter, content, rail };
 }
 
-const MAX_FRAME = 96;
-const GAP = 2;
+/** The narrowest terminal that can hold the full measure and a rail beside it. */
+export const RAIL_MIN_COLUMNS = GUTTER * 2 + MAX_MEASURE + GAP + RAIL_WIDTH;
 
 export interface HeightInput {
   readonly rows: number;

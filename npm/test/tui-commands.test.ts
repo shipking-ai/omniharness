@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { COMMANDS, byId, search } from '../src/tui/commands/registry.js';
 import { accept, completions, isSlash, parseSlash } from '../src/tui/commands/slash.js';
+import { explainFailure } from '../src/tui/runtime/controller.js';
 
 test('every command is uniquely named and addressable', () => {
   assert.equal(new Set(COMMANDS.map((command) => command.id)).size, COMMANDS.length);
@@ -75,4 +76,26 @@ test('completion offers what has been typed so far and nothing else', () => {
 test('accepting a completion leaves the caret where the argument goes', () => {
   assert.equal(accept(byId('view.route')!), '/route');
   assert.equal(accept(byId('session.save')!), '/save ');
+});
+
+// --- failures the user can act on -------------------------------------------
+
+test('a connection failure names the gateway and what to do about it', () => {
+  for (const message of ['fetch failed', 'connect ECONNREFUSED 127.0.0.1:20128', 'socket hang up']) {
+    const explained = explainFailure(new Error(message), 'http://localhost:20128');
+    assert.match(explained, /cannot reach OmniRoute at http:\/\/localhost:20128/, message);
+    assert.match(explained, /check that it is running/);
+  }
+});
+
+test('a connection failure hidden in a cause is still recognised', () => {
+  const error = new Error('fetch failed');
+  (error as { cause?: unknown }).cause = new Error('connect ECONNREFUSED 127.0.0.1:20128');
+  assert.match(explainFailure(error, 'http://x'), /cannot reach OmniRoute/);
+});
+
+test('an error that already says something useful is left alone', () => {
+  for (const message of ['too many tool turns (limit 40)', 'OmniRoute 401: invalid api key']) {
+    assert.equal(explainFailure(new Error(message), 'http://x'), message);
+  }
 });

@@ -15,7 +15,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
-import { Heading, Marker } from '../components/atoms.js';
+import { Heading, Marker, joinMeta } from '../components/atoms.js';
 import { Prose } from '../components/prose.js';
 import { ToolBlock } from '../components/transcript.js';
 import { agentProgress, planProgress } from '../state/selectors.js';
@@ -34,10 +34,9 @@ export interface RunViewProps {
 }
 
 /**
- * Calls shown at once before the rest are counted instead of listed. These are
- * this run's calls — still running or finished but not yet in scrollback — and
- * they are what Ctrl+T opens, so the window has to be big enough to hold the
- * one the reader just watched go past.
+ * Calls in flight shown at once before the rest are counted instead of listed.
+ * A finished call is already in the transcript above, so this only ever holds
+ * work that is genuinely still running.
  */
 const MAX_CALLS = 6;
 
@@ -53,40 +52,47 @@ export function RunView({
 
   const plan = planProgress(state.plan);
   const agents = agentProgress(state);
+  // A narrow terminal cannot hold the lists, but "what is it doing" is exactly
+  // what it most needs to answer — so the plan collapses to one line rather
+  // than disappearing, which is what it used to do.
   const wantPlan = !compact && state.plan.length > 0 && lensRows >= 2;
+  const wantPlanLine = compact && state.plan.length > 0;
   const wantAgents = !compact && agents.total > 0 && lensRows >= 4;
 
-  const empty = reasoning === '' && answer === '' && tools.length === 0 && !wantPlan && !wantAgents;
+  const empty = reasoning === '' && answer === '' && tools.length === 0
+    && !wantPlan && !wantPlanLine && !wantAgents;
   if (empty) return null;
 
   return <Box flexDirection="column">
     {reasoning !== ''
       ? <Box flexDirection="column">
           <Text color={theme.muted} bold>thinking</Text>
-          <Prose text={reasoning} width={width} color={theme.muted} dim limit={thinkingRows} />
+          <Prose ascii={glyphs.ascii} text={reasoning} width={width} color={theme.muted} dim limit={thinkingRows} />
         </Box>
       : null}
 
     {answer !== ''
       ? <Box flexDirection="column" marginTop={reasoning !== '' ? 1 : 0}>
-          <Prose text={answer} width={width} limit={answerRows} />
+          <Prose ascii={glyphs.ascii} text={answer} width={width} limit={answerRows} />
         </Box>
       : null}
 
     {recent.length > 0
       ? <Box flexDirection="column" marginTop={1}>
           {recent.map((tool) => (
-            <ToolBlock
-              key={tool.id}
-              tool={tool}
-              width={width}
-              theme={theme}
-              glyphs={glyphs}
-              expanded={state.expanded.includes(tool.id)}
-            />
+            <ToolBlock key={tool.id} tool={tool} width={width} theme={theme} glyphs={glyphs} />
           ))}
-          {hidden > 0 ? <Text color={theme.muted}>{'  '}+{hidden} earlier call{hidden === 1 ? '' : 's'}</Text> : null}
+          {hidden > 0 ? <Text color={theme.muted}>{'  '}+{hidden} more running</Text> : null}
         </Box>
+      : null}
+
+    {wantPlanLine
+      ? <Text color={theme.muted}>
+          {'\n'}plan {plan.done}/{plan.total}
+          {plan.active !== undefined
+            ? ` ${glyphs.dot} ${clip(plan.active.title, Math.max(8, width - 14))}`
+            : ''}
+        </Text>
       : null}
 
     {wantPlan
@@ -105,9 +111,11 @@ export function RunView({
       ? <Box flexDirection="column" marginTop={1}>
           <Box flexDirection="row" justifyContent="space-between" width={width}>
             <Heading theme={theme}>agents</Heading>
-            <Text color={theme.muted}>
-              {agents.done}/{agents.total} done{agents.failed > 0 ? ` · ${agents.failed} failed` : ''}
-            </Text>
+            <Text color={theme.muted}>{joinMeta([
+              agents.working > 0 ? `${agents.working} working` : undefined,
+              agents.done > 0 ? `${agents.done} done` : undefined,
+              agents.failed > 0 ? `${agents.failed} failed` : undefined,
+            ], glyphs.dot)}</Text>
           </Box>
           {state.agents.slice(0, 3).map((agent) => (
             <Text key={agent.id}>

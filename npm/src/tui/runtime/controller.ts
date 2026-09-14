@@ -20,6 +20,13 @@ import { nextId } from '../state/reducer.js';
 import type { Dispatch, Store } from '../state/store.js';
 import type { Entry, PickerEntry, UsageState } from '../state/types.js';
 
+/**
+ * How often buffered stream deltas reach the screen, in milliseconds. Roughly a
+ * frame: fast enough that text looks like it is being typed, slow enough that a
+ * burst of SSE frames becomes one repaint.
+ */
+const FLUSH_MS = 33;
+
 /** Parallel workers a planned crazy-mode run fans out to. */
 const SWARM_AGENTS = 3;
 /** A plan smaller than this is faster to finish in one pass than to fan out. */
@@ -79,10 +86,47 @@ export function createController(engine: MastraEngine, store: Store): Controller
         : {}),
     };
     dispatch({ type: 'usage/set', usage });
+    // A cooldown is a fact about a provider, not a new routing decision.
+    // Re-dispatching the last decision to carry it recorded the same failover
+    // twice — once in the transcript and once in the failover list.
     const cooldown = metrics.fallback.cooldownUntil;
-    if (cooldown !== undefined && store.getState().route.cooldownUntil !== cooldown && store.getState().route.current) {
-      dispatch({ type: 'route/observed', decision: store.getState().route.current!, cooldownUntil: cooldown });
+    if (cooldown !== undefined) dispatch({ type: 'route/cooldown', until: cooldown });
+  };
+
+  // -- streaming deltas are coalesced ---------------------------------------
+  //
+  // One network chunk can carry dozens of SSE frames, and the client parses
+  // them in a synchronous loop. Dispatching each one straight through meant
+  // dozens of nested synchronous re-renders: React's update-depth guard fired
+  // and printed "Maximum update depth exceeded" *into the terminal*, and a
+  // single 900-delta reply wrote 900 KB of escape sequences to redraw text that
+  // changed by a few characters at a time.
+  //
+  // Buffering them into one update per frame interval fixes both. Ordering is
+  // preserved by flushing before anything else is dispatched, so a tool call
+  // can never overtake the narrative that led to it.
+  let pendingAnswer = '';
+  let pendingReasoning = '';
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const flushDeltas = (): void => {
+    if (flushTimer !== undefined) { clearTimeout(flushTimer); flushTimer = undefined; }
+    if (pendingReasoning !== '') {
+      const delta = pendingReasoning;
+      pendingReasoning = '';
+      dispatch({ type: 'stream/reasoning', delta });
     }
+    if (pendingAnswer !== '') {
+      const delta = pendingAnswer;
+      pendingAnswer = '';
+      dispatch({ type: 'stream/answer', delta });
+    }
+  };
+
+  const scheduleFlush = (): void => {
+    if (flushTimer !== undefined) return;
+    flushTimer = setTimeout(() => { flushTimer = undefined; flushDeltas(); }, FLUSH_MS);
+    flushTimer.unref?.();
   };
 
   const unsubscribe = engine.subscribe((event) => {
@@ -91,7 +135,12 @@ export function createController(engine: MastraEngine, store: Store): Controller
     // thrown here would propagate into its run loop and take the turn with it.
     // A view is never worth failing a run over: record the fault and carry on.
     try {
-      for (const action of ingest(event, now())) dispatch(action);
+      for (const action of ingest(event, now())) {
+        if (action.type === 'stream/answer') { pendingAnswer += action.delta; scheduleFlush(); continue; }
+        if (action.type === 'stream/reasoning') { pendingReasoning += action.delta; scheduleFlush(); continue; }
+        flushDeltas();
+        dispatch(action);
+      }
       if (event.type === 'text' || event.type === 'route') syncUsage();
     } catch (reason: unknown) {
       dispatch({
@@ -140,13 +189,10 @@ export function createController(engine: MastraEngine, store: Store): Controller
           await engine.runSwarm({ maxAgents: SWARM_AGENTS });
         }
       } catch (reason: unknown) {
-        dispatch({
-          type: 'run/failed',
-          message: reason instanceof Error ? reason.message : String(reason),
-          at: now(),
-        });
+        dispatch({ type: 'run/failed', message: explainFailure(reason, engine.client.endpoint), at: now() });
       } finally {
         running = false;
+        flushDeltas();
         dispatch({ type: 'run/end', at: now() });
         syncUsage();
         const queued = store.getState().composer.queued;
@@ -259,6 +305,9 @@ export function createController(engine: MastraEngine, store: Store): Controller
 
     async clear() {
       dispatch({ type: 'session/reset' });
+      // Scrollback keeps everything that came before, so the boundary has to be
+      // marked or the next turn looks like a continuation of the last one.
+      dispatch({ type: 'notice', level: 'info', at: now(), text: 'new conversation' });
       await engine.clearHistory().catch(() => { /* best-effort */ });
     },
 
@@ -341,6 +390,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (flushTimer !== undefined) clearTimeout(flushTimer);
       // A pending approval left unresolved hangs the engine's tool loop for the
       // life of the process, so unmount denies it rather than abandoning it.
       const resolve = pendingApproval;
@@ -350,6 +400,23 @@ export function createController(engine: MastraEngine, store: Store): Controller
       engine.stop();
     },
   };
+}
+
+/**
+ * Turn a thrown value into something a person can act on.
+ *
+ * Node's fetch throws a bare `fetch failed` for every connection problem, which
+ * names neither what was being reached nor what to do about it — the CLI's
+ * `models` command has always said more than the interface did. Anything that
+ * is already a real message is left exactly as it is.
+ */
+export function explainFailure(reason: unknown, endpoint: string): string {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const cause = reason instanceof Error && reason.cause instanceof Error ? reason.cause.message : '';
+  const unreachable = /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|terminated/i;
+  if (!unreachable.test(message) && !unreachable.test(cause)) return message;
+  return `cannot reach OmniRoute at ${endpoint} — check that it is running, `
+    + 'or point OMNIROUTE_URL somewhere else. `omniharness doctor` reports the full picture.';
 }
 
 export const PERMISSION_LABEL: Record<PermissionMode, string> = {

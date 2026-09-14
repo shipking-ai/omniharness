@@ -58,6 +58,8 @@ export function unicodeSafe(env: Record<string, string | undefined> = process.en
 }
 
 export interface Glyphs {
+  /** True when this is the plain set, for the few places Ink needs to know. */
+  readonly ascii: boolean;
   readonly running: string;
   readonly done: string;
   readonly pending: string;
@@ -68,6 +70,10 @@ export interface Glyphs {
   readonly attention: string;
   /** Left rule beside expanded output. */
   readonly rule: string;
+  /** Horizontal rule above the composer. */
+  readonly hrule: string;
+  /** Vertical-movement hint, spelled out when arrows will not draw. */
+  readonly updown: string;
   /** Separator between inline metadata. */
   readonly dot: string;
   readonly caret: string;
@@ -78,6 +84,7 @@ export interface Glyphs {
 }
 
 const UNICODE: Glyphs = {
+  ascii: false,
   running: '●',
   done: '✓',
   pending: '○',
@@ -86,6 +93,8 @@ const UNICODE: Glyphs = {
   denied: '⊘',
   attention: '▲',
   rule: '│',
+  hrule: '─',
+  updown: '↑↓',
   dot: '·',
   caret: '›',
   cursor: '▍',
@@ -95,6 +104,7 @@ const UNICODE: Glyphs = {
 };
 
 const ASCII: Glyphs = {
+  ascii: true,
   running: '*',
   done: '+',
   pending: '-',
@@ -103,6 +113,8 @@ const ASCII: Glyphs = {
   denied: '~',
   attention: '!',
   rule: '|',
+  hrule: '-',
+  updown: 'up/down',
   dot: '-',
   caret: '>',
   cursor: '_',

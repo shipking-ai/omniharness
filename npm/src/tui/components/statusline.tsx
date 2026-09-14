@@ -77,39 +77,65 @@ export interface HintProps {
   readonly state: AppState;
   readonly focus: Focus;
   readonly width: number;
-  readonly band: Band;
   readonly theme: Theme;
+  readonly glyphs: Glyphs;
   readonly kitty: boolean | null;
 }
 
 /**
- * The keys that matter where the user is. Never more than fits on one row:
- * the list is built longest-first and clipped, so the most useful hint is the
- * one that survives a narrow terminal.
+ * The keys that matter where the user is, most useful first. The renderer drops
+ * whole hints that do not fit rather than clipping one in half — "Ctrl+T tool
+ * outp…" is not a hint, it is litter.
  */
-export function hintsFor(state: AppState, focus: Focus, kitty: boolean | null): readonly string[] {
+export function hintsFor(
+  state: AppState, focus: Focus, kitty: boolean | null, glyphs: Glyphs,
+): readonly string[] {
   switch (focus) {
     case 'approval':
       return ['y allow once', 'n deny', 'a always allow', `1–${Math.max(1, state.approval?.scopes.length ?? 1)} trust scope`];
     case 'overlay':
       return state.overlay?.kind === 'palette'
-        ? ['enter run', 'esc close', '↑↓ move', 'type to filter']
-        : ['enter select', 'esc close', '↑↓ move'];
+        ? ['enter run', 'esc close', `${glyphs.updown} move`, 'type to filter']
+        : ['enter select', 'esc close', `${glyphs.updown} move`];
     case 'lens':
-      return ['↑↓ move', state.lens === 'sessions' ? 'enter resume' : 'enter focus', 'esc back to run', `${KEY_LABEL.palette} commands`];
+      return [
+        `${glyphs.updown} move`,
+        state.lens === 'sessions' ? 'enter resume' : 'enter focus',
+        'esc back to run',
+        `${KEY_LABEL.palette} commands`,
+      ];
     case 'composer':
+      // The palette comes second, ahead of the newline key: it is the one hint
+      // that leads to every other, so it has to survive a narrow terminal.
       return [
         state.phase === 'idle' ? 'enter send' : `${KEY_LABEL.interrupt} cancel`,
-        kitty === true ? 'shift+enter newline' : `${KEY_LABEL.newline} newline`,
         `${KEY_LABEL.palette} commands`,
+        kitty === true ? 'shift+enter newline' : `${KEY_LABEL.newline} newline`,
         `${KEY_LABEL.cycleLens} views`,
-        `${KEY_LABEL.expandTool} tool output`,
+        `${KEY_LABEL.expandTool} show output`,
       ];
   }
 }
 
-export function HintLine({ state, focus, width, band, theme, kitty }: HintProps): React.ReactElement {
-  const hints = hintsFor(state, focus, kitty);
-  const shown = band === 'narrow' ? hints.slice(0, 2) : hints;
-  return <Text color={theme.muted}>{clip(shown.join('  ·  '), width)}</Text>;
+/** As many whole hints as fit, in order. Never a half one. */
+export function packHints(hints: readonly string[], width: number, dot = '·'): string {
+  const separator = `  ${dot}  `;
+  const out: string[] = [];
+  let used = 0;
+  for (const hint of hints) {
+    const cost = used === 0 ? hint.length : separator.length + hint.length;
+    if (used + cost > width) break;
+    out.push(hint);
+    used += cost;
+  }
+  // Something is better than an empty row: the first hint is the important one,
+  // so on a terminal too narrow for even that, clip just it.
+  if (out.length === 0 && hints.length > 0) return clip(hints[0] as string, width);
+  return out.join(separator);
+}
+
+export function HintLine({ state, focus, width, theme, glyphs, kitty }: HintProps): React.ReactElement {
+  return <Text color={theme.muted}>
+    {packHints(hintsFor(state, focus, kitty, glyphs), width, glyphs.dot)}
+  </Text>;
 }

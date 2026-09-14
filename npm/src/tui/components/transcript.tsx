@@ -5,7 +5,8 @@
  * Rendered through Ink's `<Static>`, which writes each item exactly once and
  * never redraws it. That is why the state model only ever appends *finished*
  * entries here: a tool still running would be frozen mid-flight, and the run
- * lens shows it instead until it settles.
+ * lens shows it instead until it settles. It is also why revealing a call's
+ * output appends an `output` entry below rather than reopening the row above.
  *
  * Hierarchy is carried by position and weight, not by boxes. The user's words
  * get the accent and a marker; the assistant's answer gets the full measure and
@@ -19,6 +20,7 @@ import { clip } from '../format/clip.js';
 import { millis } from '../format/units.js';
 import { Gutter, Marker, joinMeta, type MarkerState } from './atoms.js';
 import { Output, Plain, Prose } from './prose.js';
+import { printsOutputInline } from '../state/selectors.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { Entry, ToolRecord } from '../state/types.js';
 
@@ -27,35 +29,45 @@ export interface EntryProps {
   readonly width: number;
   readonly theme: Theme;
   readonly glyphs: Glyphs;
-  readonly expanded: boolean;
 }
 
-/** Rows of tool output shown when a block is expanded. */
-const OUTPUT_ROWS = 16;
+/**
+ * Rows printed when a call's output is revealed. High on purpose: the block
+ * goes into scrollback, where the terminal can scroll it, and the engine has
+ * already bounded what it sends. This is a guard against a pathological line
+ * count, not an editorial cut.
+ */
+const OUTPUT_ROWS = 200;
+/**
+ * Rows of a failure shown without being asked. An error you have to press a key
+ * to read is an error most people never read; a success you have to ask for is
+ * just tidy.
+ */
+const ERROR_PREVIEW_ROWS = 8;
 
-export function TranscriptEntry({ entry, width, theme, glyphs, expanded }: EntryProps): React.ReactElement {
+export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): React.ReactElement {
   switch (entry.kind) {
     case 'user':
       return <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="row">
           <Text color={theme.accent} bold>{glyphs.caret} </Text>
           <Box flexDirection="column" flexGrow={1}>
-            <Prose text={entry.text} width={width - 2} color={theme.accent} />
+            <Prose ascii={glyphs.ascii} text={entry.text} width={width - 2} color={theme.accent} />
           </Box>
         </Box>
       </Box>;
 
     case 'assistant': {
       const meta = joinMeta([
-        entry.provider !== undefined ? `via ${entry.provider}` : undefined,
-        entry.fallback === true ? 'failover' : undefined,
-        entry.model,
+        entry.showRoute === true && entry.provider !== undefined ? `via ${entry.provider}` : undefined,
+        entry.showRoute === true && entry.fallback === true ? 'failover' : undefined,
+        entry.showRoute === true ? entry.model : undefined,
         entry.compression !== undefined
           ? `${Math.round(entry.compression.savedFraction * 100)}% context saved`
           : undefined,
       ], glyphs.dot);
       return <Box flexDirection="column" marginTop={1}>
-        <Prose text={entry.text} width={width} />
+        <Prose ascii={glyphs.ascii} text={entry.text} width={width} />
         {meta !== '' ? <Text color={theme.muted}>{clip(meta, width)}</Text> : null}
       </Box>;
     }
@@ -63,11 +75,21 @@ export function TranscriptEntry({ entry, width, theme, glyphs, expanded }: Entry
     case 'reasoning':
       return <Box flexDirection="column" marginTop={1}>
         <Text color={theme.muted} bold>thinking</Text>
-        <Prose text={entry.text} width={width} color={theme.muted} dim />
+        <Prose ascii={glyphs.ascii} text={entry.text} width={width} color={theme.muted} dim />
       </Box>;
 
     case 'tool':
-      return <ToolBlock tool={entry.tool} width={width} theme={theme} glyphs={glyphs} expanded={expanded} />;
+      return <ToolBlock tool={entry.tool} width={width} theme={theme} glyphs={glyphs} />;
+
+    case 'output':
+      return <Box flexDirection="column">
+        <Text color={theme.muted}>
+          {'  '}output {glyphs.dot} {clip(`${entry.tool.verb} ${entry.tool.target}`.trim(), Math.max(8, width - 12))}
+        </Text>
+        <Gutter theme={theme} ascii={glyphs.ascii}>
+          <Output text={entry.tool.detail ?? ''} width={Math.max(10, width - 2)} limit={OUTPUT_ROWS} />
+        </Gutter>
+      </Box>;
 
     case 'route':
       return <Text color={theme.warn}>
@@ -80,8 +102,17 @@ export function TranscriptEntry({ entry, width, theme, glyphs, expanded }: Entry
         : entry.level === 'warn' ? theme.warn
         : entry.level === 'success' ? theme.success
         : theme.muted;
-      return <Box flexDirection="column" marginTop={entry.level === 'error' ? 1 : 0}>
-        <Plain text={entry.text} width={width} color={color} />
+      // The marker, not the colour, is what carries the severity: a terminal
+      // with NO_COLOR set still has to be able to tell a failure from a note.
+      const marker = entry.level === 'error' ? glyphs.failed
+        : entry.level === 'warn' ? glyphs.attention
+        : entry.level === 'success' ? glyphs.done
+        : glyphs.dot;
+      return <Box flexDirection="row" marginTop={entry.level === 'error' ? 1 : 0}>
+        <Text color={color}>{marker} </Text>
+        <Box flexDirection="column" flexGrow={1}>
+          <Plain text={entry.text} width={Math.max(8, width - 2)} color={color} />
+        </Box>
       </Box>;
     }
   }
@@ -104,8 +135,8 @@ export function toolMarker(tool: ToolRecord): MarkerState {
  * is the subject, not the tool's internal name.
  */
 export function ToolBlock({
-  tool, width, theme, glyphs, expanded,
-}: { tool: ToolRecord; width: number; theme: Theme; glyphs: Glyphs; expanded: boolean }): React.ReactElement {
+  tool, width, theme, glyphs,
+}: { tool: ToolRecord; width: number; theme: Theme; glyphs: Glyphs }): React.ReactElement {
   const took = tool.endedAt !== undefined ? millis(tool.endedAt - tool.startedAt) : undefined;
   // The head owns the row: verb and subject first, then whatever room is left
   // goes to the one-line summary. Sizing the summary to the full width is what
@@ -122,6 +153,10 @@ export function ToolBlock({
     took,
     tool.agentId,
   ], glyphs.dot);
+  // A failure shows its output without being asked — but only when the output
+  // says more than the row already did. Repeating a one-line error underneath
+  // itself is noise, not evidence.
+  const inlineOutput = printsOutputInline(tool);
 
   return <Box flexDirection="column">
     <Text>
@@ -129,9 +164,9 @@ export function ToolBlock({
       <Text color={tool.outcome === 'error' ? theme.error : undefined}>{head}</Text>
       {tail !== '' && rest > 4 ? <Text color={theme.muted}> {clip(tail, rest)}</Text> : null}
     </Text>
-    {expanded && tool.detail !== undefined && tool.detail !== ''
-      ? <Gutter theme={theme} glyphs={glyphs}>
-          <Output text={tool.detail} width={Math.max(10, width - 2)} limit={OUTPUT_ROWS} />
+    {inlineOutput
+      ? <Gutter theme={theme} ascii={glyphs.ascii}>
+          <Output text={tool.detail ?? ''} width={Math.max(10, width - 2)} limit={ERROR_PREVIEW_ROWS} />
         </Gutter>
       : null}
   </Box>;

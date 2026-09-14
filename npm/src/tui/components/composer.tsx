@@ -50,7 +50,7 @@ export function Composer({
   const matches = completions(composer.value);
 
   return <Box flexDirection="column">
-    <Rule width={width} theme={theme} />
+    <Rule width={width} theme={theme} glyphs={glyphs} />
     {composer.value === ''
       ? <Text color={caretColor}>
           {glyphs.caret} <Text color={theme.muted}>

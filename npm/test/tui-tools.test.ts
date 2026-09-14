@@ -44,9 +44,38 @@ test('a failed call is immediately recognisable', async () => {
     detail: 'undefined: Foo', id: 'c1', status: 'error',
   });
   await app.settle();
-  const rows = app.screen().split('\n').filter((line) => line.includes('go build'));
-  assert.ok(rows.some((line) => line.trimStart().startsWith('x')), 'a failure carries the failure marker');
+  const screen = app.screen();
+  const rows = screen.split('\n').filter((line) => line.includes('go build'));
+  assert.ok(rows.some((line) => line.trimStart().startsWith('✗')), 'a failure carries the failure marker');
   assert.ok(rows.some((line) => line.includes('exit 1')));
+  assert.match(screen, /undefined: Foo/, 'a failure shows its output without being asked for it');
+  app.unmount();
+});
+
+test('a successful call keeps its output to itself until it is asked for', async () => {
+  const app = await mount({ columns: 100, run: running });
+  await app.submit('go');
+  app.emit({ type: 'tool_start', tool: 'run_command', input: { command: 'go build ./...' }, id: 'c1' });
+  app.emit({
+    type: 'tool_result', tool: 'run_command', summary: 'exit 0',
+    detail: 'a lot of build output nobody asked to read', id: 'c1', status: 'ok',
+  });
+  await app.settle();
+  assert.ok(!app.screen().includes('nobody asked to read'));
+  app.unmount();
+});
+
+test('a one-line failure is not printed twice under itself', async () => {
+  const app = await mount({ columns: 100, run: running });
+  await app.submit('go');
+  app.emit({ type: 'tool_start', tool: 'run_command', input: { command: 'rm x' }, id: 'c1' });
+  app.emit({
+    type: 'tool_result', tool: 'run_command', summary: 'error: shell execution is disabled by policy',
+    detail: 'error: shell execution is disabled by policy', id: 'c1', status: 'error',
+  });
+  await app.settle();
+  const hits = app.screen().split('\n').filter((line) => line.includes('shell execution is disabled'));
+  assert.equal(hits.length, 1, 'the row already said it');
   app.unmount();
 });
 
@@ -137,4 +166,89 @@ test('a diff is rendered as a diff when a call returns one', async () => {
   } finally {
     app.unmount();
   }
+});
+
+test('the transcript reads in the order the work happened', async () => {
+  let finish: ((v: { content: string; model: string }) => void) | undefined;
+  const app = await mount({ columns: 100, run: () => new Promise((resolve) => { finish = resolve; }) });
+  await app.submit('why is it failing');
+  app.emit({ type: 'text_delta', delta: 'Reading the manifest first.' });
+  app.emit({ type: 'tool_start', tool: 'read_file', input: { path: 'package.json' }, id: 'c1' });
+  app.emit({ type: 'tool_result', tool: 'read_file', summary: '18 lines', id: 'c1', status: 'ok' });
+  app.emit({ type: 'text', content: 'The name field is wrong.', model: 'm' });
+  finish?.({ content: 'The name field is wrong.', model: 'm' });
+  await app.settle(150);
+
+  const screen = app.screen();
+  const order = ['why is it failing', 'Reading the manifest first.', 'read package.json', 'The name field is wrong.'];
+  let at = -1;
+  for (const marker of order) {
+    const next = screen.indexOf(marker, at + 1);
+    assert.ok(next > at, `"${marker}" is out of order — a call must never render after the answer it preceded`);
+    at = next;
+  }
+  app.unmount();
+});
+
+test('plan bookkeeping is the plan, not six rows above it', async () => {
+  const app = await mount({ columns: 100, run: () => new Promise<never>(() => { /* running */ }) });
+  await app.submit('go');
+  for (const [i, title] of ['first step', 'second step'].entries()) {
+    app.emit({ type: 'tool_start', tool: 'update_todo', input: { action: 'add', title }, id: `c${i}` });
+    app.emit({ type: 'tool_result', tool: 'update_todo', summary: `todo added: ${title}`, id: `c${i}`, status: 'ok' });
+  }
+  app.emit({ type: 'todos', todos: [
+    { id: '1', title: 'first step', status: 'done' },
+    { id: '2', title: 'second step', status: 'active' },
+  ] });
+  await app.settle(80);
+  const screen = app.screen();
+  assert.ok(!screen.includes('todo added'), 'the bookkeeping call is not a transcript row');
+  assert.match(screen, /first step/, 'the plan it produced is');
+  app.unmount();
+});
+
+test('a bookkeeping call that failed is still reported', async () => {
+  const app = await mount({ columns: 100, run: () => new Promise<never>(() => { /* running */ }) });
+  await app.submit('go');
+  app.emit({
+    type: 'tool_result', tool: 'update_todo', summary: 'error: no such todo',
+    detail: 'error: no such todo', id: 'c1', status: 'error',
+  });
+  await app.settle(60);
+  assert.match(app.screen(), /plan\s+error: no such todo/, 'a plan the harness failed to write is news');
+  app.unmount();
+});
+
+test('showing output skips calls that have nothing left to say', async () => {
+  const app = await mount({ columns: 100, rows: 40, run: () => new Promise<never>(() => { /* running */ }) });
+  await app.submit('go');
+  // A read with more in it than its row showed.
+  app.emit({ type: 'tool_start', tool: 'read_file', input: { path: 'notes.md' }, id: 'c1' });
+  app.emit({
+    type: 'tool_result', tool: 'read_file', summary: 'alpha',
+    detail: 'alpha\nbeta\ngamma', id: 'c1', status: 'ok',
+  });
+  // A newer failure whose whole output is the line the row already carried.
+  app.emit({ type: 'tool_start', tool: 'run_command', input: { command: 'go test ./...' }, id: 'c2' });
+  app.emit({
+    type: 'tool_result', tool: 'run_command', summary: 'error: shell execution is disabled by policy',
+    detail: 'error: shell execution is disabled by policy', id: 'c2', status: 'error',
+  });
+  await app.settle(80);
+
+  await app.type('\x14'); // Ctrl+T
+  await app.settle(80);
+  const screen = app.screen();
+  assert.match(screen, /output ·\s+read notes\.md/, 'it reached the call that had something to show');
+  assert.match(screen, /gamma/);
+  assert.equal(
+    screen.split('\n').filter((line) => line.includes('shell execution is disabled')).length, 1,
+    'the one-line failure was not printed a second time under itself',
+  );
+
+  await app.type('\x14');
+  await app.settle(80);
+  assert.match(app.screen(), /nothing left to show/);
+  app.unmount();
 });

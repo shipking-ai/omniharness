@@ -135,6 +135,7 @@ export interface UsageState {
   readonly tokensOut?: number;
   readonly costUsd?: number;
   readonly latencyMs?: number;
+  /** Every HTTP request to the gateway this session, catalog reads included. */
   readonly requests?: number;
   readonly remainingQuota?: number;
   readonly compression?: CompressionSummary;
@@ -146,8 +147,9 @@ export interface UsageState {
 
 /**
  * A settled transcript entry. Entries are appended only once they are final,
- * because they are rendered into the terminal's own scrollback and can never
- * be redrawn. Anything still changing lives in {@link LiveState} instead.
+ * because they are rendered into the terminal's own scrollback and can never be
+ * redrawn — nor un-printed, which is why the list only ever grows. Anything
+ * still changing lives in {@link LiveState} instead.
  */
 export type Entry =
   | { readonly kind: 'user'; readonly id: string; readonly at: number; readonly text: string }
@@ -160,9 +162,20 @@ export type Entry =
       readonly provider?: string;
       readonly fallback?: boolean;
       readonly compression?: CompressionSummary;
+      /**
+       * Whether the route is worth naming under this reply. True for the first
+       * reply of a session and whenever the provider, the model or the failover
+       * state changed — a line repeating the same provider under every turn is
+       * chrome, and the status line already carries it.
+       */
+      readonly showRoute?: boolean;
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly at: number; readonly text: string }
   | { readonly kind: 'tool'; readonly id: string; readonly at: number; readonly tool: ToolRecord }
+  // The output of a call, printed on request. A row already in scrollback can
+  // never be redrawn, so "expand" appends the output below rather than
+  // pretending to reopen the row above — see the note on Ctrl+T in router.ts.
+  | { readonly kind: 'output'; readonly id: string; readonly at: number; readonly tool: ToolRecord }
   | { readonly kind: 'route'; readonly id: string; readonly at: number; readonly decision: RouteDecision }
   | {
       readonly kind: 'notice';
@@ -292,14 +305,11 @@ export interface AppState {
   readonly lens: LensId;
   readonly overlay?: Overlay;
   readonly composer: ComposerState;
-  /** Tool ids whose output is expanded. */
-  readonly expanded: readonly string[];
+  /** Ids of calls whose output has already been printed. */
+  readonly revealed: readonly string[];
   /** Selected row inside the focused lens, when that lens has a list. */
   readonly lensCursor: number;
-  /** Bumped whenever the transcript is replaced rather than appended to. */
-  readonly epoch: number;
   readonly preview?: string;
 }
 
 export const ROUTE_HISTORY_LIMIT = 24;
-export const TRANSCRIPT_LIMIT = 800;

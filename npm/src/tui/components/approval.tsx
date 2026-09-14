@@ -15,6 +15,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
+import { Gutter } from './atoms.js';
 import { Plain } from './prose.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { PendingApproval } from '../state/types.js';
@@ -45,12 +46,9 @@ export function ApprovalBanner({
     <Text color={theme.attention} bold>
       {glyphs.attention} approval needed {glyphs.dot} {approval.tool}
     </Text>
-    <Box flexDirection="row">
-      <Text color={theme.muted}>{glyphs.rule} </Text>
-      <Box flexDirection="column" flexGrow={1}>
-        <Plain text={subject} width={Math.max(10, width - 2)} limit={3} />
-      </Box>
-    </Box>
+    <Gutter theme={theme} ascii={glyphs.ascii}>
+      <Plain text={subject} width={Math.max(10, width - 2)} limit={3} />
+    </Gutter>
     {approval.scopes.map((scope, index) => (
       <Text key={scope.id} color={theme.muted}>
         {'  '}{index + 1} {glyphs.dot} {clip(scope.label, Math.max(10, width - 6))}

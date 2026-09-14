@@ -13,14 +13,20 @@ import type { AppState, PlanStep, RouteDecision, ToolRecord } from './types.js';
 
 /** A short, honest description of what is happening right now. */
 export function phaseLabel(state: AppState): string {
+  // A gate and a cancellation outrank everything; otherwise, if workers are
+  // running, that is the truth about this moment — the main turn has already
+  // handed off, and calling it "responding" describes nobody.
+  if (state.phase === 'awaiting-approval') return 'waiting for you';
+  if (state.phase === 'cancelling') return 'cancelling';
+  const working = agentProgress(state).working;
+  if (working > 0) return `${working} agent${working === 1 ? '' : 's'} working`;
   switch (state.phase) {
     case 'idle': return state.composer.queued !== undefined ? 'queued' : 'ready';
     case 'preparing': return 'starting';
     case 'thinking': return 'thinking';
     case 'streaming': return 'responding';
     case 'tool': return describeTools(state.live.tools.filter((tool) => tool.outcome === 'running'));
-    case 'awaiting-approval': return 'waiting for you';
-    case 'cancelling': return 'cancelling';
+    default: return 'working';
   }
 }
 
@@ -107,7 +113,7 @@ export function routeFields(state: AppState): readonly Field[] {
  * session where nothing was measured shows no usage section at all, rather
  * than a column of zeroes that would read as "free and instant".
  */
-export function usageFields(state: AppState): readonly Field[] {
+export function usageFields(state: AppState, dot = '·'): readonly Field[] {
   const out: Field[] = [];
   const { usage } = state;
   const tin = tokens(usage.tokensIn);
@@ -117,19 +123,23 @@ export function usageFields(state: AppState): readonly Field[] {
       label: 'tokens',
       value: [tin !== undefined ? `${tin} in` : undefined, tout !== undefined ? `${tout} out` : undefined]
         .filter((part): part is string => part !== undefined)
-        .join(' · '),
+        .join(` ${dot} `),
     });
   }
   const spend = cost(usage.costUsd);
   if (spend !== undefined) out.push({ label: 'cost', value: spend });
-  if (usage.requests !== undefined && usage.requests > 0) out.push({ label: 'calls', value: String(usage.requests) });
+  // "requests", not "calls": the client counts every trip to the gateway, and
+  // a catalog read is not a model call.
+  if (usage.requests !== undefined && usage.requests > 0) {
+    out.push({ label: 'requests', value: String(usage.requests) });
+  }
   if (usage.compression !== undefined) {
     const saved = tokens(usage.compression.savedTokens);
     out.push({
       label: 'compressed',
       value: `${Math.round(usage.compression.savedFraction * 100)}% saved`
         + (saved !== undefined ? ` (${saved} tokens)` : '')
-        + (usage.compression.strategy !== '' ? ` · ${usage.compression.strategy.toUpperCase()}` : ''),
+        + (usage.compression.strategy !== '' ? ` ${dot} ${usage.compression.strategy.toUpperCase()}` : ''),
     });
   }
   if (usage.remainingQuota !== undefined) out.push({ label: 'quota', value: String(usage.remainingQuota) });
@@ -153,6 +163,36 @@ export function fallbackHistory(state: AppState): readonly RouteDecision[] {
 }
 
 /**
+ * Whether a call's captured output says anything its one-line row did not.
+ * A `$ rm x` row that already reads "error: shell execution is disabled by
+ * policy" has nothing left to print underneath itself.
+ */
+export function outputSaysMore(tool: ToolRecord): boolean {
+  const detail = tool.detail ?? '';
+  if (detail === '') return false;
+  const lines = detail.split('\n').filter((line) => line.trim() !== '');
+  return lines.length > 1 || (lines[0] ?? '').trim() !== (tool.summary ?? '').trim();
+}
+
+/**
+ * Whether a call's output is already on screen without anyone having asked.
+ * A failure prints its own, because an error you have to press a key to read is
+ * an error most people never read.
+ */
+export function printsOutputInline(tool: ToolRecord): boolean {
+  return tool.outcome === 'error' && outputSaysMore(tool);
+}
+
+/**
+ * Whether asking to see this call's output would show something new. One
+ * definition, used by the view that prints output and by the key that asks for
+ * more, so the two can never disagree about what has already been shown.
+ */
+export function hasUnseenOutput(tool: ToolRecord, revealed: readonly string[]): boolean {
+  return outputSaysMore(tool) && !printsOutputInline(tool) && !revealed.includes(tool.id);
+}
+
+/**
  * Every tool call in this session, newest first: the ones still in the live
  * region and then the ones already in scrollback. Views that summarise the
  * session (the plan lens, an agent's calls) need both halves.
@@ -166,7 +206,11 @@ export function toolHistory(state: AppState): readonly ToolRecord[] {
   return out;
 }
 
-/** Whether the wide-terminal rail has anything worth showing. */
+/**
+ * Whether the wide-terminal rail has anything worth showing. Only work counts:
+ * routing telemetry belongs to the status line and the route lens, not to a
+ * panel that is on screen whether or not anyone is looking at it.
+ */
 export function railHasContent(state: AppState): boolean {
-  return state.plan.length > 0 || state.agents.length > 0 || state.route.current !== undefined;
+  return state.plan.length > 0 || state.agents.length > 0;
 }

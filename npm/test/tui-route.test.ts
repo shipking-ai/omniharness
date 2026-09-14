@@ -101,7 +101,7 @@ test('measured usage appears; unmeasured usage stays absent', async () => {
   assert.match(tokensRow, /tokens\s+4\.2k in/);
   assert.ok(!tokensRow.includes('out'), 'output tokens were never reported, so no "0 out"');
   assert.ok(!screen.split('\n').some((line) => /^\s*cost\b/.test(line)), 'nothing was priced, so no cost row');
-  assert.match(screen, /calls\s+2/);
+  assert.match(screen, /requests\s+2/, 'the counter is named for what it counts');
   app.unmount();
 });
 

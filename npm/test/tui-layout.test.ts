@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { NARROW_MAX, RAIL_WIDTH, STREAM_FLOOR, WIDE_MIN, band, measure, plan } from '../src/tui/layout/frame.js';
+import {
+  NARROW_MAX, RAIL_MIN_COLUMNS, RAIL_WIDTH, STREAM_FLOOR, WIDE_MIN, band, measure, plan,
+} from '../src/tui/layout/frame.js';
 import { glyphs, unicodeSafe } from '../src/tui/theme/tokens.js';
 import { windowAround } from '../src/tui/views/overlay.js';
 import { visibleSteps } from '../src/tui/views/run.js';
@@ -15,26 +17,42 @@ test('the three bands are contiguous with no gap between them', () => {
   assert.equal(band(WIDE_MIN), 'wide');
 });
 
-test('a narrow terminal never gets a rail, however much it is wanted', () => {
-  assert.equal(measure(60, true).rail, 0);
-  assert.equal(measure(100, true).rail, 0);
+test('a terminal too narrow to hold a rail beside the full measure gets no rail', () => {
+  for (const columns of [60, 100, 120, RAIL_MIN_COLUMNS - 1]) {
+    assert.equal(measure(columns, true).rail, 0, `${columns} columns`);
+  }
 });
 
-test('a wide terminal gets a rail only when there is something to put in it', () => {
-  assert.equal(measure(160, true).rail, RAIL_WIDTH);
-  assert.equal(measure(160, false).rail, 0, 'an empty rail is worse than a wider column');
+test('a rail appears once there is room for one beside the full measure', () => {
+  assert.equal(measure(RAIL_MIN_COLUMNS, true).rail, RAIL_WIDTH);
+  assert.equal(measure(200, false).rail, 0, 'an empty rail is worse than a wider margin');
 });
 
-for (const columns of [40, 60, 72, 80, 100, 120, 160, 220]) {
-  test(`the frame fits inside ${columns} columns`, () => {
+test('the reading column is the same width whether or not a rail is shown', () => {
+  // This is the whole point of taking the rail out of the spare space rather
+  // than out of the measure: a plan arriving must not re-wrap the conversation.
+  for (const columns of [60, 80, 100, 120, 134, 160, 220]) {
+    assert.equal(
+      measure(columns, true).content,
+      measure(columns, false).content,
+      `${columns} columns re-wrapped when the rail appeared`,
+    );
+  }
+});
+
+test('the left margin depends only on the terminal width, so scrollback stays aligned', () => {
+  for (const columns of [60, 80, 100, 134, 200]) {
+    assert.equal(measure(columns, true).gutter, measure(columns, false).gutter, `${columns} columns`);
+  }
+});
+
+for (const columns of [40, 60, 72, 80, 100, 120, 134, 160, 220]) {
+  test(`everything fits inside ${columns} columns`, () => {
     for (const rail of [true, false]) {
       const box = measure(columns, rail);
-      assert.ok(box.frame <= columns, 'the frame never exceeds the terminal');
+      const used = box.gutter * 2 + box.content + (box.rail > 0 ? box.rail + 2 : 0);
+      assert.ok(used <= columns, `used ${used} of ${columns}`);
       assert.ok(box.content >= 16, 'the reading column stays readable');
-      assert.ok(box.gutter * 2 + box.frame <= columns, 'the gutters and the frame fit together');
-      if (box.rail > 0) {
-        assert.ok(box.content + box.rail + 2 <= box.frame + 2, 'the rail comes out of the frame, not out of the terminal');
-      }
     }
   });
 }

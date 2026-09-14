@@ -73,8 +73,11 @@ export type Action =
       summary?: string;
       detail?: string;
       at: number;
+      /** Used only when no matching call was seen start, so the row still reads. */
+      name?: string;
+      verb?: string;
     }
-  | { type: 'tool/toggleExpanded'; id: string }
+  | { type: 'tool/reveal'; id: string; at: number }
 
   // -- plan and agents ------------------------------------------------------
   | { type: 'plan/set'; steps: readonly PlanStep[] }
@@ -82,7 +85,8 @@ export type Action =
   | { type: 'agents/settle'; at: number }
 
   // -- routing and usage ----------------------------------------------------
-  | { type: 'route/observed'; decision: RouteDecision; cooldownUntil?: string }
+  | { type: 'route/observed'; decision: RouteDecision }
+  | { type: 'route/cooldown'; until: string }
   | { type: 'usage/set'; usage: UsageState }
 
   // -- approvals ------------------------------------------------------------

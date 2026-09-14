@@ -26,7 +26,7 @@ The one item still genuinely open is the domain (issue #107).
 1. **Hero** — wordmark, one-liner, the animated demo SVG (`.github/assets/omniharness-demo.svg`), primary CTA `npm i -g omniharness-cli` (click-to-copy) + secondary "View on GitHub". Sub-line: "Go core · TypeScript TUI · MIT".
 2. **Why** — the wedge, 2–3 sentences, plus the `provider/model` boundary diagram (reuse the ASCII diagram from the README or redraw as SVG).
 3. **Modes** — 4 cards (plan / build / research / crazy) with the one-line description + a tiny visual (mode-accent border matching the TUI: plan=blue, build=green, research=teal, crazy=red). Note the `Shift+Tab` permission axis below.
-4. **The swarm** — the CRAZY differentiator. Short copy + a still or looping clip of the agents view (frame 4 of the demo SVG, which predates the rebuilt TUI and needs regenerating). "One transcript, many status lines."
+4. **The swarm** — the CRAZY differentiator. Short copy + a still or looping clip of the agents view (frame 4 of the demo SVG). "One transcript, many status lines."
 5. **The terminal** — a scannable grid of the premium features (6–8 items, one line each) with the "everything on screen makes agent intent, action, and history legible" framing.
 6. **Install / quickstart** — the npm one-liner, the three env vars, `omniharness doctor` / `models`. Keep it copy-pasteable.
 7. **Architecture** — the two-front-ends-over-one-core diagram; link to `docs/architecture.md`. One paragraph.
@@ -75,7 +75,7 @@ all three.
 
 ## 4. Assets on hand
 
-- `.github/assets/omniharness-demo.svg` — animated 4-frame terminal cast (idle → Shift+Tab to bypass / Ctrl+E to crazy → planning → swarm done). Self-contained, inline fills + SMIL. This is the hero.
+- `.github/assets/omniharness-demo.svg` — animated 5-frame terminal cast (empty session → a task typed in crazy mode → the plan running across three parallel workers → the agents view → the OmniRoute decision that answered). Self-contained, inline fills + SMIL. This is the hero. It is a real capture of the built CLI, not a drawing: regenerate it with `python3 scripts/record-tui-demo.py` whenever the interface changes shape.
 - Real TUI reference frames: run the capture in the repo (`node --test` harness renders `<TerminalInterface>` to a fake stdout) — see the `swarm-integration` / `modes` tests for the pattern.
 - `docs/architecture.md` — topology + package layout + the integration-boundary rationale.
 - README copy — reusable for sections 2, 5, 7.

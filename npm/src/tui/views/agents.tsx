@@ -14,7 +14,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
 import { elapsed } from '../format/units.js';
-import { Heading, Marker, type MarkerState } from '../components/atoms.js';
+import { Heading, Marker, joinMeta, type MarkerState } from '../components/atoms.js';
 import { ToolBlock } from '../components/transcript.js';
 import { agentProgress, toolHistory } from '../state/selectors.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
@@ -59,10 +59,11 @@ export function AgentsView({ state, width, rows, theme, glyphs, now }: AgentsVie
   return <Box flexDirection="column" marginTop={1}>
     <Box flexDirection="row" justifyContent="space-between" width={width}>
       <Heading theme={theme}>agents</Heading>
-      <Text color={theme.muted}>
-        {progress.working} working {glyphs.dot} {progress.done} done
-        {progress.failed > 0 ? ` ${glyphs.dot} ${progress.failed} failed` : ''}
-      </Text>
+      <Text color={theme.muted}>{joinMeta([
+        progress.working > 0 ? `${progress.working} working` : undefined,
+        progress.done > 0 ? `${progress.done} done` : undefined,
+        progress.failed > 0 ? `${progress.failed} failed` : undefined,
+      ], glyphs.dot)}</Text>
     </Box>
 
     {state.agents.slice(0, listRows).map((agent, index) => {
@@ -84,9 +85,9 @@ export function AgentsView({ state, width, rows, theme, glyphs, now }: AgentsVie
 
     {selected !== undefined && calls.length > 0
       ? <Box flexDirection="column" marginTop={1}>
-          <Heading theme={theme}>{`${selected.id} · recent calls`}</Heading>
+          <Heading theme={theme}>{`${selected.id} ${glyphs.dot} recent calls`}</Heading>
           {calls.map((tool) => (
-            <ToolBlock key={tool.id} tool={tool} width={width} theme={theme} glyphs={glyphs} expanded={false} />
+            <ToolBlock key={tool.id} tool={tool} width={width} theme={theme} glyphs={glyphs} />
           ))}
         </Box>
       : null}

@@ -7,17 +7,17 @@
  *
  *  - The transcript is append-only and holds settled entries only, because it is
  *    rendered into the terminal's own scrollback and can never be redrawn.
- *  - Tool calls therefore stay in `live.tools` until the *next* run starts, not
- *    until the current one ends. That is what makes their output expandable:
- *    once a row is in scrollback it is frozen, so a call has to remain in the
- *    live region for as long as anyone might want to open it. They are flushed
- *    into the transcript when the next run begins, or earlier if enough of them
- *    pile up, so history survives without the live region growing without end.
+ *  - Everything settles the moment it is final, so the transcript is in the
+ *    order the work happened: narrative, then the call it led to, then the
+ *    answer that followed. Holding finished calls back in the live region — an
+ *    earlier attempt at making their output expandable in place — printed them
+ *    *after* the answer they preceded, which is worse than not expanding at all.
+ *    Output is revealed by printing it below instead; see `tool/reveal`.
  *  - Nothing is invented. A figure that was not reported stays undefined; the
  *    reducer never substitutes a zero to keep a field populated.
  */
 
-import { LENS_ORDER, ROUTE_HISTORY_LIMIT, TRANSCRIPT_LIMIT } from './types.js';
+import { LENS_ORDER, ROUTE_HISTORY_LIMIT } from './types.js';
 import type {
   AgentRecord,
   AppState,
@@ -50,9 +50,8 @@ export function initialState(session: AppState['session'], terminal: AppState['t
     usage: {},
     lens: 'run',
     composer: { value: '', cursor: 0 },
-    expanded: [],
+    revealed: [],
     lensCursor: 0,
-    epoch: 0,
   };
 }
 
@@ -76,12 +75,7 @@ export function reduce(state: AppState, action: Action): AppState {
       return { ...state, composer: { ...state.composer, queued: undefined } };
 
     // -- run lifecycle ------------------------------------------------------
-    case 'run/start': {
-      // The previous run's calls go to scrollback now: they have had their
-      // chance to be opened, and the new run needs the live region.
-      const flushed = state.live.tools.reduce(
-        (list, tool) => append(list, settleTool(tool)), state.transcript,
-      );
+    case 'run/start':
       return {
         ...state,
         phase: 'preparing',
@@ -89,36 +83,37 @@ export function reduce(state: AppState, action: Action): AppState {
         agents: [],
         live: { reasoning: '', answer: '', tools: [] },
         transcript: action.prompt === ''
-          ? flushed
-          : append(flushed, { kind: 'user', id: nextId('u'), at: action.at, text: action.prompt }),
+          ? state.transcript
+          : append(state.transcript, { kind: 'user', id: nextId('u'), at: action.at, text: action.prompt }),
         composer: { ...state.composer, value: '', cursor: 0 },
       };
-    }
     case 'run/phase':
       // An approval is a hard stop: nothing else may quietly relabel the phase
       // while the user is being asked a question.
       if (state.phase === 'awaiting-approval' || state.phase === 'idle') return state;
       if (state.phase === 'cancelling' && action.phase !== 'cancelling') return state;
       return state.phase === action.phase ? state : { ...state, phase: action.phase };
-    case 'run/end':
+    case 'run/end': {
+      // Anything still open when the run ends did not finish: record it as a
+      // failure rather than leaving a marker that will never resolve.
+      const closed = state.live.tools.reduce(
+        (list, tool) => append(list, settleTool({ ...tool, outcome: 'error', endedAt: action.at })),
+        state.transcript,
+      );
       return {
         ...state,
         phase: 'idle',
         runStartedAt: undefined,
-        live: {
-          reasoning: '',
-          answer: '',
-          // Anything still open when the run ends did not finish: say so rather
-          // than leaving a marker that will never resolve.
-          tools: state.live.tools.map((tool) => tool.outcome === 'running'
-            ? { ...tool, outcome: 'error' as const, endedAt: action.at }
-            : tool),
-        },
+        transcript: state.phase === 'cancelling'
+          ? append(closed, { kind: 'notice', id: nextId('n'), at: action.at, level: 'warn', text: 'cancelled' })
+          : closed,
+        live: { reasoning: '', answer: '', tools: [] },
         agents: state.agents.map((agent) =>
           agent.status === 'working' || agent.status === 'spawned'
             ? { ...agent, status: 'done' as const, updatedAt: action.at }
             : agent),
       };
+    }
     case 'run/failed':
       return {
         ...state,
@@ -131,13 +126,13 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'stream/reasoning':
       return {
         ...state,
-        phase: state.phase === 'awaiting-approval' ? state.phase : 'thinking',
+        phase: holdsPhase(state.phase) ? state.phase : 'thinking',
         live: { ...state.live, reasoning: state.live.reasoning + action.delta },
       };
     case 'stream/answer':
       return {
         ...state,
-        phase: state.phase === 'awaiting-approval' ? state.phase : 'streaming',
+        phase: holdsPhase(state.phase) ? state.phase : 'streaming',
         live: { ...state.live, answer: state.live.answer + action.delta },
       };
     case 'stream/reasoningDone':
@@ -150,11 +145,20 @@ export function reduce(state: AppState, action: Action): AppState {
         live: { ...state.live, reasoning: '' },
       };
     case 'stream/answerDone': {
+      // A turn the user stopped did not produce a reply. The engine closes one
+      // with a placeholder text event; rendering that as the assistant speaking
+      // puts words in its mouth. The note that the turn was cancelled is
+      // written once, by `run/end`, so it appears whether or not the engine
+      // sent a placeholder at all.
+      if (state.phase === 'cancelling') {
+        return { ...state, live: { ...state.live, answer: '', reasoning: '' } };
+      }
       const entry: Entry = {
         kind: 'assistant',
         id: nextId('a'),
         at: action.at,
         text: action.text,
+        showRoute: routeIsNews(state, action.provider, action.model, action.fallback),
         ...(action.model !== undefined ? { model: action.model } : {}),
         ...(action.provider !== undefined ? { provider: action.provider } : {}),
         ...(action.fallback !== undefined ? { fallback: action.fallback } : {}),
@@ -187,7 +191,7 @@ export function reduce(state: AppState, action: Action): AppState {
       const narrative = state.live.answer.trim();
       return {
         ...state,
-        phase: state.phase === 'awaiting-approval' ? state.phase : 'tool',
+        phase: holdsPhase(state.phase) ? state.phase : 'tool',
         transcript: narrative === ''
           ? state.transcript
           : append(state.transcript, {
@@ -201,8 +205,12 @@ export function reduce(state: AppState, action: Action): AppState {
       // A result for a call the UI never saw start is still worth recording:
       // dropping it would silently lose the only evidence the call happened.
       const base: ToolRecord = open ?? {
-        id: action.id, name: action.id, verb: action.id, target: '',
-        outcome: 'running', startedAt: action.at,
+        id: action.id,
+        name: action.name ?? action.id,
+        verb: action.verb ?? action.name ?? action.id,
+        target: '',
+        outcome: 'running',
+        startedAt: action.at,
       };
       const settled: ToolRecord = {
         ...base,
@@ -211,29 +219,26 @@ export function reduce(state: AppState, action: Action): AppState {
         ...(action.summary !== undefined ? { summary: action.summary } : {}),
         ...(action.detail !== undefined ? { detail: action.detail } : {}),
       };
-      const tools = open === undefined
-        ? [...state.live.tools, settled]
-        : state.live.tools.map((tool) => tool.id === action.id ? settled : tool);
-      // Old calls spill into scrollback once enough have piled up, so a long
-      // autonomous run cannot grow the live region past the viewport.
-      const overflow = Math.max(0, tools.length - LIVE_TOOL_LIMIT);
-      const spilled = tools.slice(0, overflow).filter((tool) => tool.outcome !== 'running');
-      const kept = tools.filter((tool) => !spilled.includes(tool));
-      const stillRunning = kept.some((tool) => tool.outcome === 'running');
+      const remaining = state.live.tools.filter((tool) => tool.id !== action.id);
       return {
         ...state,
-        transcript: spilled.reduce((list, tool) => append(list, settleTool(tool)), state.transcript),
-        live: { ...state.live, tools: kept },
-        phase: state.phase === 'tool' && !stillRunning ? 'streaming' : state.phase,
+        transcript: append(state.transcript, settleTool(settled)),
+        live: { ...state.live, tools: remaining },
+        phase: state.phase === 'tool' && remaining.length === 0 ? 'streaming' : state.phase,
       };
     }
-    case 'tool/toggleExpanded':
+    case 'tool/reveal': {
+      if (state.revealed.includes(action.id)) return state;
+      const record = findTool(state, action.id);
+      if (record === undefined || record.detail === undefined || record.detail === '') return state;
       return {
         ...state,
-        expanded: state.expanded.includes(action.id)
-          ? state.expanded.filter((id) => id !== action.id)
-          : [...state.expanded, action.id],
+        revealed: [...state.revealed, action.id],
+        transcript: append(state.transcript, {
+          kind: 'output', id: nextId('o'), at: action.at, tool: record,
+        }),
       };
+    }
 
     // -- plan and agents ----------------------------------------------------
     case 'plan/set':
@@ -263,14 +268,17 @@ export function reduce(state: AppState, action: Action): AppState {
       };
 
     // -- routing and usage --------------------------------------------------
+    case 'route/cooldown':
+      if (state.route.cooldownUntil === action.until) return state;
+      return { ...state, route: { ...state.route, cooldownUntil: action.until } };
     case 'route/observed': {
       const history = [...state.route.history, action.decision].slice(-ROUTE_HISTORY_LIMIT);
       return {
         ...state,
         route: {
+          ...state.route,
           current: action.decision,
           history,
-          ...(action.cooldownUntil !== undefined ? { cooldownUntil: action.cooldownUntil } : {}),
         },
         // A failover is a fact about the run, not a footnote: it belongs in the
         // transcript where the turn it affected can be read beside it.
@@ -349,10 +357,9 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'session/restore':
       return {
         ...state,
-        // Replacing history, not extending it: the epoch tells the renderer to
-        // start a fresh scrollback region rather than re-emit every entry.
-        epoch: state.epoch + 1,
-        transcript: action.entries,
+        // Appended, not swapped in: the conversation that was on screen stays
+        // in scrollback above the one being resumed, the way a terminal works.
+        transcript: action.entries.reduce((list, entry) => append(list, entry), state.transcript),
         plan: action.plan,
         live: { reasoning: '', answer: '', tools: [] },
         agents: [],
@@ -361,16 +368,17 @@ export function reduce(state: AppState, action: Action): AppState {
         overlay: undefined,
       };
     case 'session/reset':
+      // The transcript is what has already been printed; it cannot be unprinted.
+      // What resets is the work: the plan, the workers, the meters, the model's
+      // own history (which the controller clears alongside this).
       return {
         ...state,
-        epoch: state.epoch + 1,
-        transcript: [],
         plan: [],
         agents: [],
         live: { reasoning: '', answer: '', tools: [] },
         route: { history: [] },
         usage: {},
-        expanded: [],
+        revealed: [],
         phase: 'idle',
         runStartedAt: undefined,
         approval: undefined,
@@ -400,21 +408,69 @@ export function reduce(state: AppState, action: Action): AppState {
   }
 }
 
-/** Finished calls kept in the live region, where their output can be opened. */
-const LIVE_TOOL_LIMIT = 12;
+/** The record for a call, whether it is still running or already in scrollback. */
+function findTool(state: AppState, id: string): ToolRecord | undefined {
+  const live = state.live.tools.find((tool) => tool.id === id);
+  if (live !== undefined) return live;
+  for (let i = state.transcript.length - 1; i >= 0; i -= 1) {
+    const entry = state.transcript[i]!;
+    if (entry.kind === 'tool' && entry.tool.id === id) return entry.tool;
+  }
+  return undefined;
+}
+
+/**
+ * Whether this reply's route is worth a line of its own. It has to say
+ * something the session did not already know: the first reply that names a
+ * provider does, a later change of provider or model does, a failover always
+ * does. Repeating the same provider under every turn is chrome, and the status
+ * line already carries it.
+ */
+function routeIsNews(
+  state: AppState,
+  provider: string | undefined,
+  model: string | undefined,
+  fallback: boolean | undefined,
+): boolean {
+  if (fallback === true) return true;
+  // With no provider named, the "model" is whatever the session asked for —
+  // repeating the engine alias under its own reply says nothing.
+  if (provider === undefined && (model === undefined || model === state.session.model)) return false;
+  for (let i = state.transcript.length - 1; i >= 0; i -= 1) {
+    const entry = state.transcript[i]!;
+    if (entry.kind !== 'assistant') continue;
+    // The narrative a turn writes before reaching for a tool is an assistant
+    // entry too, and it names no route. Comparing against it made every reply
+    // look like a change of provider, so the line came back on every turn.
+    if (entry.provider === undefined && entry.model === undefined) continue;
+    return entry.provider !== provider || entry.model !== model;
+  }
+  return true;
+}
+
+/**
+ * Phases that nothing may quietly relabel: the user is being asked a question,
+ * or has already asked for the turn to stop.
+ */
+const holdsPhase = (phase: AppState['phase']): boolean =>
+  phase === 'awaiting-approval' || phase === 'cancelling';
 
 const settleTool = (tool: ToolRecord): Entry => ({
   kind: 'tool', id: `t-${tool.id}`, at: tool.endedAt ?? tool.startedAt, tool,
 });
 
 /**
- * Append, bounded. The transcript is rendered into the terminal's scrollback,
- * so the array is only a record of what was emitted — an unbounded one grows
- * for the life of the process on a long autonomous run.
+ * Append. The transcript only ever grows, and that is a hard requirement, not a
+ * simplification: Ink's `<Static>` remembers how many items it has already
+ * written and prints `items.slice(thatIndex)`. Shrinking the array — capping it,
+ * clearing it on `/clear`, replacing it on a resume — leaves that index past the
+ * end, and the transcript silently stops printing for the rest of the session.
+ *
+ * Clearing and resuming therefore append rather than replace, which is also
+ * what a terminal does: what came before stays in scrollback above.
  */
 function append(list: readonly Entry[], entry: Entry): readonly Entry[] {
-  const next = [...list, entry];
-  return next.length > TRANSCRIPT_LIMIT ? next.slice(next.length - TRANSCRIPT_LIMIT) : next;
+  return [...list, entry];
 }
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));

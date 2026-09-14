@@ -54,9 +54,10 @@ Everything else is one keystroke away rather than permanently on screen.
   report is absent, never shown as a zero.
 - **Approvals** land in a full-width band above the composer: `y` once · `n` deny
   · `a` always · a digit picks a trust scope.
-- Tool output collapsed by default (`Ctrl+T` opens the newest), diffs rendered as
-  diffs, input queued during a run, `Ctrl+Y` clipboard copy over OSC 52, session
-  resume, prompt history.
+- Tool output is kept back until asked for (`Ctrl+T` prints the newest call that
+  has not shown it yet) — except a failure, which prints its output without
+  being asked. Diffs render as diffs, input is queued during a run, `Ctrl+Y`
+  copies over OSC 52, and sessions and prompt history survive a restart.
 
 Slash commands: `/run` `/agents` `/plan` `/route` `/sessions` `/model`
 `/mode <name>` `/perms <name>` `/clear` `/save <name>` `/forget <name>`

@@ -35,8 +35,10 @@ export function Field({
 }
 
 /** A horizontal rule. Used once, above the composer; not as decoration. */
-export function Rule({ width, theme }: { width: number; theme: Theme }): React.ReactElement {
-  return <Text color={theme.muted}>{'─'.repeat(Math.max(1, width))}</Text>;
+export function Rule({
+  width, theme, glyphs,
+}: { width: number; theme: Theme; glyphs: Glyphs }): React.ReactElement {
+  return <Text color={theme.muted}>{glyphs.hrule.repeat(Math.max(1, width))}</Text>;
 }
 
 export type MarkerState = 'running' | 'done' | 'pending' | 'waiting' | 'failed' | 'denied';
@@ -81,17 +83,26 @@ export function meterBar(fraction: number, cells: number, glyphs: Glyphs): strin
 }
 
 /**
- * A vertical gutter beside expanded output: a rule down the left edge rather
- * than a box on four sides. A full border around every tool result turns the
- * transcript into a stack of crates.
+ * A vertical rule down the left edge of a block, rather than a box on four
+ * sides — a full border around every tool result turns a transcript into a
+ * stack of crates.
+ *
+ * It is Ink's own left border and not a prefixed `Text`, because a Text beside
+ * a column only ever draws one row: the rule appeared next to the first line of
+ * output and nowhere else. Ink's border is drawn down the whole height.
  */
 export function Gutter({
-  children, theme, glyphs,
-}: { children: React.ReactNode; theme: Theme; glyphs: Glyphs }): React.ReactElement {
-  return <Box flexDirection="row">
-    <Text color={theme.muted}>{glyphs.rule} </Text>
-    <Box flexDirection="column" flexGrow={1}>{children}</Box>
-  </Box>;
+  children, theme, ascii,
+}: { children: React.ReactNode; theme: Theme; ascii: boolean }): React.ReactElement {
+  return <Box
+    flexDirection="column"
+    borderStyle={ascii ? 'classic' : 'single'}
+    borderColor={theme.muted}
+    borderTop={false}
+    borderRight={false}
+    borderBottom={false}
+    paddingLeft={1}
+  >{children}</Box>;
 }
 
 /** Metadata joined by a separator, skipping anything that was not measured. */

@@ -204,6 +204,7 @@ function textOf(entry: AppState['transcript'][number]): string {
     case 'notice':
       return entry.text;
     case 'tool':
+    case 'output':
       return `${entry.tool.verb} ${entry.tool.target} ${entry.tool.summary ?? ''} ${entry.tool.detail ?? ''}`;
     case 'route':
       return `${entry.decision.provider ?? ''} ${entry.decision.reason ?? ''}`;
