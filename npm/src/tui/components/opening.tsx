@@ -41,14 +41,25 @@ export function modeLines(): readonly { mode: AgentMode; hint: string }[] {
 }
 
 /** Rows {@link Opening} draws, so the height plan can place the gap under it. */
-export function openingRows(session: SessionState): number {
-  return modeLines().length + (session.saved.length > 0 ? 3 : 2);
+export function openingRows(_session: SessionState): number {
+  // A leading gap, the heading, and one row per mode.
+  return modeLines().length + 2;
 }
 
 export function Opening({
-  session, width, rows, theme, glyphs,
+  session, width, headingWidth, rows, theme, glyphs,
 }: {
-  session: SessionState; width: number; rows: number; theme: Theme; glyphs: Glyphs;
+  session: SessionState;
+  /** Reading measure, for the descriptions. */
+  width: number;
+  /**
+   * The frame's full width, for the heading rule. The heading and its key are
+   * instrument, not prose: they close the same edge the status line closes, so
+   * the whole bottom cluster reads as one block instead of the panel stopping
+   * short of the row beneath it on a wide window.
+   */
+  headingWidth: number;
+  rows: number; theme: Theme; glyphs: Glyphs;
 }): React.ReactElement | null {
   const saved = session.saved.length;
   // Budgeted like every other section, because a short window is a real window:
@@ -58,11 +69,21 @@ export function Opening({
   const budget = Math.max(0, Math.floor(rows));
   if (budget < 2) return null;
   const gap = budget >= modeLines().length + 2 ? 1 : 0;
-  const footnote = budget - gap > modeLines().length;
-  const modes = modeLines().slice(0, budget - gap - (footnote ? 1 : 0));
+  // The heading carries the key that changes the thing under it, which is how
+  // the reader learns the control without a footer that states it forever.
+  const heading = budget - gap > modeLines().length;
+  const modes = modeLines().slice(0, budget - gap - (heading ? 1 : 0));
   if (modes.length === 0) return null;
 
   return <Box flexDirection="column" marginTop={gap}>
+    {heading
+      ? <Box flexDirection="row" justifyContent="space-between" width={headingWidth}>
+          <Text color={theme.muted} bold>MODE</Text>
+          <Text color={theme.muted} dimColor>
+            {KEY_LABEL.cycleMode} cycles{saved > 0 ? `  ${glyphs.dot}  /resume for ${saved} saved` : ''}
+          </Text>
+        </Box>
+      : null}
     {modes.map(({ mode, hint }) => {
       const current = mode === session.mode;
       return <Text key={mode}>
@@ -80,14 +101,5 @@ export function Opening({
         </Text>
       </Text>;
     })}
-    {footnote
-      ? <Text color={theme.muted} dimColor>
-          {'  '}{clip(
-            `${KEY_LABEL.cycleMode} cycles ${glyphs.dot} /mode <name> sets`
-            + (saved > 0 ? `  ${glyphs.dot}  ${saved} saved session${saved === 1 ? '' : 's'} ${glyphs.dot} /resume` : ''),
-            Math.max(8, width - 2),
-          )}
-        </Text>
-      : null}
   </Box>;
 }

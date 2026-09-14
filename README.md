@@ -81,12 +81,14 @@ instead of permanently on screen.
   audit trail, no parallel log to maintain.
 - **Tear-free streaming** via synchronized output (DECSET 2026), probed at
   startup alongside the kitty keyboard protocol.
-- **The status line is an instrument, not a sentence.** The mode in caps, then
-  what the harness is doing right now, then — set against the far edge — the
-  engine, what it is routing through, and how freely it is allowed to act:
-  `manual` reads quietly, `bypass` reads red. Provider, model, route profile,
-  failover chain, measured latency, tokens and spend live in the **route** lens.
-  A figure the gateway did not report is absent, never a zero.
+- **The status line is an instrument, not a sentence.** What the harness is
+  doing right now leads, alone, in the foreground — it is the only thing on that
+  row anybody reads while a turn is in flight. Set against the far edge, quietly:
+  the mode, the engine, what it is routing through, and how freely it is allowed
+  to act — `manual` reads muted, `accept edits` amber, `bypass` red. Provider,
+  model, route profile, failover chain, measured latency, tokens and spend live
+  in the **route** lens. A figure the gateway did not report is absent, never a
+  zero.
 - **Tool calls read as what they did** — `$ go test ./...`, `read
   gateway/fallback.go` — one row each, in the order the work happened, with the
   outcome in the marker. A failure prints its output straight away; a success
@@ -103,8 +105,17 @@ instead of permanently on screen.
   against the edge of a bounded frame — past the point where more columns buy
   more information, the extra width becomes margin instead of stretch.
 - **An opening screen that is a screen.** An untouched session names the
-  workspace, lists the four modes with what each one will do, and sits the
-  composer on the floor of the window. It goes for good at the first keystroke.
+  workspace at the top, then sits the mode dial, the composer and the status row
+  together on the floor of the window as one block — the dial belongs with the
+  composer, because the mode is what the next thing you type will run in. It
+  goes for good at the first keystroke.
+- **The composer is a surface.** A spine down its left edge in the mode's
+  colour, not a box and not a rule: two columns, no rows of its own, and it
+  grows with a multi-line draft. It is the one mark on the screen that says
+  *type here*.
+- **Your task owns its turn.** The prompt you typed is set on a band across the
+  measure, so scrolling back through a long session you look for the bands and
+  not for a caret among the tool rows.
 - **Input stays live** during a run: what you type is queued and sent the moment
   it ends.
 - `Ctrl+Y` copies the last reply over OSC 52 (works through SSH); a bell + OSC 9

@@ -27,6 +27,12 @@ export interface Theme {
   readonly error: string;
   /** Something is waiting on a human. */
   readonly attention: string;
+  /**
+   * A background for the user's own task, or undefined when the terminal
+   * cannot be trusted with one. Nothing else may take a surface: the moment a
+   * second element has a background, the transcript is a stack of cards.
+   */
+  readonly surface: string | undefined;
 }
 
 export function theme(env: Record<string, string | undefined> = process.env): Theme {
@@ -40,6 +46,7 @@ export function theme(env: Record<string, string | undefined> = process.env): Th
     warn: p.warn,
     error: p.error,
     attention: p.warn,
+    surface: p.surface,
   };
 }
 

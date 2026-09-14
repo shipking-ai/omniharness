@@ -169,6 +169,13 @@ export type Entry =
        * chrome, and the status line already carries it.
        */
       readonly showRoute?: boolean;
+      /**
+       * Wall time of the turn that produced this reply, in milliseconds, when
+       * the run was timed. The status line counts it up while a turn is in
+       * flight and then loses it; keeping it here is what leaves a record of
+       * how long each turn actually took in the scrollback.
+       */
+      readonly tookMs?: number;
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly at: number; readonly text: string }
   | { readonly kind: 'tool'; readonly id: string; readonly at: number; readonly tool: ToolRecord }

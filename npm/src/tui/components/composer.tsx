@@ -49,35 +49,47 @@ export function Composer({
   const layout = layoutEditor(composer.value, composer.cursor, textWidth);
   const matches = completions(composer.value);
 
-  // No rule above it any more. A full-width horizontal line is a divider drawn
-  // out of a web habit: it cut the window in half and gave the heaviest mark on
-  // the screen to a separator. The blank row above and the caret's own colour
-  // are enough to say where the transcript stops and the command surface
-  // starts, and they cost one row instead of two.
-  return <Box flexDirection="column" marginTop={1}>
+  // The composer is a surface, not a line of text that happens to be at the
+  // bottom. Every terminal tool worth studying bounds its input somehow — a
+  // rule above and below, a border, an inverted band — because an unbounded
+  // prompt reads as one more paragraph of output.
+  //
+  // This one is bounded by a spine down its left edge, in the mode's colour.
+  // It is two columns rather than a box, it costs no rows of its own, it grows
+  // with a multi-line draft instead of having to be redrawn around it, and it
+  // is the one mark on the screen that says "type here". It is drawn as Ink's
+  // own left border rather than a prefixed Text, because a Text beside a column
+  // only ever draws its first row — the same reason expanded tool output uses
+  // a border for its rule.
+  return <Box
+    flexDirection="column"
+    marginTop={1}
+    borderStyle={glyphs.ascii ? 'classic' : 'bold'}
+    borderColor={caretColor}
+    borderTop={false}
+    borderRight={false}
+    borderBottom={false}
+    paddingLeft={1}
+  >
     {composer.value === ''
-      ? <Text color={caretColor}>
-          {glyphs.caret} <Text color={theme.muted} dimColor>
-            {phase === 'idle' ? 'describe the work, or / for a command' : 'type to queue the next task'}
-          </Text>
+      ? <Text color={theme.muted} dimColor>
+          {phase === 'idle' ? 'describe the work, or / for a command' : 'type to queue the next task'}
         </Text>
       : layout.lines.map((line, index) => (
-          <Text key={index} color={caretColor}>
-            {index === 0 ? `${glyphs.caret} ` : '  '}<Text color={theme.text}>{line}</Text>
-          </Text>
+          <Text key={index} color={theme.text}>{line}</Text>
         ))}
 
     {/* Completion is offered, never applied on its own: the list appears as
         soon as the text looks like a command, and Tab takes the first. */}
     {matches.length > 0 && composer.value.trim() !== '/'
       ? <Text color={theme.muted}>
-          {'  '}{clip(matches.slice(0, 6).map((command) => `/${command.name}`).join('  '), textWidth)}
+          {clip(matches.slice(0, 6).map((command) => `/${command.name}`).join('  '), textWidth)}
           {matches.length > 6 ? ` +${matches.length - 6}` : ''}
         </Text>
       : null}
 
     {composer.queued !== undefined
-      ? <Text color={theme.warn}>{'  '}queued {glyphs.dot} {clip(composer.queued, Math.max(10, textWidth - 10))}</Text>
+      ? <Text color={theme.warn}>queued {glyphs.dot} {clip(composer.queued, Math.max(10, textWidth - 10))}</Text>
       : null}
   </Box>;
 }

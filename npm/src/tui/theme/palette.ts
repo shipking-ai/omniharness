@@ -17,6 +17,17 @@ export interface Palette {
   warn: string;
   error: string;
   info: string;
+  /**
+   * A background a shade off the terminal's own, for the one element that is
+   * given a surface rather than a colour: the task the user typed.
+   *
+   * Undefined on a terminal without truecolor, and that is the point — there is
+   * no safe way to tint a background out of the ANSI sixteen without guessing
+   * what the terminal's own background is, and a band whose colour collides
+   * with the theme is worse than no band. Where it is undefined the marker and
+   * the weight carry the row on their own.
+   */
+  surface?: string;
 }
 
 export type ThemeName = 'dark' | 'light';
@@ -32,6 +43,7 @@ const DARK_TRUE: Palette = {
   warn: '#e6b955',
   error: '#f2637e',
   info: '#56b6ff',
+  surface: '#1c2230',
 };
 
 /** Light truecolor palette — darker text on light backgrounds, same hue roles. */
@@ -42,6 +54,7 @@ const LIGHT_TRUE: Palette = {
   warn: '#9a6a10',
   error: '#c2344f',
   info: '#0a7ea4',
+  surface: '#e7ebf2',
 };
 
 /** ANSI-16 fallback shared by both themes (named colors adapt per terminal). */

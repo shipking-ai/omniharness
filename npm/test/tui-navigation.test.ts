@@ -99,9 +99,9 @@ test('Shift+Tab cycles how approvals are handled', async () => {
 
 test('crazy mode reports bypass however the permission setting is left', async () => {
   const app = await mount({ columns: 100, mode: 'crazy', permissionMode: 'ask' });
-  // The status line is the row carrying the mode chip, which is the mode name
-  // in caps — the only place it is set that way.
-  const status = app.live().split('\n').filter((line) => line.includes('CRAZY')).at(-1) ?? '';
+  // The status line is the middle of the three chrome rows that close a frame.
+  const rows = app.live().split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  const status = rows.at(-2) ?? '';
   assert.match(status, /bypass/, 'the status line does not claim approvals are still being asked for');
   app.unmount();
 });

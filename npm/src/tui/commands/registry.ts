@@ -71,10 +71,12 @@ export const COMMANDS: readonly Command[] = [
     run: ({ controller }) => { void controller.loadModels(); },
   },
 
-  mode('plan', 'investigate and propose; no edits'),
-  mode('build', 'implement, verify, iterate'),
-  mode('research', 'answer from the workspace; no edits'),
-  mode('crazy', 'autonomous, auto-approved, parallel'),
+  // These read on the opening screen as well as in the palette, so each says
+  // what the harness will *do* with a task in that mode, in the same grammar.
+  mode('plan', 'map the work, change nothing'),
+  mode('build', 'implement, verify, repair'),
+  mode('research', 'read and explain, touch nothing'),
+  mode('crazy', 'fan out across parallel agents'),
 
   permission('ask', 'ask', 'Approvals: ask every time', 'prompt before every high-risk call'),
   permission('acceptEdits', 'accept-edits', 'Approvals: accept edits', 'file edits go through; commands still ask'),

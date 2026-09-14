@@ -281,6 +281,16 @@ export function App({ engine }: AppProps): React.ReactElement {
           />}
     </Static>
 
+    {/* The opening state's gap, and it goes *above* the standing panel rather
+        than below it. Under it, the panel sat alone at the top of the window
+        with twenty blank rows beneath — the masthead and the mode dial pinned
+        to the ceiling and the command surface pinned to the floor, with nothing
+        between them. Above it, the header stays at the top where a header
+        belongs and the dial joins the composer, which is also where it belongs:
+        the mode is what the next thing you type will run in. Zero in every
+        other state, where content is what fills the window. */}
+    {heights.pad > 0 ? <Box height={heights.pad} /> : null}
+
     <Box flexDirection="row">
       <Box flexDirection="column" width={box.content}>
         {state.overlay !== undefined
@@ -296,6 +306,7 @@ export function App({ engine }: AppProps): React.ReactElement {
             ? <Opening
                 session={state.session}
                 width={box.content}
+                headingWidth={box.chrome}
                 rows={heights.lens}
                 theme={theme}
                 glyphs={glyphs}
@@ -325,10 +336,6 @@ export function App({ engine }: AppProps): React.ReactElement {
           </Box>
         : null}
     </Box>
-
-    {/* Blank rows that sit the opening state's command surface on the floor of
-        the window. Zero in every other state, where content is what fills it. */}
-    {heights.pad > 0 ? <Box height={heights.pad} /> : null}
 
     {state.approval !== undefined
       ? <ApprovalBanner approval={state.approval} width={box.content} theme={theme} glyphs={glyphs} />
