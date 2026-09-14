@@ -159,6 +159,9 @@ export function reduce(state: AppState, action: Action): AppState {
         at: action.at,
         text: action.text,
         showRoute: routeIsNews(state, action.provider, action.model, action.fallback),
+        ...(state.runStartedAt !== undefined && action.at > state.runStartedAt
+          ? { tookMs: action.at - state.runStartedAt }
+          : {}),
         ...(action.model !== undefined ? { model: action.model } : {}),
         ...(action.provider !== undefined ? { provider: action.provider } : {}),
         ...(action.fallback !== undefined ? { fallback: action.fallback } : {}),

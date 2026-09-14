@@ -77,18 +77,19 @@ export function StatusLine({ state, width, band, theme, glyphs, windows, now }: 
 
   const permission = permissionTone(state, theme);
 
-  // The mode is the instrument's label and the phase is its reading, so they
-  // are set against each other rather than run together in one dim list: caps
-  // and weight for the label, ordinary text for what it currently says.
-  const chip = state.session.mode.toUpperCase();
+  // What is happening now leads, on its own, in the foreground: it is the one
+  // thing on this row anybody reads while a turn is in flight. The mode used to
+  // lead it as a bold coloured chip, which put the least volatile fact on the
+  // row in the most prominent position and made the phase look like its
+  // footnote. The mode is settings — it belongs with the other settings.
   const phase = joinMeta([phaseLabel(state), runElapsed(state, now)], glyphs.dot);
-  const leftWidth = chip.length + 2 + phase.length + (busy ? 2 : 0);
+  const leftWidth = phase.length + (busy ? 2 : 0);
 
   // Narrow keeps only what changes what the next keystroke does; the engine and
   // the route are a lens away and are dropped whole rather than truncated.
   const right = band === 'narrow'
-    ? undefined
-    : joinMeta([state.session.model, routeIdentity(state)], glyphs.dot);
+    ? state.session.mode
+    : joinMeta([state.session.mode, state.session.model, routeIdentity(state)], glyphs.dot);
 
   const room = Math.max(6, width - leftWidth - 2);
   const metaRoom = context === undefined ? room : Math.max(4, room - context.length - 3);
@@ -100,11 +101,8 @@ export function StatusLine({ state, width, band, theme, glyphs, windows, now }: 
   const showPermission = permission.label !== '' && permissionRoom >= permission.label.length;
 
   return <Box flexDirection="row" justifyContent="space-between" width={width}>
-    <Text>
-      <Text color={modeColor(state.session.mode, theme)} bold>{chip}</Text>
-      <Text color={attention ? theme.attention : busy ? theme.text : theme.muted}>
-        {'  '}{busy ? `${attention ? glyphs.attention : glyphs.running} ` : ''}{phase}
-      </Text>
+    <Text color={attention ? theme.attention : busy ? theme.text : theme.muted} bold={attention}>
+      {busy ? `${attention ? glyphs.attention : glyphs.running} ` : ''}{phase}
     </Text>
     <Text>
       <Text color={theme.muted}>{right !== undefined ? clip(right, metaRoom) : ''}</Text>

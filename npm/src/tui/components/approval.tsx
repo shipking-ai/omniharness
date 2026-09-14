@@ -46,11 +46,15 @@ export function ApprovalBanner({
   // the band floating between them instead of sitting against the input it is
   // blocking.
   return <Box flexDirection="column" marginTop={1}>
-    {/* The tool is named, not just the arguments: which capability is being
-        asked for is the security-relevant half of the question, and "run a
-        command" and "write a file" are not the same decision. */}
-    <Text color={theme.attention} bold>
-      {glyphs.attention} approval needed <Text color={theme.muted}>{glyphs.dot}</Text> {approval.tool}
+    {/* The one element besides the user's own task that is given a surface.
+        Everything else on screen competes for the eye at roughly equal weight,
+        which is right while work is flowing past and wrong at the moment the
+        run has stopped and is waiting on a person. The tool is named, not just
+        the arguments: which capability is being asked for is the
+        security-relevant half of the question, and "run a command" and "write a
+        file" are not the same decision. */}
+    <Text backgroundColor={theme.surface} color={theme.attention} bold>
+      {` ${glyphs.attention} approval needed  ${approval.tool} `.padEnd(width)}
     </Text>
     <Gutter theme={theme} ascii={glyphs.ascii}>
       <Plain text={subject} width={Math.max(10, width - 2)} limit={3} />

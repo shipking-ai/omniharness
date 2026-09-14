@@ -717,7 +717,11 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
           try {
             await converseLoop(wire, sig, id);
             applyTodo({ action: 'complete', id: todo.id });
-            emit({ type: 'agent', id, label: todo.title.slice(0, 48), status: 'working', note: `done: ${todo.title.slice(0, 60)}` });
+            // No "done:" prefix. The worker stays alive to claim the next task,
+            // so this note is what it last worked on, and when the queue empties
+            // the final `status: 'done'` carries no note of its own and leaves
+            // this one standing beside a tick — which then read "done: done".
+            emit({ type: 'agent', id, label: todo.title.slice(0, 48), status: 'working', note: todo.title.slice(0, 60) });
           } catch (reason: unknown) {
             emit({ type: 'agent', id, label: todo.title.slice(0, 48), status: 'error', note: reason instanceof Error ? reason.message : String(reason) });
           }

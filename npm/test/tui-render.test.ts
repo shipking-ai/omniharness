@@ -160,9 +160,16 @@ for (const columns of [56, 72, 100, 140, 200]) {
   });
 }
 
-/** The status line is the row carrying the mode chip: the mode name in caps. */
-const statusRow = (screen: string): string =>
-  screen.split('\n').filter((line) => /^\s*[A-Z]{4,8}\s{2}/.test(line)).at(-1) ?? '';
+/**
+ * The status line: the middle of the three chrome rows that close every frame
+ * (composer, status, hints). Identified by position rather than by content —
+ * every content pattern it has had so far eventually collided with something
+ * else on the screen.
+ */
+const statusRow = (screen: string): string => {
+  const rows = screen.split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '');
+  return rows.at(-2) ?? '';
+};
 
 test('a narrow terminal drops secondary metadata instead of truncating it', async () => {
   const wide = await mount({ columns: 100, model: 'auto/coding' });
@@ -181,7 +188,11 @@ test('a narrow terminal drops secondary metadata instead of truncating it', asyn
 test('a wide terminal shows a rail only once there is something to put in it', async () => {
   const app = await mount({ columns: 150, rows: 40, run: () => new Promise(() => { /* running */ }) });
   const before = app.screen();
-  assert.ok(!before.includes('agents'), 'no rail headings before any work exists');
+  // The heading, not the word: "fan out across parallel agents" is the crazy
+  // mode's description on the opening screen, and is not a rail.
+  assert.ok(
+    !/^\s*agents\s/m.test(before), 'no rail headings before any work exists',
+  );
 
   await app.submit('go');
   app.emit({ type: 'agent', id: 'A1', label: 'A1', status: 'working', note: 'writing the test' });
@@ -437,21 +448,25 @@ test('the opening screen gives up rows rather than overflowing a short window', 
 test('the opening screen is gone for good once there is a conversation', async () => {
   const app = await mount({ columns: 100, rows: 30, run: async () => ({ content: 'done', model: 'm' }) });
   await app.settle(60);
-  assert.match(app.live(), /implement, verify, iterate/, 'the mode list is there to begin with');
+  assert.match(app.live(), /implement, verify, repair/, 'the mode list is there to begin with');
 
   await app.submit('go');
   await app.settle(120);
-  assert.ok(!app.live().includes('implement, verify, iterate'), 'and gone once the session has a transcript');
+  assert.ok(!app.live().includes('implement, verify, repair'), 'and gone once the session has a transcript');
   app.unmount();
 });
 
 // --- the instrument row ----------------------------------------------------
 
-test('the status line leads with the mode and does not repeat the masthead', async () => {
+test('the status line leads with what is happening and does not repeat the masthead', async () => {
   const app = await mount({ columns: 100, rows: 30, mode: 'build', model: 'auto/coding', workspace: '/srv/p' });
   await app.settle(60);
   const row = statusRow(app.live());
-  assert.match(row, /^\s*BUILD\s+ready/, 'the mode is the label and the phase is its reading');
+  // What the harness is doing is the only thing on this row anyone reads while
+  // a turn is in flight, so it leads and it is the only thing on the left. The
+  // mode is a setting and sits with the other settings.
+  assert.match(row, /^\s*ready\b/, 'the phase leads');
+  assert.match(row, /build .* auto\/coding/, 'the mode is grouped with the engine, not set against the phase');
 
   // The masthead used to carry the engine, the mode and the permission as well,
   // three rows above the status line that carries all three live.

@@ -12,11 +12,16 @@ test('truecolor is detected via COLORTERM', () => {
 test('truecolor palette resolves hex colors', () => {
   const p = palette({ COLORTERM: 'truecolor' });
   assert.match(p.accent, /^#/);
-  assert.deepEqual(Object.keys(p).sort(), ['accent', 'error', 'info', 'muted', 'success', 'warn']);
+  assert.deepEqual(Object.keys(p).sort(), ['accent', 'error', 'info', 'muted', 'success', 'surface', 'warn']);
+  assert.match(p.surface as string, /^#/, 'the one background role is a colour when there is truecolor');
 });
 
 test('ANSI fallback uses named colors when COLORTERM is unsupported', () => {
   const p = palette({});
+  assert.equal(
+    p.surface, undefined,
+    'there is no safe way to tint a background out of the ANSI sixteen, so it is left alone',
+  );
   assert.equal(p.accent, 'blue');
   assert.equal(p.success, 'green');
   assert.equal(p.error, 'red');

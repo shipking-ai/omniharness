@@ -19,7 +19,7 @@ import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
 import { millis } from '../format/units.js';
 import { Gutter, Marker, joinMeta, type MarkerState } from './atoms.js';
-import { Output, Plain, Prose } from './prose.js';
+import { Output, Plain, Prose, wrap } from './prose.js';
 import { printsOutputInline } from '../state/selectors.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { Entry, ToolRecord } from '../state/types.js';
@@ -44,24 +44,49 @@ const OUTPUT_ROWS = 200;
  * just tidy.
  */
 const ERROR_PREVIEW_ROWS = 8;
+/**
+ * Below this a turn's wall time is not information anybody wants. "63ms" under
+ * a reply is a stopwatch reading, not a fact about the work, and it puts a row
+ * of chrome under turns that plainly did not take any time.
+ */
+const WORTH_TIMING_MS = 1000;
 
 export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): React.ReactElement {
   switch (entry.kind) {
-    case 'user':
+    case 'user': {
+      // The task owns its turn. Everything below it — narrative, calls,
+      // output, the answer — is the harness working on this, and a reader
+      // scrolling back is looking for exactly these rows. A caret and an accent
+      // colour were not enough to find them among the tool rows, which carry
+      // markers and colour of their own; the band is, and it costs no rows.
+      //
+      // Each line is padded to the measure so the band is a rectangle rather
+      // than a ragged right edge, and the marker sits inside it.
+      const lines = wrap(entry.text, Math.max(8, width - 4));
       return <Box flexDirection="column" marginTop={1}>
-        <Box flexDirection="row">
-          <Text color={theme.accent} bold>{glyphs.caret} </Text>
-          <Box flexDirection="column" flexGrow={1}>
-            <Prose ascii={glyphs.ascii} text={entry.text} width={width - 2} color={theme.accent} />
-          </Box>
-        </Box>
+        {lines.map((line, index) => (
+          <Text
+            key={index}
+            backgroundColor={theme.surface}
+            color={theme.accent}
+            bold
+          >{` ${index === 0 ? glyphs.caret : ' '} ${line} `.padEnd(width)}</Text>
+        ))}
       </Box>;
+    }
 
     case 'assistant': {
+      // What this turn cost, once it is over. The status line counts the clock
+      // up while a turn runs and then loses it; a reader scrolling back through
+      // a long session has no way to tell a turn that took two seconds from one
+      // that took four minutes. Wall time only — tokens and spend are measured
+      // per session rather than per turn, and splitting a session total across
+      // turns would be inventing the split.
       const meta = joinMeta([
         entry.showRoute === true && entry.provider !== undefined ? `via ${entry.provider}` : undefined,
         entry.showRoute === true && entry.fallback === true ? 'failover' : undefined,
         entry.showRoute === true ? entry.model : undefined,
+        entry.tookMs !== undefined && entry.tookMs >= WORTH_TIMING_MS ? millis(entry.tookMs) : undefined,
         entry.compression !== undefined
           ? `${Math.round(entry.compression.savedFraction * 100)}% context saved`
           : undefined,
