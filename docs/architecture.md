@@ -126,7 +126,14 @@ internal/evaluate      evaluator framework (build/test/lint/constraint/evidence)
 internal/repair        failure classification + repair strategies
 internal/budget        token/cost/time/agent/tool-call budgets
 internal/telemetry     metric recording + aggregation
-internal/cli           cobra commands (headless-first)
+internal/cli           cobra commands (headless-first) + the loopback HTTP API
+internal/cli/webui     the two browser surfaces, go:embed-ed into the binary
+  theme.css              design tokens shared by both
+  core.js                API client + event vocabulary, shared by both
+  index.html/app.js      the web view: one column, a live event stream
+  scene.js               the web view's WebGL backdrop
+  desktop.html/.js       the desktop shell: timeline, route, details, palette
+  route.js               the desktop shell's 3D graph of what actually ran
 internal/tui           Bubble Tea cockpit (consumer of events)
 internal/combo         model-combo registry (auto/* routing combos + catalog)
 internal/version       build info
@@ -655,7 +662,67 @@ below) with a real model inference:
   deprecating bypass-2FA tokens (direct publish ends January 2027), and OIDC
   only exists on hosted CI runners.
 
-## 11. Anti-goals
+## 11. Front-end surfaces
+
+Four front-ends, one core. The TUI and the CLI are in-process; the web view and
+the desktop window are HTTP clients of `omniharness serve`. `internal/` has no
+idea a browser exists.
+
+`/` and `/desktop` are separate documents rather than one page with a mode
+flag, because their layouts have nothing in common: a tab wants one readable
+column, a window wants panes. What they genuinely share — the API client, the
+event vocabulary, the design tokens — is factored into `core.js` and
+`theme.css` so it cannot drift between them. `webui_test.go` asserts the two
+stay distinct and that every asset a page references is actually routed: a
+missing script route does not fail loudly, it serves a page that loads and then
+does nothing.
+
+### The alias is not the model
+
+A request for `auto/best-coding` is a routing *request*. OmniRoute answers with
+the model it picked, and `gateway.ChatResponse` did not decode that field at
+all — so every surface displayed the alias as though it were the model, and a
+run that executed on `inception/mercury-2.5` reported `auto/best-coding`.
+
+`ModelRespondedData` now carries both: `Model` is what was asked for,
+`ResolvedModel` is what answered. Anything showing a model to a person should
+prefer the resolved one and say what was asked for beside it.
+
+The same mistake was being made with money. `model.EstimateCost` matches the
+model name against a pricing table and falls back to blended mid-tier rates
+when nothing matches — and `best-coding` matches nothing, so every routed call
+was priced by the fallback. It happens to equal Sonnet's rate, which is why it
+looked correct and stayed hidden while Haiku was priced roughly four times too
+high. Cost is now estimated from the resolved model. It is still an estimate
+for any model absent from the table, and the UI writes it with a tilde rather
+than four decimal places of false authority.
+
+### A client cannot guess the event vocabulary
+
+SSE delivers *named* events, so a client only ever sees the types it registered
+a listener for. The bus publishes 41 types; the first browser client listened
+for 23. The other 18 arrived on the wire, matched no listener, and were never
+seen — but still consumed a sequence number, so the next event's `id` looked
+like a jump and the gap detector reported dropped events on a run that dropped
+nothing.
+
+`GET /v1/event-types` serves `event.AllTypes()`, and clients subscribe to what
+they are told. `event/types_test.go` parses the `Type` constants out of
+`event.go` and fails if `AllTypes` disagrees, so adding an event type cannot
+silently break a front-end. A client that cannot reach the endpoint falls back
+to a short list *and suppresses gap reporting entirely*, because an incomplete
+subscription cannot tell a drop from a type it never asked for.
+
+### Two front-ends, two vocabularies, on purpose
+
+The terminal surfaces speak in marks — `ok` / `FAIL` / `..` / `-` / `>` — and
+in raw event names. That is right in a terminal and wrong in a window, which is
+the surface someone reaches who has never opened the TUI. The desktop shell
+leads every row with a sentence ("asked the model", "model answered", "needs
+your approval") and keeps the machine name beside it, dimmed, so nothing is
+hidden and it still greps.
+
+## 12. Anti-goals
 
 No Kubernetes, microservices, remote DBs, message brokers, Electron, vector
 databases, or "AI frameworks". Local-first, native, single binary.
@@ -674,6 +741,15 @@ underneath, which was never really about browsers:
   Chromium-family browser the machine already has, with its own profile. A
   bundled runtime would add ~150MB to a binary whose point is that it is one
   file, and would buy nothing a `--app` window does not already give.
+
+  Using the installed browser has one consequence worth knowing. A Chromium
+  already running against that profile directory takes the `--app` request,
+  opens the window itself, and the process we launched exits successfully
+  within milliseconds. Reading that exit as "the user closed the window" shut
+  the server down under a window that had only just opened — so a fast, clean
+  exit is now treated as a hand-off, and the server keeps serving until it is
+  interrupted.
 - **The engine gained nothing web-shaped.** Both front-ends are clients of the
   same HTTP API, which existed for scripts and CI first. `internal/` has no
-  idea a browser exists.
+  idea a browser exists. See section 11 for how the two surfaces differ and
+  what they share.

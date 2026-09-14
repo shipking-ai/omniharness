@@ -77,6 +77,12 @@ func desktopArgs(url, profileDir string, width, height int) []string {
 	}
 }
 
+// handoffWindow is how quickly a launched browser process must exit for that
+// exit to mean "an existing browser took this over" rather than "the user
+// closed the window". A real window, even one closed immediately, does not
+// come and go faster than this; a hand-off returns almost at once.
+const handoffWindow = 3 * time.Second
+
 func newDesktopCmd() *cobra.Command {
 	var (
 		port          int
@@ -91,6 +97,12 @@ This is a real window — no address bar, no tab strip, its own taskbar entry �
 backed by a Chromium-family browser already on the machine, running against a
 profile of its own so it does not touch the one you browse with.
 
+It is also a different interface from the one ` + "`serve`" + ` prints. The window gets
+three resizable panes that remember their sizes, a waterfall of the run's real
+span timings next to the event log, an inspector showing the whole payload
+behind any line, a ctrl+k command palette, and a desktop notification when an
+approval is waiting or a long run ends while you are in another app.
+
 What it deliberately is not is a bundled runtime. Shipping Electron would add
 roughly 150MB to a binary whose whole promise is that it is one file, and
 docs/architecture.md rules it out. Using the browser that is already installed
@@ -104,7 +116,11 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 			if err != nil {
 				return fmt.Errorf("%w; run `omniharness serve` and open the URL it prints instead", err)
 			}
-			url := fmt.Sprintf("http://127.0.0.1:%d/", port)
+			// The window opens on /desktop, not /. The web view is shaped for a
+			// tab; the shell at /desktop is shaped for a window, and opening the
+			// wrong one would make `desktop` a bookmark rather than an app.
+			base := fmt.Sprintf("http://127.0.0.1:%d/", port)
+			url := base + "desktop"
 			profile, err := desktopProfileDir()
 			if err != nil {
 				return err
@@ -118,7 +134,7 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 			serveErr := make(chan error, 1)
 			go func() { serveErr <- runServer(ctx, port) }()
 
-			if err := waitForServer(ctx, url, 20*time.Second); err != nil {
+			if err := waitForServer(ctx, base, 20*time.Second); err != nil {
 				stop()
 				return err
 			}
@@ -132,10 +148,28 @@ and open the printed URL, or stay in the terminal with ` + "`omniharness`" + `.`
 
 			// Whichever ends first ends the other: closing the window shuts the
 			// server down, and a server that dies takes the window with it.
+			//
+			// Except when the process we launched was never the window. A
+			// Chromium already running against this profile directory takes the
+			// --app request, opens the window itself, and the process we
+			// started exits successfully within milliseconds. Treating that
+			// exit as "the user closed the window" shut the server down under a
+			// window that had only just opened, leaving it pointed at a dead
+			// port — which is exactly what a second `omniharness desktop` did.
+			launched := time.Now()
 			done := make(chan error, 1)
 			go func() { done <- win.Wait() }()
 			select {
-			case <-done:
+			case err := <-done:
+				if err == nil && time.Since(launched) < handoffWindow {
+					fmt.Println("a window was opened by a browser that was already running, so closing it cannot stop this server; press ctrl-c when you are done")
+					select {
+					case err := <-serveErr:
+						return err
+					case <-ctx.Done():
+						return nil
+					}
+				}
 				stop()
 				return nil
 			case err := <-serveErr:

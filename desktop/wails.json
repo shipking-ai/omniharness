@@ -1,0 +1,15 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "omniharness",
+  "outputfilename": "OmniHarness",
+  "frontend:install": "",
+  "frontend:build": "",
+  "wailsjsdir": "",
+  "author": {
+    "name": "OmniHarness"
+  },
+  "info": {
+    "productName": "OmniHarness",
+    "comments": "The agent harness built for OmniRoute."
+  }
+}

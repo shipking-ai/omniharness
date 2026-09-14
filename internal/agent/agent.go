@@ -635,7 +635,15 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 	}
 
 	usage := resp.Usage
-	cost := model.EstimateCost(modelRef, usage.PromptTokens, usage.CompletionTokens)
+	// Price the call against the model that actually ran it. Asking for
+	// "auto/best-coding" and pricing "best-coding" matches no entry in the
+	// pricing table, so every routed call silently fell back to blended
+	// mid-tier rates — a number that looked precise and was a guess.
+	costRef := modelRef
+	if resp.Model != "" {
+		costRef = resp.Model
+	}
+	cost := model.EstimateCost(costRef, usage.PromptTokens, usage.CompletionTokens)
 	a.mu.Lock()
 	a.TokensIn += usage.PromptTokens
 	a.TokensOut += usage.CompletionTokens
@@ -648,7 +656,7 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 	a.publish(&event.ModelRespondedData{
 		// modelRef, not a.Model: a routed vision turn runs on a different
 		// model, and the reply must be attributed to the one that produced it.
-		Model: modelRef, TaskID: a.TaskID, AgentID: a.ID,
+		Model: modelRef, ResolvedModel: resp.Model, TaskID: a.TaskID, AgentID: a.ID,
 		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CostUSD: cost, Latency: latency,
 	})
 	_ = a.recordModelCall(req, resp, latency, nil)

@@ -252,3 +252,34 @@ func TestSplitModel(t *testing.T) {
 		t.Fatalf("%q %q", p, m)
 	}
 }
+
+// A routing alias is not a model. OmniRoute answers a request for
+// "auto/best-coding" with the model it chose, and the client used to drop that
+// field on the floor — so every front-end displayed the alias as though it
+// were the model, and the cost estimator priced a name no pricing table knows.
+func TestChatReportsTheModelThatActuallyAnswered(t *testing.T) {
+	_, c := fakeOmniRoute(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"model": "anthropic/claude-sonnet-5",
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	})
+
+	resp, err := c.Chat(context.Background(), ChatRequest{
+		Model:    "auto/best-coding",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if resp.Model != "anthropic/claude-sonnet-5" {
+		t.Errorf("resolved model = %q, want %q; the alias would be shown to the user as the model",
+			resp.Model, "anthropic/claude-sonnet-5")
+	}
+}

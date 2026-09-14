@@ -193,17 +193,29 @@ func schema(props map[string]any, required ...string) map[string]any {
 // to /etc or $HOME.
 func (n *Native) resolvePath(input map[string]any) (string, error) {
 	raw, _ := input["path"].(string)
+	return ResolveInWorkspace(n.WorkspaceRoot, raw)
+}
+
+// ResolveInWorkspace turns a caller-supplied path into an absolute one that is
+// provably inside root, or refuses it.
+//
+// Exported because the HTTP API needs the same answer the filesystem tools
+// get. A second implementation would be a second set of the bugs this one has
+// already been through — symlink escapes, a root behind /var on macOS, a root
+// carrying an 8.3 short name on Windows — and the copy that drifts is the one
+// that lets a file out of the workspace.
+func ResolveInWorkspace(workspaceRoot, raw string) (string, error) {
 	if raw == "" {
 		raw = "."
 	}
-	if n.WorkspaceRoot == "" {
+	if workspaceRoot == "" {
 		abs, err := filepath.Abs(raw)
 		if err != nil {
 			return "", fmt.Errorf("resolve path: %w", err)
 		}
 		return abs, nil
 	}
-	root, err := filepath.Abs(n.WorkspaceRoot)
+	root, err := filepath.Abs(workspaceRoot)
 	if err != nil {
 		return "", err
 	}
@@ -214,7 +226,7 @@ func (n *Native) resolvePath(input map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := n.confine(root, abs); err != nil {
+	if err := confine(root, abs); err != nil {
 		return "", err
 	}
 	// Follow symlinks; the resolved location must also stay inside the root.
@@ -233,7 +245,7 @@ func (n *Native) resolvePath(input map[string]any) (string, error) {
 		realRoot = root
 	}
 	if real, err := resolveDeepest(abs); err == nil {
-		if err := n.confine(realRoot, real); err != nil {
+		if err := confine(realRoot, real); err != nil {
 			return "", err
 		}
 	}
@@ -263,7 +275,7 @@ func resolveDeepest(p string) (string, error) {
 	}
 }
 
-func (n *Native) confine(root, p string) error {
+func confine(root, p string) error {
 	rel, err := filepath.Rel(root, p)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("path %q is outside workspace root %q", p, root)

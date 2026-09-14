@@ -1,6 +1,6 @@
 {
   "name": "omniharness-cli",
-  "version": "0.1.4",
+  "version": "0.1.114",
   "description": "OmniHarness — local-first agent orchestration harness for OmniRoute.",
   "license": "MIT",
   "type": "module",

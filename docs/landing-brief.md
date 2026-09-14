@@ -1,6 +1,9 @@
 # OmniHarness landing page — build brief
 
-Everything needed to build the site later. Nothing here is built yet.
+**Status: the site is built.** It lives in `landing/` and this brief is kept for
+the reasoning behind it, not as a plan. Where the two disagree, the site is the
+truth — sections below are annotated where what shipped diverged from the plan.
+The one item still genuinely open is the domain (issue #107).
 
 ## 1. Positioning
 
@@ -16,7 +19,7 @@ Everything needed to build the site later. Nothing here is built yet.
 - Permission axis on `Shift+Tab`, independent of mode: manual · accept edits · bypass.
 - CRAZY mode fans an independent plan across parallel worker agents (the swarm rail).
 - Premium terminal: native-scrollback history, tear-free streaming (DECSET 2026), route ribbon (which provider answered), per-model context meter, per-tool cards with diffs, scoped-trust approvals, input queued during a run, OSC 52 copy / OSC 9 notify.
-- Ships as `omniharness-cli` on npm; Go core + headless CLI in the same repo. Web + desktop front ends are roadmap.
+- Ships as `omniharness-cli` on npm; Go core + headless CLI in the same repo. The web view and the desktop window ship too — both served by the Go binary, both clients of the same HTTP API.
 
 ## 2. Page structure (single scroll page)
 
@@ -27,11 +30,30 @@ Everything needed to build the site later. Nothing here is built yet.
 5. **The terminal** — a scannable grid of the premium features (6–8 items, one line each) with the "everything on screen makes agent intent, action, and history legible" framing.
 6. **Install / quickstart** — the npm one-liner, the three env vars, `omniharness doctor` / `models`. Keep it copy-pasteable.
 7. **Architecture** — the two-front-ends-over-one-core diagram; link to `docs/architecture.md`. One paragraph.
-8. **Footer** — npm, GitHub, license, "web & desktop coming".
+8. **Footer** — npm, GitHub, license.
+
+*Shipped instead of the roadmap tease:* a **Surfaces** section — terminal, web,
+desktop, all marked "ships today". The page carried "web & desktop coming" for
+a while after both had shipped, which is the worst thing a landing page can do:
+advertise your own work as unbuilt.
 
 ## 3. Design system
 
-Pull straight from `npm/src/ui/palette.ts` (dark truecolor set) so the site and the TUI read as one product:
+The site's palette, aligned to the TUI so the two read as one product.
+
+*Accuracy note:* `npm/src/ui/palette.ts` defines only six of these — `accent`,
+`muted`, `success`, `warn`, `error`, `info`. A terminal inherits its background
+and body text from the emulator, so `ground`, `surface`, `hairline` and `ink`
+exist for the web only and have no counterpart there.
+
+There are now three token sets, and only `accent` (`#2dd4bf`) is common to all
+three. The TUI has the six above; this table is the landing page; and
+`internal/cli/webui/theme.css` carries a third for the browser surfaces, on a
+deeper canvas (`#08090b`) with a five-step surface ladder and slightly
+brighter semantics. That divergence is deliberate — the window is a designed
+surface rather than a terminal — but it means a colour changed here does not
+propagate anywhere, and a change meant to be product-wide has to be made in
+all three.
 
 | token | hex | use |
 |---|---|---|
@@ -62,14 +84,25 @@ Pull straight from `npm/src/ui/palette.ts` (dark truecolor set) so the site and 
 
 - **Host:** GitHub Pages from `/docs` or a `gh-pages` branch is the zero-infra option; Vercel/Netlify if a framework is wanted. Static either way.
 - **Stack:** plain HTML + one CSS file is enough for a single scroll page and keeps it fast. Astro if component reuse or MDX is wanted. No SPA framework needed.
-- **Domain:** none yet — decide (omniharness.dev? subpath on an OmniRoute domain?). `homepageUrl` currently points at the npm page.
+- **Domain:** still undecided, and it is the last thing blocking the social card. `og:image` and `twitter:image` are relative, so Slack, Discord and iMessage unfurl correctly and X does not; `og:url` is absent. One decision makes those absolute and closes issue #107.
 - **Analytics:** privacy-preserving only, or none.
 - **The npm version badge / install string** should read from `omniharness-cli` at build time so it never goes stale.
 
 ## 6. Open questions for the owner
 
-- Domain + hosting preference.
-- Is there OmniRoute brand guidance (logo, wordmark, colours) the site should align to, or is the OmniHarness teal palette the identity?
-- Light theme: yes/no.
-- Should the site link a hosted playground / asciinema, or is the animated SVG enough for v1?
-- Roadmap section for web/desktop — tease it, or leave it to the footer line?
+**Still open:**
+
+- Domain + hosting preference — the only one blocking anything (issue #107).
+
+**Settled by what shipped:**
+
+- *Brand:* the OmniHarness teal palette is the identity.
+- *Light theme:* no. Dark only.
+- *Playground / asciinema:* neither. A real `omniharness doctor` run was
+  recorded and rendered as a self-contained animated SVG with CSS keyframes —
+  it needs no player and no CDN, and degrades to a finished still frame under
+  `prefers-reduced-motion`. The generator redacts the masked key and the
+  operator's home path, because a masked key still leaks its last four
+  characters and a persistence path carries an account name.
+- *Roadmap section:* moot. Web and desktop shipped, so the section became
+  Surfaces.
