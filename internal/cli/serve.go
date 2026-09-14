@@ -207,6 +207,10 @@ func NewAPIHandler(parent context.Context) (http.Handler, func(), error) {
 	// What this harness can actually do, addressed by capability rather than by
 	// tool name. The editor calls these extensions; here they are whatever the
 	// registry holds, including anything an MCP server contributed.
+	// "Prove it." Runs the repository's own build and test evaluators against
+	// the workspace and publishes what they say, so any attached surface fills
+	// in as the results land.
+	mux.HandleFunc("/v1/checks", checksHandler(rt, fsRoot(cfg.Policy.WorkspaceRoot)))
 	mux.HandleFunc("/v1/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

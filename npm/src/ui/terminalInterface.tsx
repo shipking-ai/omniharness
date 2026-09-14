@@ -255,7 +255,7 @@ function SidebarPanel(props: SidebarProps): React.ReactElement {
   const shownTodos = todoRows(todos, 6, inner - 2);
   const moreTodos = overflowCount(todos.length, shownTodos.length);
 
-  return <Box flexDirection="column" width={width} borderStyle="round" borderColor={PALETTE.muted} paddingX={1}>
+  return <Box flexDirection="column" width={width} paddingX={1}>
     <Text bold dimColor>session</Text>
     <Field label="model">{clip(model, value)}</Field>
     <Field label="mode"><Text color={MODE_ACCENT[mode]}>{mode}</Text></Field>
@@ -338,7 +338,7 @@ export function Hero(props: HeroProps): React.ReactElement {
   const capability = capabilityLine(skills, plugins, mcpTools);
   const recent = recentRows(sessions, 4, Math.max(8, inner - 9));
 
-  const session = <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.accent} paddingX={1} width={column}>
+  const session = <Box flexDirection="column" width={column}>
     <Text bold color={PALETTE.accent}>omniharness {ownVersion()}</Text>
     <Box marginTop={1} flexDirection="column">
       <Field label="workspace">{shortenPath(workspace, value)}</Field>
@@ -353,14 +353,14 @@ export function Hero(props: HeroProps): React.ReactElement {
   </Box>;
 
   const aside = <Box flexDirection="column" width={column} marginLeft={wide ? 1 : 0} marginTop={wide ? 0 : 1}>
-    {recent.length > 0 && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.muted} paddingX={1} marginBottom={1}>
+    {recent.length > 0 && <Box flexDirection="column" marginTop={wide ? 0 : 1}>
       <Text bold dimColor>recent</Text>
       {recent.map((row) => <Text key={row.name}>
         <Text dimColor>{row.age.padEnd(8)}</Text>{row.name}
       </Text>)}
       <Text dimColor>/sessions for all</Text>
     </Box>}
-    <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.muted} paddingX={1}>
+    <Box flexDirection="column" marginTop={recent.length > 0 ? 1 : 0}>
       <Text bold dimColor>keys</Text>
       {/* Kept short enough to sit on one line in the narrow column: a wrapped
           key hint is harder to scan than no hint. */}
@@ -371,7 +371,7 @@ export function Hero(props: HeroProps): React.ReactElement {
     </Box>
   </Box>;
 
-  return <Box flexDirection="column" marginBottom={1} width={outer}>
+  return <Box flexDirection="column" width={outer}>
     {/* flex-start so the shorter column does not stretch to the taller one
         and leave a tall empty frame. */}
     <Box flexDirection={wide ? 'row' : 'column'} alignItems="flex-start">
@@ -1084,14 +1084,16 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
             {expanded ? <Text dimColor>{COLLAPSE_HINT}</Text> : null}
           </Text>
           {/* Output hangs off a rule down its left edge rather than sitting in
-              a box of its own: a full border around every result turns the
-              transcript into a stack of crates. */}
+               a box of its own: a full border around every result turns the
+               transcript into a stack of crates. Only the left rule marks the
+               indentation, keeping each result light. */}
           {expanded && <Box
-            borderStyle="round"
-            borderColor={statusColor}
             borderTop={false}
             borderBottom={false}
             borderRight={false}
+            borderLeft={true}
+            borderStyle="single"
+            borderColor={PALETTE.muted}
             paddingLeft={1}
             marginLeft={1}
             flexDirection="column"
@@ -1101,7 +1103,7 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
         </Box>;
       })}
 
-      {sideMode === 'hidden' && agents.length > 0 && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.error} paddingX={2} marginTop={1}>
+      {sideMode === 'hidden' && agents.length > 0 && <Box flexDirection="column" marginTop={1}>
         <Box justifyContent="space-between">
           <Text bold color={PALETTE.error}>swarm</Text>
           <Text dimColor>{doneAgents}/{agents.length} lanes done</Text>
@@ -1114,7 +1116,7 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
         })}
       </Box>}
 
-      {sideMode === 'hidden' && taskQueue.length > 0 && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.accent} paddingX={2} marginTop={1}>
+      {sideMode === 'hidden' && taskQueue.length > 0 && <Box flexDirection="column" marginTop={1}>
         <Box justifyContent="space-between">
           <Text bold color={PALETTE.accent}>plan</Text>
           <Text dimColor>{taskQueue.filter((item) => item.status === 'done').length}/{taskQueue.length} done</Text>
@@ -1129,7 +1131,7 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
 
       {engine.state.preview && <Text color={PALETTE.success}>preview live · {engine.state.preview.url}</Text>}
 
-      {sessionsOpen && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.info} paddingX={2} marginTop={1}>
+      {sessionsOpen && <Box flexDirection="column" paddingX={2} marginTop={1}>
         <Text bold color={PALETTE.info}>saved sessions</Text>
         <Text dimColor>up/down navigate · enter resume · esc close</Text>
         {sessionsList.map((session, index) => (
@@ -1139,7 +1141,7 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
         ))}
       </Box>}
 
-      {pickerOpen && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.accent} paddingX={2} marginTop={1}>
+      {pickerOpen && <Box flexDirection="column" paddingX={2} marginTop={1}>
         <Text bold color={PALETTE.accent}>choose an OmniRoute model</Text>
         <Text dimColor>up/down / j k navigate · enter select · esc close</Text>
         {pickerError && <Text color={PALETTE.error}>{clip(pickerError, contentWidth)}</Text>}
@@ -1154,14 +1156,14 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
         })}
       </Box>}
 
-      {approval && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.warn} paddingX={2} marginTop={1}>
+      {approval && <Box flexDirection="column" paddingX={2} marginTop={1}>
         <Text bold color={PALETTE.warn}>approve {approval.tool}?</Text>
         <Text dimColor>args: {clip(JSON.stringify(approval.input), contentWidth)}</Text>
         {approval.scopes.map((scope, index) => <Text key={scope.id} dimColor>  {index + 1} · {clip(scope.label, Math.max(12, contentWidth - 6))}</Text>)}
         <Text dimColor>y allow once · n deny · t always allow · 1–{approval.scopes.length} pick a trust scope</Text>
       </Box>}
 
-      {layoutDebug && <Box flexDirection="column" borderStyle="round" borderColor={PALETTE.muted} paddingX={2} marginTop={1}>
+      {layoutDebug && <Box flexDirection="column" paddingX={2} marginTop={1}>
         <Text bold dimColor>layout · {width}×{terminalRows} · Ctrl+L to hide</Text>
         <Text dimColor>static entries {lines.length} · live budget {liveBudget} · think {liveThinkLines.length} · answer {liveAnswerLines.length}</Text>
         <Text dimColor>plan {taskQueue.length} · swarm {agents.length} · tool cards {toolCards.length} · editor rows {editorLayout.lines.length}</Text>
@@ -1169,16 +1171,17 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
 
       {queued && <Text color={PALETTE.warn}>queued · {clip(queued, Math.max(12, contentWidth - 12))}</Text>}
 
-      <Box borderStyle="round" borderColor={error ? PALETTE.error : modeAccent} paddingX={1} marginTop={1} flexDirection="column">
-        {edit.value === ''
-          ? <Text color={modeAccent}>{'>'} <Text dimColor>{busy ? 'type to queue the next task' : 'describe the work and press enter'}</Text></Text>
-          : editorLayout.lines.map((text, index) => <Text key={index} color={modeAccent}>{index === 0 ? '> ' : '  '}{text}</Text>)}
-      </Box>
-
       {kitty !== null && <Text dimColor>{kitty ? 'kitty protocol active — Shift+Enter makes a new line' : 'this terminal can\'t distinguish Shift+Enter from Enter — use Ctrl+J for a new line'}</Text>}
 
       <Box flexDirection="column">
-        <Box justifyContent="space-between">
+        {/* Prompt line: bare caret + text, no box. The mode accent colors the
+            caret and the live status so the input never competes with the
+            conversation for attention. On error the caret turns red. */}
+        {edit.value === ''
+          ? <Text color={error ? PALETTE.error : modeAccent}>{'>'} <Text dimColor>{busy ? 'type to queue the next task' : 'describe the work and press enter'}</Text></Text>
+          : editorLayout.lines.map((text, index) => <Text key={index} color={error ? PALETTE.error : modeAccent}>{index === 0 ? '> ' : '  '}{text}</Text>)}
+
+        <Box marginTop={1} justifyContent="space-between">
           <Text color={busy ? modeAccent : PALETTE.muted}>{busy && <Spinner type="line" />}{busy ? ' ' : ''}{phase}{elapsed ? ` · ${elapsed}` : ''}{agents.length > 0 ? ` · swarm ${doneAgents}/${agents.length}` : ''}</Text>
           <Text color={PALETTE.muted}>
             <Text color={modeAccent}>{mode}</Text>
@@ -1189,10 +1192,10 @@ export function TerminalInterface({ engine }: Props): React.ReactElement {
             {contextLabel ? <Text color={meterColor}> · {contextLabel}</Text> : null}
           </Text>
         </Box>
-        {/* The full hint wraps once the panel takes its share of the width,
-            and a wrapped hint collides with the compression note beside it —
-            "Shift+Ta" then "saved 28%" on the same row. Drop to the keys that
-            are hardest to guess rather than letting it break. */}
+        {/* Key hints: the split-mode hint is shorter to avoid colliding with
+            the compression note; the full hint only shows when the sidebar
+            replaces the conversation (narrow terminal), where there is no
+            sidebar text to race for space. */}
         <Box justifyContent="space-between">
           <Text dimColor>{sideMode === 'split'
             ? `Ctrl+B panel · Ctrl+${modeKey} mode · Ctrl+C ${busy ? 'cancel' : 'quit'} · /help`

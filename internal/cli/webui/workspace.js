@@ -302,17 +302,44 @@ function renderEventsPanel() {
   if (atBottom) box.parentElement.scrollTop = box.parentElement.scrollHeight;
 }
 
+// A check is pass, fail, or neither — and "neither" is usually "this
+// repository has no Cargo.toml, so the Rust check skipped". Those are shown
+// rather than hidden, because a check that silently did not run is
+// indistinguishable from one that passed.
+const CHECK_TONE = { pass: 'ok', fail: 'bad', running: 'busy', pass_with_warnings: 'warn' };
+
 function renderChecks() {
   const box = $('p-checks');
   for (const stale of box.querySelectorAll('.prow')) stale.remove();
   const empty = box.querySelector('.pempty');
   if (empty) empty.hidden = state.checks.length > 0;
-  for (const c of state.checks) {
+  const order = { fail: 0, running: 1, pass_with_warnings: 2, pass: 3 };
+  const rows = state.checks.slice().sort((a, b) =>
+    (order[a.outcome] ?? 4) - (order[b.outcome] ?? 4) || a.evaluator.localeCompare(b.evaluator));
+  for (const c of rows) {
     const row = document.createElement('div');
-    row.className = 'prow ' + (c.outcome === 'pass' ? 'ok' : c.outcome === 'fail' ? 'bad' : 'warn');
-    row.append(cell('s', c.outcome), cell('k', c.evaluator), cell('d', c.reason || ''), cell('t', c.at));
+    row.className = 'prow ' + (CHECK_TONE[c.outcome] || 'warn');
+    row.append(
+      cell('s', c.outcome === 'pass_with_warnings' ? 'warned' : c.outcome),
+      cell('k', c.evaluator),
+      cell('d', OH.fmtMillis ? firstLine(c.reason) : c.reason),
+      cell('t', c.at));
+    row.title = c.reason || '';
     box.append(row);
   }
+  // A failing check is the reason to look at this panel, so the tab says so
+  // even when you are on another one.
+  const failed = state.checks.filter((c) => c.outcome === 'fail').length;
+  const tab = document.querySelector('.ptab[data-p="checks"]');
+  if (tab) tab.textContent = failed ? 'Checks (' + failed + ')' : 'Checks';
+}
+
+// Compiler output is many lines and the row is one. The rest stays in the
+// tooltip rather than being thrown away.
+function firstLine(s) {
+  if (!s) return '';
+  const nl = s.indexOf('\n');
+  return nl < 0 ? s : s.slice(0, nl) + ' …';
 }
 
 function cell(cls, text) {
@@ -357,11 +384,21 @@ function ingest(e) {
       state.touched.add(String(p));
     }
   }
+  if (e.type === 'evaluation.started') {
+    // Shown while it runs, so a `go test ./...` that takes minutes looks like
+    // work in progress rather than a panel that ignored the button.
+    state.checks = state.checks.filter((c) => c.evaluator !== d.evaluator);
+    state.checks.push({ evaluator: d.evaluator || 'check', outcome: 'running', reason: '', at: OH.clockOf(e) });
+    renderChecks();
+  }
   if (e.type === 'evaluation.completed') {
+    state.checks = state.checks.filter((c) => c.evaluator !== d.evaluator);
     state.checks.push({
-      evaluator: d.evaluator || 'evaluator',
-      outcome: d.outcome || 'unknown',
-      reason: d.reason || '',
+      evaluator: d.evaluator || 'check',
+      outcome: (d.outcome || 'unknown').toLowerCase(),
+      // The payload calls it detail, and it is the whole value of a failing
+      // check: the compiler output that says what broke.
+      reason: d.detail || d.reason || '',
       at: OH.clockOf(e),
     });
     renderChecks();
@@ -639,6 +676,34 @@ function boot() {
 
   for (const b of document.querySelectorAll('.act')) b.onclick = () => showView(b.dataset.view);
   for (const b of document.querySelectorAll('.ptab')) b.onclick = () => showPanel(b.dataset.p);
+  $('run-checks').onclick = async () => {
+    const btn = $('run-checks');
+    btn.disabled = true;
+    btn.textContent = 'checking…';
+    showPanel('checks');
+    try {
+      const r = await OH.api('/v1/checks', { method: 'POST' });
+      const body = await r.json();
+      if (r.status === 409) {
+        state.checks = [{ evaluator: 'checks', outcome: 'running', reason: body.error || '', at: '' }];
+        renderChecks();
+      } else {
+        // Seed a row per evaluator immediately. The run is minutes long and
+        // an empty panel for the first thirty seconds reads as a dead button.
+        state.checks = (body.evaluators || []).map((n) => ({
+          evaluator: n, outcome: 'running', reason: 'queued', at: '',
+        }));
+        renderChecks();
+      }
+    } catch (_) {
+      state.checks = [{ evaluator: 'checks', outcome: 'fail', reason: 'the harness did not answer', at: '' }];
+      renderChecks();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'run checks';
+    }
+  };
+
   $('panel-toggle').onclick = () => {
     const p = $('panel');
     p.classList.toggle('collapsed');
