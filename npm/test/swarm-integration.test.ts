@@ -4,30 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { test } from 'node:test';
-import { asStdin, asStdout } from './streams.js';
-import { PassThrough, Writable } from 'node:stream';
 import React from 'react';
 import { render } from 'ink';
-import { TerminalInterface } from '../src/ui/terminalInterface.js';
+import { App } from '../src/tui/app.js';
 import { createMastraEngine } from '../src/agent/mastraEngine.js';
-
-class FakeStdin extends PassThrough {
-  isTTY = true;
-  setRawMode(): void {}
-  ref(): void {}
-  unref(): void {}
-}
-class FakeStdout extends Writable {
-  columns = 100;
-  rows = 44;
-  output = '';
-  _write(chunk: Buffer | string, _enc: BufferEncoding, cb: (e?: Error | null) => void): void {
-    this.output += chunk.toString();
-    cb();
-  }
-}
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-const strip = (s: string): string => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').replace(/\x1b[()][0-9A-Z]/g, '');
+import { FakeStdin, FakeStdout, sleep, strip } from './harness/tui.js';
 
 const sse = (chunks: unknown[]): string =>
   chunks.map((c) => `data: ${JSON.stringify(c)}`).join('\n') + '\ndata: [DONE]\n';
@@ -103,33 +84,44 @@ function stubGateway() {
   });
 }
 
-test('CRAZY mode: a planned run fans out and the swarm rail shows every worker lane', async () => {
+test('CRAZY mode: a planned run fans out and every worker lane is visible', async () => {
   const gw = await stubGateway();
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'oh-swarm-int-'));
   const engine = await createMastraEngine({ workspaceRoot: workspace, endpoint: gw.url, mode: 'crazy' });
   const stdin = new FakeStdin();
-  const stdout = new FakeStdout();
-  const instance = render(React.createElement(TerminalInterface, { engine }), { stdin: asStdin(stdin), stdout: asStdout(stdout), stderr: asStdout(new FakeStdout()) });
+  const stdout = new FakeStdout(100, 44);
+  const instance = render(React.createElement(App, { engine }), {
+    stdin: stdin as unknown as NodeJS.ReadStream,
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    stderr: new FakeStdout() as unknown as NodeJS.WriteStream,
+    exitOnCtrlC: false,
+  });
   try {
     await sleep(120);
     stdin.write('build the retry work');
     await sleep(60);
-    stdin.write('\r'); // submit → engine.run() plans, then startRun() calls engine.runSwarm()
+    stdin.write('\r'); // submit → engine.run() plans, then the controller fans out
 
-    // Poll until the swarm finishes (all three lanes report done).
+    // Open the agents lens so every lane is listed rather than the top three.
+    await sleep(60);
+    stdin.write('\x0c'); // Ctrl+L → agents
+
+    // Poll until the swarm finishes.
     let text = '';
     for (let i = 0; i < 80; i += 1) {
       text = strip(stdout.output);
-      if (/3\/3 lanes done/.test(text)) break;
+      if (/3 done/.test(text)) break;
       await sleep(50);
     }
 
-    assert.match(text, /swarm/, 'the swarm rail rendered');
-    assert.match(text, /3\/3 lanes done/, 'all three worker lanes completed');
-    for (const id of ['A1', 'A2', 'A3']) assert.match(text, new RegExp(`ok ${id}`), `lane ${id} shown done`);
+    assert.match(text, /agents/, 'the agents lens rendered');
+    assert.match(text, /3 done/, 'all three worker lanes completed');
+    for (const id of ['A1', 'A2', 'A3']) {
+      assert.match(text, new RegExp(`\\b${id}\\b`), `lane ${id} is listed`);
+    }
 
-    // The engine really fanned out: three distinct worker system frames were served,
-    // and every planned todo was completed by a worker.
+    // The engine really fanned out: three distinct worker system frames were
+    // served, and every planned todo was completed by a worker.
     assert.equal(gw.workerFrames(), 3, 'three distinct worker agents hit the gateway');
     assert.ok(gw.peakConcurrency() >= 2, `workers ran concurrently (peak in-flight ${gw.peakConcurrency()})`);
     assert.equal(engine.state.taskQueue.length, 3);

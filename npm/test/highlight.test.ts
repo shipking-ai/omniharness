@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { highlightCode } from '../src/ui/highlight.js';
+import { highlightCode } from '../src/tui/format/highlight.js';
 
 const colorOf = (line: { text: string; color?: string }[], text: string): string | undefined =>
   line.find((s) => s.text === text)?.color;

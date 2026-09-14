@@ -28,3 +28,12 @@ process.env.CI = 'false';
 // whatever happens to be installed on the box running them, so discovery is
 // off unless a test asks for it by passing explicit roots.
 process.env.OMNIHARNESS_PLUGIN_PATH = '';
+
+// The interface picks its glyph set from the locale (LC_ALL > LC_CTYPE > LANG),
+// which means the same assertion passed on one machine and failed on another:
+// a box-drawing separator here, a hyphen there. Pin it, so a render test is
+// about the interface rather than about the container it runs in. The ASCII
+// path has coverage of its own — see the degradation tests in tui-layout and
+// the ASCII render test in tui-render.
+process.env.LC_ALL = 'C.UTF-8';
+delete process.env.OMNIHARNESS_ASCII;

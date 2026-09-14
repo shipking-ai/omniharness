@@ -28,15 +28,53 @@ export interface MastraEngineConfig {
 export type HarnessEvent =
   | { type: 'thinking'; text: string }
   | { type: 'thinking_delta'; delta: string }
-  | { type: 'text_delta'; delta: string }
-  | { type: 'tool_start'; tool: string; input: unknown }
-  | { type: 'tool_result'; tool: string; summary: string; detail?: string }
+  // `agentId` names the parallel worker a delta came from. The main run leaves
+  // it unset. Without it a swarm's workers stream into one another and the
+  // merged text is unreadable; with it each lane owns its own narrative.
+  | { type: 'text_delta'; delta: string; agentId?: string }
+  // `id` is the provider's tool-call id, stable across the pair, so a result is
+  // matched to the call it belongs to rather than to whichever call happened to
+  // start last — the swarm interleaves calls from several workers, and matching
+  // by arrival order attributed their results to each other. `agentId` names the
+  // worker when the call came from one. Both are optional so an older consumer
+  // that ignores them still reads the stream correctly.
+  | { type: 'tool_start'; tool: string; input: unknown; id?: string; agentId?: string }
+  | {
+      type: 'tool_result';
+      tool: string;
+      summary: string;
+      detail?: string;
+      id?: string;
+      agentId?: string;
+      /** How the call ended. Absent means the consumer should assume success. */
+      status?: 'ok' | 'error' | 'denied';
+    }
   | { type: 'approval_requested'; tool: string; input: Record<string, unknown> }
   // OmniRoute chose (or failed over to) a provider for the turn. `fallback` is
   // true when the gateway retried past its first choice; `reason` is the
-  // gateway's failure note when it has one.
-  | { type: 'route'; provider?: string; fallback: boolean; attempts: number; reason?: string }
-  | { type: 'text'; content: string; model?: string; provider?: string; fallback?: boolean; compression?: CompressionInfo }
+  // gateway's failure note when it has one. `model`, `strategy` and `latencyMs`
+  // carry what the gateway stated about the decision, and are absent when it
+  // stated nothing — never defaulted, so a consumer cannot mistake silence for
+  // a measurement.
+  | {
+      type: 'route';
+      provider?: string;
+      fallback: boolean;
+      attempts: number;
+      reason?: string;
+      model?: string;
+      strategy?: string;
+      latencyMs?: number;
+    }
+  | {
+      type: 'text';
+      content: string;
+      model?: string;
+      provider?: string;
+      fallback?: boolean;
+      compression?: CompressionInfo;
+      agentId?: string;
+    }
   | { type: 'preview'; url: string }
   | { type: 'attach'; name: string; kind: AttachmentInput['kind']; size: number }
   // CRAZY-mode swarm: one event stream per parallel worker agent.
@@ -115,6 +153,9 @@ const MODE_PROMPT: Record<AgentMode, string> = {
 };
 
 const MEMORY_FILE = 'memory.md';
+
+/** What a denied tool call returns to the model, and what `outcomeOf` matches. */
+const DENIED = 'user denied this tool call';
 
 const SYSTEM_FRAME = (endpoint: string, root: string, mode: AgentMode, skillNames: readonly string[], memory: string): string =>
   'You are OmniHarness, an autonomous developer agent running inside the user\'s terminal (OmniHarness CLI, powered by the OmniRoute gateway at '
@@ -386,6 +427,31 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
     return [{ id: `tool:${tool}`, label: `always allow: ${tool}` }];
   }
 
+  /**
+   * The call's arguments as an object, for consumers that describe what a tool
+   * is acting on. These were parsed a few lines further down and then thrown
+   * away, so every `tool_start` carried `input: undefined` and no interface
+   * could say which file was being read or which command was about to run.
+   * Unparsable arguments yield an empty object, never a partial guess.
+   */
+  function toolInput(call: ToolCallRequest): Record<string, unknown> {
+    try {
+      return call.function.arguments ? JSON.parse(call.function.arguments) as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * How a tool call ended, read from the output `runTool` produces. It is the
+   * only place the distinction exists: the string is what the model sees, and
+   * without classifying it here every failed call renders as a success.
+   */
+  function outcomeOf(output: string): 'ok' | 'error' | 'denied' {
+    if (output === DENIED) return 'denied';
+    return output.startsWith('error:') ? 'error' : 'ok';
+  }
+
   async function runTool(call: ToolCallRequest, signal?: AbortSignal): Promise<string> {
     const registered = systemTools[call.function.name];
     if (!registered) return `error: unknown tool ${call.function.name}`;
@@ -403,7 +469,7 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
         emit({ type: 'approval_requested', tool: call.function.name, input: parsed });
         const decision = await approvalHandler({ tool: call.function.name, input: parsed, scopes });
         if (decision.trust) trustRules.add(decision.trust);
-        if (!decision.approved) return 'user denied this tool call';
+        if (!decision.approved) return DENIED;
       }
     }
     try { return await registered.execute(parsed, signal); }
@@ -496,7 +562,16 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
         const key = `${fb.activeProvider ?? ''}|${fb.attempts}`;
         if (key === lastRouteKey || (fb.activeProvider === undefined && fb.attempts === 0)) return;
         lastRouteKey = key;
-        emit({ type: 'route', provider: fb.activeProvider, fallback: fb.attempts > 0, attempts: fb.attempts, reason: fb.lastFailure });
+        emit({
+          type: 'route',
+          provider: fb.activeProvider,
+          fallback: fb.attempts > 0,
+          attempts: fb.attempts,
+          reason: fb.lastFailure,
+          model: fb.model,
+          strategy: fb.strategy,
+          latencyMs: fb.latencyMs,
+        });
       };
 
       try { return await executeRound(); } catch (reason: unknown) {
@@ -551,10 +626,10 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
             state.taskStatus = 'failed';
             return { content: error + '; latest text: ' + content, model: activeModel };
           }
-          emit({ type: 'tool_start', tool: call.function.name, input: undefined });
+          emit({ type: 'tool_start', tool: call.function.name, input: toolInput(call), id: call.id });
           const output = await runTool(call, runSignal);
           const summary = output.split('\n')[0] ?? '';
-          emit({ type: 'tool_result', tool: call.function.name, summary, detail: output.slice(0, 2000) });
+          emit({ type: 'tool_result', tool: call.function.name, summary, detail: output.slice(0, 2000), id: call.id, status: outcomeOf(output) });
           results.push({ call, output });
           wire.push({ role: 'tool', tool_call_id: call.id, content: truncate(output) });
           executedAny = true;
@@ -640,7 +715,7 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
             { role: 'user', content: todo.title },
           ];
           try {
-            await converseLoop(wire, sig);
+            await converseLoop(wire, sig, id);
             applyTodo({ action: 'complete', id: todo.id });
             emit({ type: 'agent', id, label: todo.title.slice(0, 48), status: 'working', note: `done: ${todo.title.slice(0, 60)}` });
           } catch (reason: unknown) {
@@ -662,7 +737,7 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
   };
 
   /** Compact tool loop for a swarm worker: stream, run tools (auto-approved in crazy mode), repeat. */
-  async function converseLoop(wire: ChatWireMessage[], sig: AbortSignal, maxTurns = 40): Promise<void> {
+  async function converseLoop(wire: ChatWireMessage[], sig: AbortSignal, agentId?: string, maxTurns = 40): Promise<void> {
     let turns = 0;
     for (;;) {
       if (sig.aborted) return;
@@ -671,7 +746,7 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
       const result = await client.chatStream(state.activeModel, wire, {
         signal: sig, tools: toolSchemas,
         onDelta: (delta) => {
-          if (delta.type === 'text') { content += delta.delta; emit({ type: 'text_delta', delta: delta.delta }); }
+          if (delta.type === 'text') { content += delta.delta; emit({ type: 'text_delta', delta: delta.delta, agentId }); }
           else if (delta.type === 'tool_call') {
             if (!toolCalls.some((call) => call.id === delta.call.id)) toolCalls.push(delta.call);
             else toolCalls = toolCalls.map((call) => call.id === delta.call.id ? delta.call : call);
@@ -680,7 +755,7 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
       });
       if (toolCalls.length === 0) {
         if (content) {
-          emit({ type: 'text', content, model: result.model });
+          emit({ type: 'text', content, model: result.model, agentId });
           state.messages = [...state.messages, { role: 'assistant', content, model: result.model, createdAt: new Date().toISOString() }];
         }
         return;
@@ -690,9 +765,17 @@ export async function createMastraEngine(config: MastraEngineConfig): Promise<Ma
         if (sig.aborted) return;
         turns += 1;
         if (turns > maxTurns) return;
-        emit({ type: 'tool_start', tool: call.function.name, input: undefined });
+        emit({ type: 'tool_start', tool: call.function.name, input: toolInput(call), id: call.id, agentId });
         const output = await runTool(call, sig);
-        emit({ type: 'tool_result', tool: call.function.name, summary: output.split('\n')[0] ?? '', detail: output.slice(0, 2000) });
+        emit({
+          type: 'tool_result',
+          tool: call.function.name,
+          summary: output.split('\n')[0] ?? '',
+          detail: output.slice(0, 2000),
+          id: call.id,
+          agentId,
+          status: outcomeOf(output),
+        });
         wire.push({ role: 'tool', tool_call_id: call.id, content: truncate(output) });
       }
     }

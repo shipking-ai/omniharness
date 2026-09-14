@@ -10,7 +10,7 @@ import {
   moveHorizontal,
   moveVerticalWrapped,
   normalizePaste,
-} from '../src/ui/editor.js';
+} from '../src/tui/input/editor.js';
 
 test('normalizePaste converts CRLF and CR to LF, leaving LF alone', () => {
   assert.equal(normalizePaste('a\r\nb\r\nc'), 'a\nb\nc');

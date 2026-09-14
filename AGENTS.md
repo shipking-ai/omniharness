@@ -32,7 +32,7 @@ If you are asked to fix a failing test, fix the code. Weakening the assertion so
 
 ## Rules that are not stylistic
 
-- **Never fabricate a number.** If a metric was not actually measured, the UI must show nothing for it rather than a zero. A `$0` reads as "this run was free"; an absent row reads as "not tracked." Both the TUI and the sidebar panel follow this.
+- **Never fabricate a number.** If a metric was not actually measured, the UI must show nothing for it rather than a zero. A `$0` reads as "this run was free"; an absent row reads as "not tracked." The TUI's state model enforces this by typing every measured figure as optional (`npm/src/tui/state/types.ts`); do not add a `?? 0` on the way to a view.
 - **Never let a subprocess inherit `OMNIROUTE_API_KEY`, `OMNIROUTE_MGMT_TOKEN`, `OMNIHARNESS_API_KEY`, or `ROUTER_API_KEY`.** `internal/envguard` enforces this; do not add a code path that spawns a process without going through it.
 - **Do not lower or bypass `policy.RiskAction`, budget ceilings, or the loopback guard in `serve.go`** as a side effect of an unrelated change. If a change legitimately requires touching one of them, say so explicitly in the PR description — this is exactly the kind of change that needs a human's judgment, not an agent's.
 - **`shell_allowed = false` must mean no shell**, including by way of another tool. Do not add a tool that can execute arbitrary commands without checking this flag.
@@ -41,7 +41,7 @@ See [SECURITY.md](SECURITY.md) for the complete list of what is guaranteed and w
 
 ## Terminal UI changes need to actually be rendered
 
-`tsc` cannot see that a value is one column too wide, that a label has run into its own text, or that a panel has drawn the same list twice — all three have shipped past a clean typecheck in this repository. If you change anything under `npm/src/ui/`, render it (see `test/streams.ts` for the fake-terminal harness other tests use) at a few widths before calling the change done, and prefer a test that asserts on the actual rendered frame over one that only checks component props.
+`tsc` cannot see that a value is one column too wide, that a label has run into its own text, or that a panel has drawn the same list twice — all three have shipped past a clean typecheck in this repository. If you change anything under `npm/src/tui/`, render it at a few widths before calling the change done, and prefer a test that asserts on the actual rendered frame over one that only checks component props. `npm/test/harness/tui.tsx` mounts the real interface against a fake terminal and a stub engine: `mount({ columns })` gives you the screen, the keyboard and the engine's event emitter, and `tui-render.test.ts` already asserts that nothing overflows at five widths.
 
 ## Browser surfaces need to actually be loaded
 

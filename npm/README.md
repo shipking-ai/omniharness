@@ -36,19 +36,36 @@ memory only. It is redacted from all output.
 
 ## Inside the TUI
 
+The default screen is the task, the answer, the work in flight and the composer.
+Everything else is one keystroke away rather than permanently on screen.
+
+- **`Ctrl+K` — the command palette.** Every command, mode, permission, engine and
+  view, searchable. The same commands work typed: `/route`, `/mode build`,
+  `/save today`.
+- **`Ctrl+L` — cycle views**: run → agents → plan → route → sessions. `Esc`
+  returns to the run. The composer never moves.
 - **Modes** (`Ctrl+E` cycles): `plan` · `build` · `research` · `crazy`. Crazy mode
   auto-approves every call and fans an independent plan out across parallel
-  worker agents.
-- **Native scrollback is the history** — settled turns flow into your terminal's
-  own buffer; the full transcript is restored on exit.
-- **Route ribbon** — every reply is labelled with the provider it came from;
-  failovers appear inline.
-- **Context meter**, per-tool cards with diffs, scoped-trust approvals, input
-  queued during a run, `Ctrl+Y` clipboard copy over OSC 52, session resume,
-  prompt history, `/find`, `/chapters`.
+  worker agents, which the **agents** view lists one row apiece.
+- **Native scrollback is the history** — settled turns are written into your
+  terminal's own buffer and are still there after you quit.
+- **The route view** carries the provider, model, route profile, failover chain,
+  measured latency, tokens, spend and context use. Anything the gateway did not
+  report is absent, never shown as a zero.
+- **Approvals** land in a full-width band above the composer: `y` once · `n` deny
+  · `a` always · a digit picks a trust scope.
+- Tool output is kept back until asked for (`Ctrl+T` prints the newest call that
+  has not shown it yet) — except a failure, which prints its output without
+  being asked. Diffs render as diffs, input is queued during a run, `Ctrl+Y`
+  copies over OSC 52, and sessions and prompt history survive a restart.
 
-Slash commands: `/help` `/clear` `/sessions` `/save <name>` `/forget <name>`
-`/attach <files>` `/find <text>` `/chapters`.
+Slash commands: `/run` `/agents` `/plan` `/route` `/sessions` `/model`
+`/mode <name>` `/perms <name>` `/clear` `/save <name>` `/forget <name>`
+`/resume <name>` `/attach <files>` `/find <text>` `/copy` `/cancel` `/help`
+`/quit`.
+
+Set `OMNIHARNESS_ASCII=1` for plain-ASCII markers; `NO_COLOR` and
+`OMNIHARNESS_THEME=light` are honoured.
 
 ## Notes
 

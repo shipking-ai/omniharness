@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { palette, supportsTrueColor } from '../src/ui/palette.js';
+import { palette, supportsTrueColor } from '../src/tui/theme/palette.js';
 
 test('truecolor is detected via COLORTERM', () => {
   assert.equal(supportsTrueColor({ COLORTERM: 'truecolor' }), true);
