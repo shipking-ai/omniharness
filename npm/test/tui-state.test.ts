@@ -377,7 +377,10 @@ test('the route is named under a reply only when it is news', () => {
 
   let state = run(fresh(), answer('one', 1, 'openai'));
   const first = state.transcript.at(-1);
-  assert.ok(first?.kind === 'assistant' && first.showRoute === true, 'the first reply names its route');
+  assert.ok(
+    first?.kind === 'assistant' && first.showRoute === false,
+    'the first reply leaves the route to the status line, which has been showing it all along',
+  );
 
   state = reduce(state, answer('two', 2, 'openai'));
   const same = state.transcript.at(-1);
@@ -426,11 +429,26 @@ test('the narrative before a tool call does not make the next reply look like a 
     { type: 'stream/answerDone', text: `Turn ${i}.`, at: i, provider: 'openai', model: 'auto/coding' },
     { type: 'run/end', at: i });
 
+  const announcedIn = (state: AppState): readonly string[] => state.transcript
+    .filter((entry): entry is Extract<typeof entry, { kind: 'assistant' }> => entry.kind === 'assistant')
+    .filter((entry) => entry.showRoute === true)
+    .map((entry) => entry.text);
+
   let state = fresh();
   for (let i = 1; i <= 3; i += 1) state = turn(state, i);
-  const announced = state.transcript
-    .filter((entry): entry is Extract<typeof entry, { kind: 'assistant' }> => entry.kind === 'assistant')
-    .filter((entry) => entry.showRoute === true);
-  assert.equal(announced.length, 1, 'only the first reply names the route');
-  assert.equal(announced[0]?.text, 'Turn 1.');
+  assert.deepEqual(
+    announcedIn(state), [],
+    'three turns on one provider announce nothing: the route never changed, and the status line has it',
+  );
+
+  // The discrimination still has to work, or the rule above would be satisfied
+  // by never announcing anything at all.
+  state = run(state,
+    { type: 'run/start', prompt: 'task 4', at: 4 },
+    { type: 'stream/answer', delta: 'Working on 4.' },
+    startTool('c4'),
+    { type: 'tool/end', id: 'c4', outcome: 'ok', at: 4 },
+    { type: 'stream/answerDone', text: 'Turn 4.', at: 4, provider: 'anthropic', model: 'auto/coding' },
+    { type: 'run/end', at: 4 });
+  assert.deepEqual(announcedIn(state), ['Turn 4.'], 'the turn that actually changed provider says so');
 });

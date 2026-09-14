@@ -193,6 +193,16 @@ export function hasUnseenOutput(tool: ToolRecord, revealed: readonly string[]): 
 }
 
 /**
+ * Whether anything in the transcript still has output nobody has asked for.
+ * The key that reveals it is offered only when it would do something.
+ */
+export function unseenOutput(state: AppState): boolean {
+  return state.transcript.some(
+    (entry) => entry.kind === 'tool' && hasUnseenOutput(entry.tool, state.revealed),
+  );
+}
+
+/**
  * Every tool call in this session, newest first: the ones still in the live
  * region and then the ones already in scrollback. Views that summarise the
  * session (the plan lens, an agent's calls) need both halves.

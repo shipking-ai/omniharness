@@ -31,6 +31,14 @@ export interface RunViewProps {
   readonly lensRows: number;
   /** Narrow terminals drop the plan and agent digests entirely. */
   readonly compact: boolean;
+  /**
+   * Whether the rail is drawing the plan and the workers beside this view.
+   *
+   * When it is, this view must not draw them as well. It did, and a terminal
+   * wide enough for a rail showed the same plan twice, side by side, with the
+   * two copies windowed to different heights.
+   */
+  readonly railed: boolean;
 }
 
 /**
@@ -41,7 +49,7 @@ export interface RunViewProps {
 const MAX_CALLS = 6;
 
 export function RunView({
-  state, width, theme, glyphs, streamRows, lensRows, compact,
+  state, width, theme, glyphs, streamRows, lensRows, compact, railed,
 }: RunViewProps): React.ReactElement | null {
   const { reasoning, answer, tools } = state.live;
   const thinkingRows = reasoning !== '' && answer === '' ? streamRows : Math.max(1, Math.floor(streamRows / 3));
@@ -55,9 +63,9 @@ export function RunView({
   // A narrow terminal cannot hold the lists, but "what is it doing" is exactly
   // what it most needs to answer — so the plan collapses to one line rather
   // than disappearing, which is what it used to do.
-  const wantPlan = !compact && state.plan.length > 0 && lensRows >= 2;
-  const wantPlanLine = compact && state.plan.length > 0;
-  const wantAgents = !compact && agents.total > 0 && lensRows >= 4;
+  const wantPlan = !railed && !compact && state.plan.length > 0 && lensRows >= 2;
+  const wantPlanLine = !railed && compact && state.plan.length > 0;
+  const wantAgents = !railed && !compact && agents.total > 0 && lensRows >= 4;
 
   const empty = reasoning === '' && answer === '' && tools.length === 0
     && !wantPlan && !wantPlanLine && !wantAgents;

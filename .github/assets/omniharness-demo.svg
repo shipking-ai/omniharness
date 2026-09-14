@@ -8,101 +8,107 @@
   <g opacity="1">
     <animate attributeName="opacity" dur="15.0s" repeatCount="indefinite" values="1;1;1;1;0;0" keyTimes="0.0000;0.0000;0.0000;0.1900;0.2000;1.0000"/>
     <text x="39.0" y="58.0" fill="#d5d9e2" font-weight="600" xml:space="preserve">OMNIHARNESS</text>
-    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve"> 0.1.114</text>
+    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve">  0.1.114</text>
     <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
-    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · build · manual</text>
-    <text x="39.0" y="110.5" fill="#8b93a7" xml:space="preserve">────────────────────────────────────────────────────────────────────────────────────────────</text>
+    <text x="39.0" y="110.5" fill="#8b93a7" xml:space="preserve">  plan      investigate and propose; no edits</text>
     <text x="39.0" y="128.0" fill="#8fd66f" xml:space="preserve">› </text>
-    <text x="54.1" y="128.0" fill="#8b93a7" xml:space="preserve">describe the work, or / for a command</text>
-    <text x="39.0" y="145.5" fill="#8b93a7" xml:space="preserve">ready</text>
-    <text x="482.7" y="145.5" fill="#8b93a7" xml:space="preserve">build · manual · auto/best-coding</text>
-    <text x="39.0" y="163.0" fill="#8b93a7" xml:space="preserve">enter send  ·  Ctrl+K commands  ·  Ctrl+J newline  ·  Ctrl+L views  ·  Ctrl+T show output</text>
+    <text x="54.1" y="128.0" fill="#8fd66f" font-weight="600" xml:space="preserve">build     </text>
+    <text x="129.3" y="128.0" fill="#8b93a7" xml:space="preserve">implement, verify, iterate</text>
+    <text x="39.0" y="145.5" fill="#8b93a7" xml:space="preserve">  research  answer from the workspace; no edits</text>
+    <text x="39.0" y="163.0" fill="#8b93a7" xml:space="preserve">  crazy     autonomous, auto-approved, parallel</text>
+    <text x="39.0" y="180.5" fill="#8b93a7" xml:space="preserve">  Ctrl+E cycles · /mode &lt;name&gt; sets</text>
+    <text x="39.0" y="425.5" fill="#8fd66f" xml:space="preserve">› </text>
+    <text x="54.1" y="425.5" fill="#8b93a7" xml:space="preserve">describe the work, or / for a command</text>
+    <text x="39.0" y="443.0" fill="#8fd66f" font-weight="600" xml:space="preserve">BUILD</text>
+    <text x="76.6" y="443.0" fill="#8b93a7" xml:space="preserve">  ready</text>
+    <text x="422.6" y="443.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · via OmniRoute · manual</text>
+    <text x="39.0" y="460.5" fill="#8b93a7" xml:space="preserve">Ctrl+K commands  ·  Ctrl+L views</text>
   </g>
   <g opacity="0">
     <animate attributeName="opacity" dur="15.0s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0.0000;0.1900;0.2000;0.3900;0.4000;1.0000"/>
     <text x="39.0" y="58.0" fill="#d5d9e2" font-weight="600" xml:space="preserve">OMNIHARNESS</text>
-    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve"> 0.1.114</text>
+    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve">  0.1.114</text>
     <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
-    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · build · manual</text>
-    <text x="39.0" y="110.5" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
-    <text x="39.0" y="128.0" fill="#8b93a7" xml:space="preserve">────────────────────────────────────────────────────────────────────────────────────────────</text>
-    <text x="39.0" y="145.5" fill="#f2637e" xml:space="preserve">› fix the provider fallback race in the streaming pipeline▍</text>
-    <text x="39.0" y="163.0" fill="#8b93a7" xml:space="preserve">ready</text>
-    <text x="482.7" y="163.0" fill="#8b93a7" xml:space="preserve">crazy · bypass · auto/best-coding</text>
-    <text x="39.0" y="180.5" fill="#8b93a7" xml:space="preserve">enter send  ·  Ctrl+K commands  ·  Ctrl+J newline  ·  Ctrl+L views  ·  Ctrl+T show output</text>
+    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
+    <text x="39.0" y="128.0" fill="#f2637e" xml:space="preserve">› fix the provider fallback race in the streaming pipeline▍</text>
+    <text x="39.0" y="145.5" fill="#f2637e" font-weight="600" xml:space="preserve">CRAZY</text>
+    <text x="76.6" y="145.5" fill="#8b93a7" xml:space="preserve">  ready</text>
+    <text x="422.6" y="145.5" fill="#8b93a7" xml:space="preserve">auto/best-coding · via OmniRoute · </text>
+    <text x="685.8" y="145.5" fill="#f2637e" xml:space="preserve">bypass</text>
+    <text x="39.0" y="163.0" fill="#8b93a7" xml:space="preserve">Ctrl+K commands  ·  Ctrl+L views  ·  Ctrl+J newline</text>
   </g>
   <g opacity="0">
     <animate attributeName="opacity" dur="15.0s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0.0000;0.3900;0.4000;0.5900;0.6000;1.0000"/>
     <text x="39.0" y="58.0" fill="#d5d9e2" font-weight="600" xml:space="preserve">OMNIHARNESS</text>
-    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve"> 0.1.114</text>
+    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve">  0.1.114</text>
     <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
-    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · build · manual</text>
-    <text x="39.0" y="110.5" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
-    <text x="39.0" y="145.5" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
-    <text x="54.1" y="145.5" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
-    <text x="24.0" y="180.5" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
-    <text x="39.0" y="198.0" fill="#8b93a7" xml:space="preserve">via anthropic · auto/best-coding</text>
-    <text x="39.0" y="233.0" fill="#8b93a7" font-weight="600" xml:space="preserve">plan</text>
-    <text x="708.3" y="233.0" fill="#8b93a7" xml:space="preserve">0/3</text>
-    <text x="39.0" y="250.5" fill="#8b93a7" xml:space="preserve">○ reproduce the race under -race</text>
-    <text x="39.0" y="268.0" fill="#8b93a7" xml:space="preserve">○ hold the mutex across the provider read</text>
-    <text x="39.0" y="285.5" fill="#2dd4bf" xml:space="preserve">● </text>
-    <text x="54.1" y="285.5" fill="#d5d9e2" xml:space="preserve">add a regression test</text>
-    <text x="39.0" y="320.5" fill="#8b93a7" font-weight="600" xml:space="preserve">agents</text>
-    <text x="663.2" y="320.5" fill="#8b93a7" xml:space="preserve">3 working</text>
+    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
+    <text x="39.0" y="128.0" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
+    <text x="54.1" y="128.0" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
+    <text x="24.0" y="163.0" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
+    <text x="39.0" y="198.0" fill="#8b93a7" font-weight="600" xml:space="preserve">plan</text>
+    <text x="708.3" y="198.0" fill="#8b93a7" xml:space="preserve">0/3</text>
+    <text x="39.0" y="215.5" fill="#8b93a7" xml:space="preserve">○ reproduce the race under -race</text>
+    <text x="39.0" y="233.0" fill="#8b93a7" xml:space="preserve">○ hold the mutex across the provider read</text>
+    <text x="39.0" y="250.5" fill="#2dd4bf" xml:space="preserve">● </text>
+    <text x="54.1" y="250.5" fill="#d5d9e2" xml:space="preserve">add a regression test</text>
+    <text x="39.0" y="285.5" fill="#8b93a7" font-weight="600" xml:space="preserve">agents</text>
+    <text x="663.2" y="285.5" fill="#8b93a7" xml:space="preserve">3 working</text>
+    <text x="39.0" y="303.0" fill="#2dd4bf" xml:space="preserve">● </text>
+    <text x="54.1" y="303.0" fill="#d5d9e2" xml:space="preserve">A1    </text>
+    <text x="99.2" y="303.0" fill="#8b93a7" xml:space="preserve">reproduce the race under -race</text>
+    <text x="39.0" y="320.5" fill="#2dd4bf" xml:space="preserve">● </text>
+    <text x="54.1" y="320.5" fill="#d5d9e2" xml:space="preserve">A2    </text>
+    <text x="99.2" y="320.5" fill="#8b93a7" xml:space="preserve">hold the mutex across the provider read</text>
     <text x="39.0" y="338.0" fill="#2dd4bf" xml:space="preserve">● </text>
-    <text x="54.1" y="338.0" fill="#d5d9e2" xml:space="preserve">A1    </text>
-    <text x="99.2" y="338.0" fill="#8b93a7" xml:space="preserve">reproduce the race under -race</text>
-    <text x="39.0" y="355.5" fill="#2dd4bf" xml:space="preserve">● </text>
-    <text x="54.1" y="355.5" fill="#d5d9e2" xml:space="preserve">A2    </text>
-    <text x="99.2" y="355.5" fill="#8b93a7" xml:space="preserve">hold the mutex across the provider read</text>
-    <text x="39.0" y="373.0" fill="#2dd4bf" xml:space="preserve">● </text>
-    <text x="54.1" y="373.0" fill="#d5d9e2" xml:space="preserve">A3    </text>
-    <text x="99.2" y="373.0" fill="#8b93a7" xml:space="preserve">add a regression test</text>
-    <text x="39.0" y="390.5" fill="#8b93a7" xml:space="preserve">────────────────────────────────────────────────────────────────────────────────────────────</text>
-    <text x="39.0" y="408.0" fill="#f2637e" xml:space="preserve">› </text>
-    <text x="54.1" y="408.0" fill="#8b93a7" xml:space="preserve">type to queue the next task</text>
-    <text x="39.0" y="425.5" fill="#f2637e" xml:space="preserve">● 3 agents working · 1s</text>
-    <text x="272.2" y="425.5" fill="#8b93a7" xml:space="preserve">crazy · bypass · auto/best-coding · via anthropic · █░░░░░ 9%</text>
-    <text x="39.0" y="443.0" fill="#8b93a7" xml:space="preserve">Ctrl+C cancel  ·  Ctrl+K commands  ·  Ctrl+J newline  ·  Ctrl+L views  ·  Ctrl+T show output</text>
+    <text x="54.1" y="338.0" fill="#d5d9e2" xml:space="preserve">A3    </text>
+    <text x="99.2" y="338.0" fill="#8b93a7" xml:space="preserve">add a regression test</text>
+    <text x="39.0" y="373.0" fill="#f2637e" xml:space="preserve">› </text>
+    <text x="54.1" y="373.0" fill="#8b93a7" xml:space="preserve">type to queue the next task</text>
+    <text x="39.0" y="390.5" fill="#f2637e" font-weight="600" xml:space="preserve">CRAZY</text>
+    <text x="76.6" y="390.5" fill="#d5d9e2" xml:space="preserve">  ● 3 agents working · 1s         </text>
+    <text x="332.3" y="390.5" fill="#8b93a7" xml:space="preserve">auto/best-coding · via anthropic · </text>
+    <text x="595.5" y="390.5" fill="#f2637e" xml:space="preserve">bypass</text>
+    <text x="640.6" y="390.5" fill="#8b93a7" xml:space="preserve"> · █░░░░░ 9%</text>
+    <text x="39.0" y="408.0" fill="#8b93a7" xml:space="preserve">Ctrl+C cancel  ·  Ctrl+K commands  ·  Ctrl+L views</text>
   </g>
   <g opacity="0">
     <animate attributeName="opacity" dur="15.0s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0.0000;0.5900;0.6000;0.7900;0.8000;1.0000"/>
     <text x="39.0" y="58.0" fill="#d5d9e2" font-weight="600" xml:space="preserve">OMNIHARNESS</text>
-    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve"> 0.1.114</text>
+    <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve">  0.1.114</text>
     <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
-    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · build · manual</text>
-    <text x="39.0" y="110.5" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
-    <text x="39.0" y="145.5" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
-    <text x="54.1" y="145.5" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
-    <text x="24.0" y="180.5" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
-    <text x="39.0" y="198.0" fill="#8b93a7" xml:space="preserve">via anthropic · auto/best-coding</text>
-    <text x="39.0" y="233.0" fill="#8b93a7" font-weight="600" xml:space="preserve">agents</text>
-    <text x="685.8" y="233.0" fill="#8b93a7" xml:space="preserve">3 done</text>
-    <text x="39.0" y="250.5" fill="#56b6ff" xml:space="preserve">› </text>
+    <text x="39.0" y="93.0" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
+    <text x="39.0" y="128.0" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
+    <text x="54.1" y="128.0" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
+    <text x="24.0" y="163.0" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
+    <text x="39.0" y="198.0" fill="#8b93a7" font-weight="600" xml:space="preserve">agents</text>
+    <text x="685.8" y="198.0" fill="#8b93a7" xml:space="preserve">3 done</text>
+    <text x="39.0" y="215.5" fill="#56b6ff" xml:space="preserve">› </text>
+    <text x="54.1" y="215.5" fill="#8fd66f" xml:space="preserve">✓ </text>
+    <text x="69.1" y="215.5" fill="#d5d9e2" font-weight="600" xml:space="preserve">A1      </text>
+    <text x="129.3" y="215.5" fill="#8b93a7" xml:space="preserve">done: reproduce the race under -race  2s</text>
+    <text x="54.1" y="233.0" fill="#8fd66f" xml:space="preserve">✓ </text>
+    <text x="69.1" y="233.0" fill="#d5d9e2" xml:space="preserve">A2      </text>
+    <text x="129.3" y="233.0" fill="#8b93a7" xml:space="preserve">done: hold the mutex across the provider read  2s</text>
     <text x="54.1" y="250.5" fill="#8fd66f" xml:space="preserve">✓ </text>
-    <text x="69.1" y="250.5" fill="#d5d9e2" font-weight="600" xml:space="preserve">A1      </text>
-    <text x="129.3" y="250.5" fill="#8b93a7" xml:space="preserve">done: reproduce the race under -race  2s</text>
-    <text x="54.1" y="268.0" fill="#8fd66f" xml:space="preserve">✓ </text>
-    <text x="69.1" y="268.0" fill="#d5d9e2" xml:space="preserve">A2      </text>
-    <text x="129.3" y="268.0" fill="#8b93a7" xml:space="preserve">done: hold the mutex across the provider read  2s</text>
-    <text x="54.1" y="285.5" fill="#8fd66f" xml:space="preserve">✓ </text>
-    <text x="69.1" y="285.5" fill="#d5d9e2" xml:space="preserve">A3      </text>
-    <text x="129.3" y="285.5" fill="#8b93a7" xml:space="preserve">done: add a regression test  2s</text>
-    <text x="39.0" y="303.0" fill="#8b93a7" xml:space="preserve">────────────────────────────────────────────────────────────────────────────────────────────</text>
-    <text x="39.0" y="320.5" fill="#f2637e" xml:space="preserve">› </text>
-    <text x="54.1" y="320.5" fill="#8b93a7" xml:space="preserve">describe the work, or / for a command</text>
-    <text x="39.0" y="338.0" fill="#8b93a7" xml:space="preserve">ready</text>
-    <text x="272.2" y="338.0" fill="#8b93a7" xml:space="preserve">crazy · bypass · auto/best-coding · via anthropic · █░░░░░ 9%</text>
-    <text x="39.0" y="355.5" fill="#8b93a7" xml:space="preserve">↑↓ move  ·  enter focus  ·  esc back to run  ·  Ctrl+K commands</text>
+    <text x="69.1" y="250.5" fill="#d5d9e2" xml:space="preserve">A3      </text>
+    <text x="129.3" y="250.5" fill="#8b93a7" xml:space="preserve">done: add a regression test  2s</text>
+    <text x="39.0" y="285.5" fill="#f2637e" xml:space="preserve">› </text>
+    <text x="54.1" y="285.5" fill="#8b93a7" xml:space="preserve">describe the work, or / for a command</text>
+    <text x="39.0" y="303.0" fill="#f2637e" font-weight="600" xml:space="preserve">CRAZY</text>
+    <text x="76.6" y="303.0" fill="#8b93a7" xml:space="preserve">  ready</text>
+    <text x="332.3" y="303.0" fill="#8b93a7" xml:space="preserve">auto/best-coding · via anthropic · </text>
+    <text x="595.5" y="303.0" fill="#f2637e" xml:space="preserve">bypass</text>
+    <text x="640.6" y="303.0" fill="#8b93a7" xml:space="preserve"> · █░░░░░ 9%</text>
+    <text x="39.0" y="320.5" fill="#8b93a7" xml:space="preserve">↑↓ move  ·  enter focus  ·  esc back to run  ·  Ctrl+K commands</text>
   </g>
   <g opacity="0">
     <animate attributeName="opacity" dur="15.0s" repeatCount="indefinite" values="0;0;1;1;0;1" keyTimes="0.0000;0.7900;0.8000;0.9900;1.0000;1.0000"/>
-    <text x="39.0" y="58.0" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
-    <text x="39.0" y="93.0" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
-    <text x="54.1" y="93.0" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
-    <text x="24.0" y="128.0" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
-    <text x="39.0" y="145.5" fill="#8b93a7" xml:space="preserve">via anthropic · auto/best-coding</text>
+    <text x="39.0" y="58.0" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
+    <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">· mode → crazy</text>
+    <text x="39.0" y="110.5" fill="#56b6ff" font-weight="600" xml:space="preserve">› </text>
+    <text x="54.1" y="110.5" fill="#56b6ff" xml:space="preserve">fix the provider fallback race in the streaming pipeline</text>
+    <text x="24.0" y="145.5" fill="#d5d9e2" xml:space="preserve">  Planned 3 independent steps.</text>
     <text x="39.0" y="180.5" fill="#8b93a7" font-weight="600" xml:space="preserve">route</text>
     <text x="565.4" y="180.5" fill="#8b93a7" xml:space="preserve">http://localhost:20128</text>
     <text x="39.0" y="198.0" fill="#8b93a7" xml:space="preserve">engine      </text>
@@ -124,11 +130,13 @@
     <text x="129.3" y="390.5" fill="#d5d9e2" xml:space="preserve">$0.21</text>
     <text x="39.0" y="408.0" fill="#8b93a7" xml:space="preserve">requests    </text>
     <text x="129.3" y="408.0" fill="#d5d9e2" xml:space="preserve">6</text>
-    <text x="39.0" y="425.5" fill="#8b93a7" xml:space="preserve">────────────────────────────────────────────────────────────────────────────────────────────</text>
     <text x="39.0" y="443.0" fill="#f2637e" xml:space="preserve">› </text>
     <text x="54.1" y="443.0" fill="#8b93a7" xml:space="preserve">describe the work, or / for a command</text>
-    <text x="39.0" y="460.5" fill="#8b93a7" xml:space="preserve">ready</text>
-    <text x="272.2" y="460.5" fill="#8b93a7" xml:space="preserve">crazy · bypass · auto/best-coding · via anthropic · █░░░░░ 9%</text>
-    <text x="39.0" y="478.0" fill="#8b93a7" xml:space="preserve">enter send  ·  Ctrl+K commands  ·  Ctrl+J newline  ·  Ctrl+L views  ·  Ctrl+T show output</text>
+    <text x="39.0" y="460.5" fill="#f2637e" font-weight="600" xml:space="preserve">CRAZY</text>
+    <text x="76.6" y="460.5" fill="#8b93a7" xml:space="preserve">  ready</text>
+    <text x="332.3" y="460.5" fill="#8b93a7" xml:space="preserve">auto/best-coding · via anthropic · </text>
+    <text x="595.5" y="460.5" fill="#f2637e" xml:space="preserve">bypass</text>
+    <text x="640.6" y="460.5" fill="#8b93a7" xml:space="preserve"> · █░░░░░ 9%</text>
+    <text x="39.0" y="478.0" fill="#8b93a7" xml:space="preserve">Ctrl+K commands  ·  Ctrl+L views</text>
   </g>
 </svg>

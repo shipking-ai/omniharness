@@ -34,13 +34,6 @@ export function Field({
   </Text>;
 }
 
-/** A horizontal rule. Used once, above the composer; not as decoration. */
-export function Rule({
-  width, theme, glyphs,
-}: { width: number; theme: Theme; glyphs: Glyphs }): React.ReactElement {
-  return <Text color={theme.muted}>{glyphs.hrule.repeat(Math.max(1, width))}</Text>;
-}
-
 export type MarkerState = 'running' | 'done' | 'pending' | 'waiting' | 'failed' | 'denied';
 
 export function markerGlyph(state: MarkerState, glyphs: Glyphs): string {

@@ -8,14 +8,28 @@
  */
 
 import React from 'react';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
 import { renderMarkdown, type MarkdownSegment } from '../format/markdown.js';
 import { diffSegments, looksLikeDiff } from '../format/diff.js';
 
-/** One line of styled segments. */
+/**
+ * One line of styled segments.
+ *
+ * An empty line is rendered as a single space rather than as nothing. Ink gives
+ * a `Text` with no children no height at all, so every blank row the markdown
+ * parser emits between paragraphs was being dropped on the way to the screen —
+ * the parser was producing the breaks correctly and a long reply still arrived
+ * as one unbroken wall, paragraphs, lists and code fences run together.
+ */
 export function Line({
   segments, color, dim,
 }: { segments: readonly MarkdownSegment[]; color?: string; dim?: boolean }): React.ReactElement {
+  // A blank row is one with nothing to print, whether that reaches here as an
+  // empty list or as a single empty segment — the parser produces both. It is
+  // drawn as a Box with an explicit height rather than as a Text holding a
+  // space, because Ink trims a whitespace-only line back to nothing on the way
+  // out and the row collapses again; Yoga honours the height.
+  if (segments.every((segment) => segment.text === '')) return <Box height={1} />;
   return <Text color={color} dimColor={dim}>
     {segments.map((segment, index) => (
       <Text

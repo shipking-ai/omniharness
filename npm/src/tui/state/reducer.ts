@@ -164,8 +164,28 @@ export function reduce(state: AppState, action: Action): AppState {
         ...(action.fallback !== undefined ? { fallback: action.fallback } : {}),
         ...(action.compression !== undefined ? { compression: action.compression } : {}),
       };
+      // A completion that names its provider is the gateway reporting a routing
+      // fact, the same fact a `route` event carries. When no decision has been
+      // reported at all, adopt it, so the status line stops naming the router
+      // once the provider behind it is actually known. It never overwrites a
+      // real decision: that one has the attempts, the reason and the latency
+      // with it, and this has only a name.
+      const route = state.route.current === undefined && action.provider !== undefined
+        ? {
+            ...state.route,
+            current: {
+              at: action.at,
+              attempts: 0,
+              fallback: action.fallback ?? false,
+              ...(action.provider !== undefined ? { provider: action.provider } : {}),
+              ...(action.model !== undefined ? { model: action.model } : {}),
+            },
+          }
+        : state.route;
+
       return {
         ...state,
+        route,
         transcript: action.text === '' ? state.transcript : append(state.transcript, entry),
         live: { ...state.live, answer: '' },
       };
@@ -445,7 +465,11 @@ function routeIsNews(
     if (entry.provider === undefined && entry.model === undefined) continue;
     return entry.provider !== provider || entry.model !== model;
   }
-  return true;
+  // Nothing routed before this, so there is nothing to have changed from. The
+  // status line has been naming the route since before the turn started, and
+  // repeating it under the first answer put the same provider and engine on
+  // screen twice, four rows apart. A route line is for a *change* of route.
+  return false;
 }
 
 /**

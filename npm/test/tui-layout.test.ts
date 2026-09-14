@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  NARROW_MAX, RAIL_MIN_COLUMNS, RAIL_WIDTH, STREAM_FLOOR, WIDE_MIN, band, measure, plan,
+  MAX_MEASURE, NARROW_MAX, RAIL_MAX, RAIL_MIN_COLUMNS, RAIL_WIDTH, STREAM_FLOOR, WIDE_MIN, band, measure, plan,
 } from '../src/tui/layout/frame.js';
 import { glyphs, unicodeSafe } from '../src/tui/theme/tokens.js';
 import { windowAround } from '../src/tui/views/overlay.js';
@@ -168,5 +168,29 @@ test('every status has a distinct marker in both glyph sets', () => {
     const set = glyphs(env);
     const statuses = [set.running, set.done, set.pending, set.failed, set.denied, set.attention];
     assert.equal(new Set(statuses).size, statuses.length, `distinct markers for ${env.LANG}`);
+  }
+});
+
+test('the frame stops widening once there is nothing left to put in it', () => {
+  const wide = measure(400, false);
+  assert.ok(wide.chrome <= MAX_MEASURE + RAIL_MAX + 4, 'the instrument row does not span a 400-column window');
+  assert.equal(measure(400, false).chrome, measure(240, false).chrome, 'and it is the same past that point');
+});
+
+test('the frame is the same width whether or not a rail is drawn', () => {
+  for (const columns of [100, 120, 134, 160, 200, 400]) {
+    assert.equal(
+      measure(columns, true).chrome,
+      measure(columns, false).chrome,
+      `${columns} columns: the status line must not resize when a plan arrives`,
+    );
+  }
+});
+
+test('the rail sits against the frame edge rather than floating mid-window', () => {
+  for (const columns of [134, 160, 200, 400]) {
+    const box = measure(columns, true);
+    assert.ok(box.rail > 0, `${columns} columns has room for a rail`);
+    assert.equal(box.content + box.railGap + box.rail, box.chrome, `${columns} columns: the rail closes the frame`);
   }
 });

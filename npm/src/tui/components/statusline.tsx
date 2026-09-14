@@ -17,7 +17,7 @@ import { meterBar, joinMeta } from './atoms.js';
 import { modeColor } from './composer.js';
 import { KEY_LABEL } from '../input/keymap.js';
 import { PERMISSION_LABEL } from '../runtime/controller.js';
-import { phaseLabel, routeSummary, runElapsed, contextUse } from '../state/selectors.js';
+import { phaseLabel, routeSummary, runElapsed, contextUse, unseenOutput } from '../state/selectors.js';
 import type { WindowIndex } from '../format/context.js';
 import type { Band } from '../layout/frame.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
@@ -34,9 +34,37 @@ export interface StatusProps {
   readonly now: number;
 }
 
+/**
+ * How hard the current permission setting is leaning on the user's behalf.
+ *
+ * The safe default is a word you read past; the two elevated settings are a
+ * standing risk, and a session left on bypass should say so in the colour that
+ * means risk everywhere else in this interface. This is the one place the
+ * permission state appears, so it is never out of date and never doubled.
+ */
+export function permissionTone(state: AppState, theme: Theme): { label: string; color: string } {
+  if (state.session.mode === 'crazy' || state.session.permission === 'bypass') {
+    return { label: 'bypass', color: theme.error };
+  }
+  if (state.session.permission === 'acceptEdits') {
+    return { label: PERMISSION_LABEL.acceptEdits, color: theme.warn };
+  }
+  return { label: PERMISSION_LABEL.ask, color: theme.muted };
+}
+
+/**
+ * What the work is going through. Before the gateway has decided anything, the
+ * honest answer is the router itself — it is what the request is addressed to.
+ * Once a decision comes back, the provider it actually chose replaces it.
+ */
+export function routeIdentity(state: AppState): string {
+  const resolved = routeSummary(state);
+  return resolved === undefined ? 'via OmniRoute' : `via ${resolved}`;
+}
+
 export function StatusLine({ state, width, band, theme, glyphs, windows, now }: StatusProps): React.ReactElement {
   const busy = state.phase !== 'idle';
-  const left = joinMeta([phaseLabel(state), runElapsed(state, now)], glyphs.dot);
+  const attention = state.phase === 'awaiting-approval';
 
   const meter = contextUse(state, windows);
   const context = meter === undefined
@@ -47,28 +75,49 @@ export function StatusLine({ state, width, band, theme, glyphs, windows, now }: 
     : meter.zone === 'warn' ? theme.warn
     : theme.muted;
 
-  const permission = state.session.mode === 'crazy' ? 'bypass' : PERMISSION_LABEL[state.session.permission];
-  const route = routeSummary(state);
+  const permission = permissionTone(state, theme);
 
-  // Narrow keeps only what changes what the next keystroke does.
+  // The mode is the instrument's label and the phase is its reading, so they
+  // are set against each other rather than run together in one dim list: caps
+  // and weight for the label, ordinary text for what it currently says.
+  const chip = state.session.mode.toUpperCase();
+  const phase = joinMeta([phaseLabel(state), runElapsed(state, now)], glyphs.dot);
+  const leftWidth = chip.length + 2 + phase.length + (busy ? 2 : 0);
+
+  // Narrow keeps only what changes what the next keystroke does; the engine and
+  // the route are a lens away and are dropped whole rather than truncated.
   const right = band === 'narrow'
-    ? joinMeta([state.session.mode, permission], glyphs.dot)
-    : joinMeta([
-        state.session.mode,
-        permission,
-        state.session.model,
-        route !== undefined ? `via ${route}` : undefined,
-      ], glyphs.dot);
+    ? undefined
+    : joinMeta([state.session.model, routeIdentity(state)], glyphs.dot);
 
-  const room = Math.max(8, width - left.length - 1);
+  const room = Math.max(6, width - leftWidth - 2);
+  const metaRoom = context === undefined ? room : Math.max(4, room - context.length - 3);
+  // Engine, then route, then how freely it is allowed to act: the right-hand
+  // group reads outward from what is answering to what it is permitted to do,
+  // so an elevated permission lands at the edge in its own colour instead of
+  // sitting next to the phase, where it read as part of the phase.
+  const permissionRoom = Math.max(0, metaRoom - (right?.length ?? 0) - 3);
+  const showPermission = permission.label !== '' && permissionRoom >= permission.label.length;
 
   return <Box flexDirection="row" justifyContent="space-between" width={width}>
-    <Text color={busy ? modeColor(state.session.mode, theme) : theme.muted}>
-      {busy ? `${glyphs.running} ` : ''}{left}
+    <Text>
+      <Text color={modeColor(state.session.mode, theme)} bold>{chip}</Text>
+      <Text color={attention ? theme.attention : busy ? theme.text : theme.muted}>
+        {'  '}{busy ? `${attention ? glyphs.attention : glyphs.running} ` : ''}{phase}
+      </Text>
     </Text>
-    <Text color={theme.muted}>
-      {clip(right, context === undefined ? room : Math.max(4, room - context.length - 3))}
-      {context !== undefined ? <Text color={contextColor}> {glyphs.dot} {context}</Text> : null}
+    <Text>
+      <Text color={theme.muted}>{right !== undefined ? clip(right, metaRoom) : ''}</Text>
+      {showPermission
+        ? <Text color={permission.color}>
+            <Text color={theme.muted}>{right !== undefined ? ` ${glyphs.dot} ` : ''}</Text>{permission.label}
+          </Text>
+        : null}
+      {context !== undefined
+        ? <Text color={contextColor}>
+            {right !== undefined || showPermission ? ` ${glyphs.dot} ` : ''}{context}
+          </Text>
+        : null}
     </Text>
   </Box>;
 }
@@ -105,15 +154,23 @@ export function hintsFor(
         `${KEY_LABEL.palette} commands`,
       ];
     case 'composer':
-      // The palette comes second, ahead of the newline key: it is the one hint
-      // that leads to every other, so it has to survive a narrow terminal.
+      // Two hints, and they are the two that lead to every other one. The rest
+      // of the keymap used to sit here permanently — a footer of five shortcuts
+      // that is documentation, not an interface, and that is wrong about four
+      // of them most of the time. Anything else appears only in the moment it
+      // can actually be used.
       return [
-        state.phase === 'idle' ? 'enter send' : `${KEY_LABEL.interrupt} cancel`,
+        state.phase !== 'idle' ? `${KEY_LABEL.interrupt} cancel` : undefined,
         `${KEY_LABEL.palette} commands`,
-        kitty === true ? 'shift+enter newline' : `${KEY_LABEL.newline} newline`,
         `${KEY_LABEL.cycleLens} views`,
-        `${KEY_LABEL.expandTool} show output`,
-      ];
+        // Offered while there is something to reveal, and not before.
+        unseenOutput(state) ? `${KEY_LABEL.expandTool} output` : undefined,
+        // A second line is only worth mentioning once there is a first one, and
+        // which key does it depends on what the terminal answered.
+        state.composer.value !== ''
+          ? (kitty === true ? 'shift+enter newline' : `${KEY_LABEL.newline} newline`)
+          : undefined,
+      ].filter((hint): hint is string => hint !== undefined);
   }
 }
 
@@ -135,7 +192,9 @@ export function packHints(hints: readonly string[], width: number, dot = '·'): 
 }
 
 export function HintLine({ state, focus, width, theme, glyphs, kitty }: HintProps): React.ReactElement {
-  return <Text color={theme.muted}>
+  // The quietest row on the screen, deliberately: it is the last thing anyone
+  // needs and it should be nearly invisible until they go looking for it.
+  return <Text color={theme.muted} dimColor>
     {packHints(hintsFor(state, focus, kitty, glyphs), width, glyphs.dot)}
   </Text>;
 }

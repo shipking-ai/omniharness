@@ -12,7 +12,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { layoutEditor } from '../input/editor.js';
 import { clip } from '../format/clip.js';
-import { Rule } from './atoms.js';
+
 import { completions } from '../commands/slash.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { AgentMode } from '../../types/index.js';
@@ -49,11 +49,15 @@ export function Composer({
   const layout = layoutEditor(composer.value, composer.cursor, textWidth);
   const matches = completions(composer.value);
 
-  return <Box flexDirection="column">
-    <Rule width={width} theme={theme} glyphs={glyphs} />
+  // No rule above it any more. A full-width horizontal line is a divider drawn
+  // out of a web habit: it cut the window in half and gave the heaviest mark on
+  // the screen to a separator. The blank row above and the caret's own colour
+  // are enough to say where the transcript stops and the command surface
+  // starts, and they cost one row instead of two.
+  return <Box flexDirection="column" marginTop={1}>
     {composer.value === ''
       ? <Text color={caretColor}>
-          {glyphs.caret} <Text color={theme.muted}>
+          {glyphs.caret} <Text color={theme.muted} dimColor>
             {phase === 'idle' ? 'describe the work, or / for a command' : 'type to queue the next task'}
           </Text>
         </Text>

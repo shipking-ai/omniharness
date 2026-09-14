@@ -81,10 +81,12 @@ instead of permanently on screen.
   audit trail, no parallel log to maintain.
 - **Tear-free streaming** via synchronized output (DECSET 2026), probed at
   startup alongside the kitty keyboard protocol.
-- **Honest telemetry.** Provider, model, route profile, failover chain, measured
-  latency, tokens and spend live in the **route** lens; the status line carries
-  only `via <provider>` and the context meter. A figure the gateway did not
-  report is absent, never a zero.
+- **The status line is an instrument, not a sentence.** The mode in caps, then
+  what the harness is doing right now, then — set against the far edge — the
+  engine, what it is routing through, and how freely it is allowed to act:
+  `manual` reads quietly, `bypass` reads red. Provider, model, route profile,
+  failover chain, measured latency, tokens and spend live in the **route** lens.
+  A figure the gateway did not report is absent, never a zero.
 - **Tool calls read as what they did** — `$ go test ./...`, `read
   gateway/fallback.go` — one row each, in the order the work happened, with the
   outcome in the marker. A failure prints its output straight away; a success
@@ -97,7 +99,12 @@ instead of permanently on screen.
   swarm; the **agents** lens lists every worker, its state, its latest note and
   the calls it has made.
 - **Three widths, three designs.** Narrow drops secondary metadata rather than
-  truncating it; wide adds a plan/agents/route rail rather than longer lines.
+  truncating it; wide adds a plan/agents rail rather than longer lines, set
+  against the edge of a bounded frame — past the point where more columns buy
+  more information, the extra width becomes margin instead of stretch.
+- **An opening screen that is a screen.** An untouched session names the
+  workspace, lists the four modes with what each one will do, and sits the
+  composer on the floor of the window. It goes for good at the first keystroke.
 - **Input stays live** during a run: what you type is queued and sent the moment
   it ends.
 - `Ctrl+Y` copies the last reply over OSC 52 (works through SSH); a bell + OSC 9

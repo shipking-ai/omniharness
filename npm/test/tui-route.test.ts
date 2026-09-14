@@ -18,12 +18,35 @@ const metricsWith = (over: Partial<OmniRouteMetrics>): Partial<OmniRouteMetrics>
 
 test('the status line shows the provider only once the gateway has named one', async () => {
   const app = await mount({ columns: 100, run: () => new Promise<never>(() => { /* running */ }) });
-  assert.ok(!app.screen().includes('via '), 'nothing claims a provider before the gateway reports one');
+  // Before any decision the only thing the client knows about the path is the
+  // router it is addressed to, so that is all it may say. Naming the router is
+  // not naming a provider: no provider, model or vendor may appear until the
+  // gateway has reported one.
+  const opening = app.screen();
+  assert.match(opening, /via OmniRoute/, 'the route identity is the router until a decision lands');
+  for (const invented of ['anthropic', 'openai', 'claude', 'gpt', 'gemini', 'mistral']) {
+    assert.ok(!opening.toLowerCase().includes(invented), `nothing claims ${invented} before the gateway does`);
+  }
 
   await app.submit('go');
   app.emit({ type: 'route', fallback: false, attempts: 0, provider: 'anthropic' });
   await app.settle();
   assert.match(app.screen(), /via anthropic/);
+  assert.ok(
+    !app.live().includes('via OmniRoute'),
+    'the resolved provider replaces the router, it does not join it',
+  );
+  app.unmount();
+});
+
+test('the first routed answer does not repeat the route the status line is already showing', async () => {
+  const app = await mount({ columns: 100, run: () => new Promise<never>(() => { /* running */ }) });
+  await app.submit('go');
+  app.emit({ type: 'route', fallback: false, attempts: 0, provider: 'anthropic', model: 'claude-sonnet-4-6' });
+  app.emit({ type: 'text', content: 'the first answer', model: 'claude-sonnet-4-6' });
+  await app.settle();
+  const rows = app.live().split('\n').filter((line) => line.includes('via anthropic'));
+  assert.equal(rows.length, 1, 'the route is named once, in the status line, not again under the answer');
   app.unmount();
 });
 

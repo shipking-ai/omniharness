@@ -44,18 +44,32 @@ export class FakeStdout extends Writable {
     this.rows = rows;
   }
 
+  /**
+   * The most recent write that carried text.
+   *
+   * `output` is the whole session, scrollback included, which is what most
+   * assertions want. But an assertion about what the interface is showing
+   * *now* — the status line's current reading, whether a row is still on
+   * screen — cannot use it: a row that scrolled away ten turns ago still
+   * matches. Ink redraws its live region in one write, so the last one that
+   * was not purely escape sequences is the current frame.
+   */
+  public lastFrame = '';
+
   public override _write(
     chunk: Buffer | string,
     _encoding: BufferEncoding,
     callback: (error?: Error | null) => void,
   ): void {
     this.writes += 1;
-    this.output += chunk.toString();
+    const text = chunk.toString();
+    this.output += text;
+    if (/[^\x1b\x07\x9b\p{C}]/u.test(text.replace(/\x1b\[[\d;?>$]*[ -/]*[@-~]/g, ''))) this.lastFrame = text;
     callback();
   }
 
   /** Forget everything written so far, so an assertion is about one moment. */
-  public clear(): void { this.output = ''; }
+  public clear(): void { this.output = ''; this.lastFrame = ''; }
 }
 
 export const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -198,6 +212,8 @@ export interface Mounted extends Stub {
   readonly instance: Instance;
   /** Everything on screen, ANSI stripped. */
   screen(): string;
+  /** Only what the interface is drawing right now, ANSI stripped. */
+  live(): string;
   /** Type raw bytes, then let React settle. */
   type(input: string): Promise<void>;
   /** Type a prompt and press enter. The CR is a separate chunk, as a keyboard
@@ -246,6 +262,7 @@ export async function mount(options: MountOptions = {}): Promise<Mounted> {
     stdout,
     instance,
     screen: () => strip(stdout.output),
+    live: () => strip(stdout.lastFrame),
     async type(input: string) {
       stdin.write(input);
       await sleep(40);

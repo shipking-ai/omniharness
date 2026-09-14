@@ -62,10 +62,28 @@ function PaletteList({
           const focused = start + offset === overlay.index;
           const name = `/${command.name}${command.argument !== undefined ? ` ${command.argument}` : ''}`;
           const nameWidth = Math.min(24, Math.max(10, Math.floor(width * 0.3)));
+          // Three tiers across the row: what you type, what it does, and — when
+          // the terminal is wide enough to carry it — what that means. The hint
+          // was declared on every command and shown nowhere, which mattered
+          // more once the palette became the only place the keymap is written
+          // down: a list of twenty-three bare titles is a menu, not a guide.
+          // Fixed columns, so the three tiers line up down the list and the row
+          // can never total more than the width it was given: marker, name,
+          // title, then whatever is left for the hint.
+          const MARKER = 2;
+          const GAP = 2;
+          const titleWidth = Math.max(8, Math.floor((width - MARKER - nameWidth) * 0.42));
+          const hintRoom = width - MARKER - nameWidth - titleWidth - GAP;
+          const showHint = command.hint !== undefined && hintRoom >= 12;
           return <Text key={command.id}>
             <Text color={focused ? theme.accent : undefined}>{focused ? glyphs.selected : ' '} </Text>
             <Text color={focused ? theme.accent : theme.muted}>{clip(name, nameWidth).padEnd(nameWidth)}</Text>
-            <Text bold={focused}>{clip(command.title, Math.max(8, width - nameWidth - 4))}</Text>
+            <Text bold={focused}>
+              {showHint ? clip(command.title, titleWidth).padEnd(titleWidth) : clip(command.title, titleWidth)}
+            </Text>
+            {showHint
+              ? <Text color={theme.muted} dimColor>{'  '}{clip(command.hint as string, hintRoom)}</Text>
+              : null}
           </Text>;
         })}
     {matches.length > capacity
