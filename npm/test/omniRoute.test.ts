@@ -459,3 +459,90 @@ test('the model that answered is read from X-OmniRoute-Model, on a reply and at 
     assert.equal(client.snapshotMetrics().fallback.model, 'claude-sonnet-4-6');
   } finally { stream.close(); }
 });
+
+// --- provider content that carries protocol markup --------------------------
+
+/**
+ * One SSE body carrying each delta as its own frame. The existing `sseServer`
+ * serves a whole body, which is what a real stream arrives as once the client's
+ * decoder has done its work — the point here is the *content* boundaries, and
+ * the chunk-boundary case is covered directly in channels.test.ts.
+ */
+const deltaFrames = (deltas: readonly string[]): string =>
+  deltas
+    .map((delta) => `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta } }] })}\n\n`)
+    .join('')
+  + `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`
+  + 'data: [DONE]\n\n';
+
+test('a provider that inlines reasoning and tool calls does not get them rendered as text', async () => {
+  // gemini-web and other bridged backends have no native reasoning field and no
+  // function calling, so they write both into `content` as markup. Split across
+  // deltas exactly as a real stream cuts them.
+  const live = sseServer(deltaFrames([
+    'Workspace ', 'is empty.\n\n<thi', 'nk>Adjusting response style</thi', 'nk>',
+    '<to', 'ol>{"name":"index_workspace","arguments":{}}</to', 'ol>',
+    'Start with a task.',
+  ]), {});
+  try {
+    const seen: string[] = [];
+    const thought: string[] = [];
+    const calls: string[] = [];
+    const result = await new OmniRouteClient({ endpoint: live.url }).chatStream(
+      'auto/coding',
+      [{ role: 'user', content: 'hi' }],
+      {
+        onDelta: (delta) => {
+          if (delta.type === 'text') seen.push(delta.delta);
+          if (delta.type === 'reasoning') thought.push(delta.delta);
+          if (delta.type === 'tool_call') calls.push(delta.call.function.name);
+        },
+      },
+    );
+
+    const prose = seen.join('');
+    assert.equal(prose, 'Workspace is empty.\n\nStart with a task.', 'only the visible half is text');
+    assert.equal(result.content, prose, 'and the settled content agrees with the deltas');
+    for (const leak of ['<thi', '<think', '<to', '<tool', 'index_workspace', 'Adjusting']) {
+      assert.ok(!prose.includes(leak), `"${leak}" reached the text channel`);
+    }
+    // No delta may carry a fragment either: in a terminal a delta is printed.
+    for (const delta of seen) {
+      assert.ok(!delta.includes('<'), `a delta carried markup: ${JSON.stringify(delta)}`);
+    }
+
+    assert.equal(thought.join(''), 'Adjusting response style', 'reasoning went to the reasoning channel');
+    assert.deepEqual(calls, ['index_workspace'], 'the envelope became a structured call');
+    assert.equal(result.toolCalls?.[0]?.function.name, 'index_workspace', 'and is on the result the loop reads');
+  } finally { live.close(); }
+});
+
+test('the same split happens on a non-streamed body', async () => {
+  const live = server(() => Response.json({
+    model: 'gemini-web/gemini-3.1-flash-lite',
+    choices: [{
+      message: {
+        content: '<think>planning</think>Workspace is empty.<tool>{"name":"index_workspace"}</tool>',
+      },
+      finish_reason: 'stop',
+    }],
+  }));
+  try {
+    const result = await new OmniRouteClient({ endpoint: live.url }).chat('auto/coding', [{ role: 'user', content: 'hi' }]);
+    assert.equal(result.content, 'Workspace is empty.');
+    assert.equal(result.reasoning, 'planning');
+    assert.equal(result.toolCalls?.[0]?.function.name, 'index_workspace');
+  } finally { live.close(); }
+});
+
+test('a provider using the channels properly is unaffected', async () => {
+  const live = server(() => Response.json({
+    choices: [{ message: { content: 'plain answer', reasoning: 'kept separate' }, finish_reason: 'stop' }],
+  }));
+  try {
+    const result = await new OmniRouteClient({ endpoint: live.url }).chat('auto/coding', [{ role: 'user', content: 'hi' }]);
+    assert.equal(result.content, 'plain answer');
+    assert.equal(result.reasoning, 'kept separate');
+    assert.equal(result.toolCalls, undefined, 'no calls invented where there were none');
+  } finally { live.close(); }
+});

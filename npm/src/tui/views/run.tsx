@@ -51,9 +51,10 @@ const MAX_CALLS = 6;
 export function RunView({
   state, width, theme, glyphs, streamRows, lensRows, compact, railed,
 }: RunViewProps): React.ReactElement | null {
+  // `reasoning` is read for whether the model is thinking, never for what it is
+  // thinking. The status line says "thinking"; the content stays internal.
   const { reasoning, answer, tools } = state.live;
-  const thinkingRows = reasoning !== '' && answer === '' ? streamRows : Math.max(1, Math.floor(streamRows / 3));
-  const answerRows = Math.max(1, streamRows - (reasoning !== '' ? 1 : 0));
+  const answerRows = Math.max(1, streamRows);
 
   const recent = tools.slice(-MAX_CALLS);
   const hidden = tools.length - recent.length;
@@ -67,20 +68,13 @@ export function RunView({
   const wantPlanLine = !railed && compact && state.plan.length > 0;
   const wantAgents = !railed && !compact && agents.total > 0 && lensRows >= 4;
 
-  const empty = reasoning === '' && answer === '' && tools.length === 0
+  const empty = answer === '' && tools.length === 0
     && !wantPlan && !wantPlanLine && !wantAgents;
   if (empty) return null;
 
   return <Box flexDirection="column">
-    {reasoning !== ''
-      ? <Box flexDirection="column">
-          <Text color={theme.muted} bold>thinking</Text>
-          <Prose ascii={glyphs.ascii} text={reasoning} width={width} color={theme.muted} dim limit={thinkingRows} />
-        </Box>
-      : null}
-
     {answer !== ''
-      ? <Box flexDirection="column" marginTop={reasoning !== '' ? 1 : 0}>
+      ? <Box flexDirection="column">
           <Prose ascii={glyphs.ascii} text={answer} width={width} limit={answerRows} />
         </Box>
       : null}
