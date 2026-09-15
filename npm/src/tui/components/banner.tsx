@@ -27,6 +27,16 @@ export interface BannerProps {
   readonly now: number;
 }
 
+/**
+ * What `/skills` answers: everything this session can reach beyond the built-in
+ * tools, including the honest answer when that is nothing.
+ */
+export function capabilityReport(session: SessionState): string {
+  const loaded = capabilities(session);
+  if (loaded === undefined) return 'no skills, plugins or MCP tools are loaded — built-in tools only';
+  return `loaded: ${loaded}`;
+}
+
 /** A one-line summary of what the agent can reach beyond its built-in tools. */
 export function capabilities(session: SessionState): string | undefined {
   const parts: string[] = [];
@@ -47,25 +57,21 @@ export function bannerRows(session: SessionState): number {
 }
 
 export function Banner({ session, width, theme, glyphs, now }: BannerProps): React.ReactElement {
-  const loaded = capabilities(session);
   const recent = session.saved[0];
-  // Where it is operating, and what it can reach from there. The mode, engine
-  // and permission are deliberately absent: they change during the session, the
-  // status line carries them live, and printing them here as well produced the
-  // same three facts twice on one screen, three rows apart.
-  // The path gets whatever the capability summary does not need, rather than a
-  // fixed reservation: on a narrow terminal that reservation was being taken
-  // even when there were no skills to put in it, and shortened the one line
-  // that says where the session is operating down to its last two segments.
-  const tail = loaded === undefined ? '' : `  ${glyphs.dot}  ${loaded}`;
-  const where = shortPath(session.workspace, Math.max(12, width - tail.length)) + tail;
+  // The product, the version, and where it is operating. Nothing else.
+  //
+  // The mode, engine and permission are absent because the status line carries
+  // them live. The skill and plugin counts are absent because they are
+  // capability metadata: true, occasionally useful, and not what anybody opens
+  // a terminal to find out. "60 skills from 15 plugins" was the second-largest
+  // thing on an empty screen and it never changed. `/skills` has it now.
 
   return <Box flexDirection="column">
     <Text>
       <Text bold>OMNIHARNESS</Text>
       <Text color={theme.muted}>  {session.version}</Text>
     </Text>
-    <Text color={theme.muted}>{clip(where, width)}</Text>
+    <Text color={theme.muted}>{clip(shortPath(session.workspace, width), width)}</Text>
     {recent !== undefined
       ? <Text color={theme.muted}>
           {clip(`last session ${glyphs.dot} ${recent.name} ${glyphs.dot} ${since(recent.savedAt, now)} ${glyphs.dot} /resume ${recent.name}`, width)}

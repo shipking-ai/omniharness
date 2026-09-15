@@ -77,6 +77,12 @@ export interface Glyphs {
   readonly attention: string;
   /** Left rule beside expanded output. */
   readonly rule: string;
+  /**
+   * The command surface's own mark. The composer draws it as Ink's left border
+   * down its whole height; the mode in force on the opening screen draws it as
+   * a single cell in the same column, so the two read as one device.
+   */
+  readonly spine: string;
   /** Horizontal rule above the composer. */
   readonly hrule: string;
   /** Vertical-movement hint, spelled out when arrows will not draw. */
@@ -100,6 +106,7 @@ const UNICODE: Glyphs = {
   denied: '⊘',
   attention: '▲',
   rule: '│',
+  spine: '┃',
   hrule: '─',
   updown: '↑↓',
   dot: '·',
@@ -120,6 +127,7 @@ const ASCII: Glyphs = {
   denied: '~',
   attention: '!',
   rule: '|',
+  spine: '|',
   hrule: '-',
   updown: 'up/down',
   dot: '-',

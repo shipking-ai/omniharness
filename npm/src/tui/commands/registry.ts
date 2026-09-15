@@ -9,6 +9,7 @@
  * of the same table.
  */
 
+import { capabilityReport } from '../components/banner.js';
 import type { AgentMode, PermissionMode } from '../../types/index.js';
 import type { Controller } from '../runtime/controller.js';
 import type { Dispatch } from '../state/store.js';
@@ -185,6 +186,16 @@ export const COMMANDS: readonly Command[] = [
     },
   },
 
+  {
+    // Where the capability metadata went when it came off the opening screen.
+    // A count that never changes during a session does not earn a permanent
+    // row; it earns a command.
+    id: 'help.skills', name: 'skills', group: 'help',
+    title: 'What this session can reach', hint: 'skills, plugins and MCP tools loaded',
+    run: ({ state, dispatch }) => dispatch({
+      type: 'notice', level: 'info', at: Date.now(), text: capabilityReport(state.session),
+    }),
+  },
   {
     id: 'help.keys', name: 'help', group: 'help',
     title: 'Show commands and keys', hint: 'everything the palette offers',

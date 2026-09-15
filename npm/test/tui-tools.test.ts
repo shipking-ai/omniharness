@@ -252,3 +252,29 @@ test('showing output skips calls that have nothing left to say', async () => {
   assert.match(app.screen(), /nothing left to show/);
   app.unmount();
 });
+
+test('a call whose summary already says the verb does not say it twice', async () => {
+  const app = await mount({ columns: 100, run: running });
+  await app.submit('go');
+  // index_workspace returns "indexed N entries", which rendered as
+  // "index  indexed 0 entries" — the verb and its own summary, stuttering.
+  app.emit({ type: 'tool_start', tool: 'index_workspace', input: {}, id: 'c1' });
+  app.emit({ type: 'tool_result', tool: 'index_workspace', summary: 'indexed 0 entries', id: 'c1', status: 'ok' });
+  await app.settle();
+  const row = app.screen().split('\n').find((line) => line.includes('indexed 0 entries')) ?? '';
+  assert.ok(row !== '', 'the call is on screen');
+  assert.ok(!/index\s+indexed/.test(row), `the verb is not repeated: ${JSON.stringify(row)}`);
+  assert.match(row.trimStart(), /^[+✓]\s+indexed 0 entries/, 'the summary is the subject of the row');
+  app.unmount();
+});
+
+test('a verb the summary does not restate is still shown', async () => {
+  const app = await mount({ columns: 100, run: running });
+  await app.submit('go');
+  app.emit({ type: 'tool_start', tool: 'git_diff', input: {}, id: 'c1' });
+  app.emit({ type: 'tool_result', tool: 'git_diff', summary: '3 files changed', id: 'c1', status: 'ok' });
+  await app.settle();
+  const row = app.screen().split('\n').find((line) => line.includes('3 files changed')) ?? '';
+  assert.match(row, /diff/, 'a summary about something else keeps the verb that produced it');
+  app.unmount();
+});

@@ -143,6 +143,26 @@ export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): Re
   }
 }
 
+/**
+ * The subject of the row: what was done and to what.
+ *
+ * A call with no subject shows the verb alone, because repeating the tool's
+ * internal name beside its own verb ("diff git_diff") says nothing the verb did
+ * not. And a call whose summary is already a sentence about the verb drops the
+ * verb entirely: `index_workspace` returning "indexed 0 entries" rendered as
+ * "index  indexed 0 entries", which reads like a stutter. The summary is the
+ * better half of that pair — it has the number in it.
+ */
+export function headOf(tool: ToolRecord): string {
+  if (tool.target !== '') return `${tool.verb} ${tool.target}`;
+  const first = (tool.summary ?? '').trimStart().split(/[\s,.:]/)[0]?.toLowerCase() ?? '';
+  const verb = tool.verb.toLowerCase();
+  // Same stem, not merely the same start: "read" must not swallow "ready", and
+  // a four-letter floor keeps short verbs from matching half the dictionary.
+  const shares = verb.length >= 3 && first.length >= verb.length && first.startsWith(verb);
+  return shares ? '' : tool.verb;
+}
+
 export function toolMarker(tool: ToolRecord): MarkerState {
   switch (tool.outcome) {
     case 'running': return 'running';
@@ -171,13 +191,16 @@ export function ToolBlock({
   // tool's internal name beside its own verb ("diff git_diff") says nothing the
   // verb did not.
   const headWidth = Math.max(8, Math.floor((width - 2) * 0.55));
-  const head = clip(tool.target === '' ? tool.verb : `${tool.verb} ${tool.target}`, headWidth);
-  const rest = Math.max(0, width - 2 - head.length - 1);
-  const tail = joinMeta([
-    tool.outcome === 'denied' ? 'denied' : tool.summary,
-    took,
-    tool.agentId,
-  ], glyphs.dot);
+  const head = clip(headOf(tool), headWidth);
+  // With no head, the summary *is* the row and takes the foreground; the timing
+  // and the worker stay behind it. Leaving it muted behind an empty column gave
+  // the row a leading double space and no subject at all.
+  const lead = head === '' ? clip(tool.summary ?? tool.verb, headWidth) : head;
+  const rest = Math.max(0, width - 2 - lead.length - 1);
+  const tail = joinMeta(head === ''
+    ? [took, tool.agentId]
+    : [tool.outcome === 'denied' ? 'denied' : tool.summary, took, tool.agentId],
+  glyphs.dot);
   // A failure shows its output without being asked — but only when the output
   // says more than the row already did. Repeating a one-line error underneath
   // itself is noise, not evidence.
@@ -186,7 +209,7 @@ export function ToolBlock({
   return <Box flexDirection="column">
     <Text>
       <Marker state={toolMarker(tool)} glyphs={glyphs} theme={theme} />
-      <Text color={tool.outcome === 'error' ? theme.error : undefined}>{head}</Text>
+      <Text color={tool.outcome === 'error' ? theme.error : undefined}>{lead}</Text>
       {tail !== '' && rest > 4 ? <Text color={theme.muted}> {clip(tail, rest)}</Text> : null}
     </Text>
     {inlineOutput

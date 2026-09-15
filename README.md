@@ -107,8 +107,14 @@ instead of permanently on screen.
 - **An opening screen that is a screen.** An untouched session names the
   workspace at the top, then sits the mode dial, the composer and the status row
   together on the floor of the window as one block — the dial belongs with the
-  composer, because the mode is what the next thing you type will run in. It
-  goes for good at the first keystroke.
+  composer, because the mode is what the next thing you type will run in. The
+  mode in force carries the composer's own mark, in the composer's own column,
+  so the dial and the surface read as one device. It goes for good at the first
+  keystroke.
+- **It talks like a tool.** No greeting, no sign-off, no offer of further help,
+  no emoji — the system frame says so in every mode, and there is a test that
+  keeps it there. Say "hi" and you get the state of the workspace, not a
+  welcome.
 - **The composer is a surface.** A spine down its left edge in the mode's
   colour, not a box and not a rule: two columns, no rows of its own, and it
   grows with a multi-line draft. It is the one mark on the screen that says
@@ -139,7 +145,8 @@ instead of permanently on screen.
 
 `/run` · `/agents` · `/plan` · `/route` · `/sessions` · `/model` · `/mode <name>` ·
 `/perms <name>` · `/clear` · `/save <name>` · `/forget <name>` · `/resume <name>` ·
-`/attach <files>` · `/find <text>` · `/copy` · `/cancel` · `/help` · `/quit`
+`/attach <files>` · `/find <text>` · `/copy` · `/cancel` · `/skills` · `/help` ·
+`/quit`
 
 Set `OMNIHARNESS_ASCII=1` for a plain-ASCII marker set, or `NO_COLOR` /
 `OMNIHARNESS_THEME=light` for the colour variants.

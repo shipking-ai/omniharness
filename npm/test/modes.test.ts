@@ -65,6 +65,24 @@ for (const [mode, marker, hasWorkLogic] of MODE_MARKERS) {
   });
 }
 
+test('every mode is told it is a tool and not a chat partner', async () => {
+  // Without this the model answers "hi" the way a chat assistant does — a
+  // greeting, an offer of further help, an exclamation mark — and no amount of
+  // work on the interface around it makes that read as developer infrastructure.
+  for (const mode of ['plan', 'build', 'research', 'crazy'] as AgentMode[]) {
+    const live = chatServer(() => ({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] }));
+    try {
+      const engine = await createMastraEngine({ workspaceRoot: os.tmpdir(), endpoint: live.url, mode });
+      await engine.run('hi');
+      const system = live.calls[0].messages[0].content;
+      assert.match(system, /VOICE/, `${mode} carries the voice rules`);
+      assert.match(system, /No greetings/, `${mode} forbids the greeting`);
+      assert.match(system, /no emoji/, `${mode} forbids emoji`);
+      assert.match(system, /Do not offer further help/, `${mode} forbids the offer of more help`);
+    } finally { live.close(); }
+  }
+});
+
 // --- 2. approval gating differs: crazy auto-approves, the rest prompt -------
 
 function writeThenStop(pathName: string): Envelope[] {
