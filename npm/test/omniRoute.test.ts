@@ -546,3 +546,59 @@ test('a provider using the channels properly is unaffected', async () => {
     assert.equal(result.toolCalls, undefined, 'no calls invented where there were none');
   } finally { live.close(); }
 });
+
+// --- what an error body actually reads like ---------------------------------
+
+test('an error body carries the gateway\'s sentence, not its JSON envelope', async () => {
+  const live = server(() => Response.json({ error: { message: 'upstream refused the connection' } }, { status: 502 }));
+  try {
+    await assert.rejects(
+      () => new OmniRouteClient({ endpoint: live.url }).listCombos(),
+      (error: unknown) => error instanceof OmniRouteError
+        && error.message === 'OmniRoute 502: upstream refused the connection',
+    );
+  } finally { live.close(); }
+});
+
+test('an error body that is not a recognisable envelope is shown as it arrived', async () => {
+  // A body this cannot read is still the only evidence there is. Guessing at
+  // its shape and showing the wrong field would be worse than showing it raw.
+  for (const body of ['plain text failure', '{"unexpected":{"shape":1}}', 'not json {']) {
+    const live = server(() => new Response(body, { status: 500 }));
+    try {
+      await assert.rejects(
+        () => new OmniRouteClient({ endpoint: live.url }).listCombos(),
+        (error: unknown) => error instanceof OmniRouteError && error.message === `OmniRoute 500: ${body}`,
+      );
+    } finally { live.close(); }
+  }
+});
+
+test('with no api key set, error bodies are not prefixed with the word REDACTED', async () => {
+  // `''.replace` matches at position zero, so redacting against an unset key
+  // rewrote every error in the product as "[REDACTED]<the actual error>".
+  const live = server(() => new Response('service unavailable', { status: 503 }));
+  const key = process.env.OMNIROUTE_API_KEY;
+  delete process.env.OMNIROUTE_API_KEY;
+  try {
+    await assert.rejects(
+      () => new OmniRouteClient({ endpoint: live.url }).listCombos(),
+      (error: unknown) => error instanceof OmniRouteError && error.message === 'OmniRoute 503: service unavailable',
+    );
+  } finally {
+    live.close();
+    if (key !== undefined) process.env.OMNIROUTE_API_KEY = key;
+  }
+});
+
+test('an api key appearing in an error body is redacted everywhere it appears', async () => {
+  const live = server(() => new Response('rejected key sk-secret for tenant sk-secret', { status: 403 }));
+  try {
+    await assert.rejects(
+      () => new OmniRouteClient({ endpoint: live.url, apiKey: 'sk-secret' }).listCombos(),
+      (error: unknown) => error instanceof OmniRouteError
+        && !error.message.includes('sk-secret')
+        && error.message === 'OmniRoute 403: rejected key [REDACTED] for tenant [REDACTED]',
+    );
+  } finally { live.close(); }
+});

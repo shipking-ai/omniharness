@@ -80,22 +80,11 @@ test('accepting a completion leaves the caret where the argument goes', () => {
 
 // --- failures the user can act on -------------------------------------------
 
-test('a connection failure names the gateway and what to do about it', () => {
-  for (const message of ['fetch failed', 'connect ECONNREFUSED 127.0.0.1:20128', 'socket hang up']) {
-    const explained = explainFailure(new Error(message), 'http://localhost:20128');
-    assert.match(explained, /cannot reach OmniRoute at http:\/\/localhost:20128/, message);
-    assert.match(explained, /check that it is running/);
-  }
-});
-
-test('a connection failure hidden in a cause is still recognised', () => {
-  const error = new Error('fetch failed');
-  (error as { cause?: unknown }).cause = new Error('connect ECONNREFUSED 127.0.0.1:20128');
-  assert.match(explainFailure(error, 'http://x'), /cannot reach OmniRoute/);
-});
-
-test('an error that already says something useful is left alone', () => {
-  for (const message of ['too many tool turns (limit 40)', 'OmniRoute 401: invalid api key']) {
-    assert.equal(explainFailure(new Error(message), 'http://x'), message);
-  }
+// The behaviour itself is covered in failure.test.ts, against the module that
+// implements it. This pins the import site the rest of the TUI actually uses.
+test('the controller still exposes the failure explanation it dispatches', () => {
+  assert.match(
+    explainFailure(new Error('fetch failed'), 'http://localhost:20128'),
+    /cannot reach OmniRoute at http:\/\/localhost:20128/,
+  );
 });

@@ -594,8 +594,40 @@ export class OmniRouteClient {
   }
 
   private async safeBody(response: Response): Promise<string> {
-    const body = await response.text();
-    return body.slice(0, 500).replace(this.apiKey, '[REDACTED]');
+    const body = this.readableError(await response.text());
+    // Redact before clipping: a key straddling the 500th character would
+    // otherwise survive in half. And `''.replace` matches at position zero, so
+    // redacting against an unset key prefixed every error body in the product
+    // with the word [REDACTED].
+    const safe = this.apiKey === '' ? body : body.split(this.apiKey).join('[REDACTED]');
+    return safe.slice(0, 500);
+  }
+
+  /**
+   * The human half of an error body.
+   *
+   * A gateway answers with JSON at least as often as with text, and
+   * `{"error":{"message":"upstream refused"}}` printed raw asks the reader to
+   * parse JSON by eye to reach the one sentence that was written for them.
+   * Anything that is not recognisably an error envelope is returned untouched
+   * — better a raw body than a body this guessed wrong about.
+   */
+  private readableError(body: string): string {
+    const trimmed = body.trim();
+    if (!trimmed.startsWith('{')) return body;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return body;
+    }
+    if (!this.isRecord(parsed)) return body;
+    const error = this.isRecord(parsed.error) ? parsed.error : parsed;
+    for (const key of ['message', 'error', 'detail', 'error_description']) {
+      const value = error[key];
+      if (typeof value === 'string' && value.trim() !== '') return value.trim();
+    }
+    return body;
   }
 
   /** Parse `X-OmniRoute-Decision: strategy=auto; provider=openai; latency_ms=812`. */
