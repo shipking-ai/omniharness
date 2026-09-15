@@ -15,11 +15,14 @@ import type { AgentMode, HarnessMessage, PermissionMode } from '../../types/inde
 import { appendPromptHistory } from '../../promptHistory.js';
 import { deleteSnapshot, listSessions, loadSnapshot, saveSnapshot } from '../../sessionList.js';
 import { windowIndex, type WindowIndex } from '../format/context.js';
+import { explainFailure } from './failure.js';
 import { ingest, verbFor } from './ingest.js';
 import { nextId } from '../state/reducer.js';
 import type { Dispatch, Store } from '../state/store.js';
 import type { Entry, PickerEntry, UsageState } from '../state/types.js';
 import { activeGlyphs as g } from '../theme/tokens.js';
+
+export { explainFailure, explainGateway } from './failure.js';
 
 /**
  * How often buffered stream deltas reach the screen, in milliseconds. Roughly a
@@ -404,23 +407,6 @@ export function createController(engine: MastraEngine, store: Store): Controller
       engine.stop();
     },
   };
-}
-
-/**
- * Turn a thrown value into something a person can act on.
- *
- * Node's fetch throws a bare `fetch failed` for every connection problem, which
- * names neither what was being reached nor what to do about it — the CLI's
- * `models` command has always said more than the interface did. Anything that
- * is already a real message is left exactly as it is.
- */
-export function explainFailure(reason: unknown, endpoint: string): string {
-  const message = reason instanceof Error ? reason.message : String(reason);
-  const cause = reason instanceof Error && reason.cause instanceof Error ? reason.cause.message : '';
-  const unreachable = /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|terminated/i;
-  if (!unreachable.test(message) && !unreachable.test(cause)) return message;
-  return `cannot reach OmniRoute at ${endpoint} ${g().dash} check that it is running, `
-    + 'or point OMNIROUTE_URL somewhere else. `omniharness doctor` reports the full picture.';
 }
 
 export const PERMISSION_LABEL: Record<PermissionMode, string> = {
