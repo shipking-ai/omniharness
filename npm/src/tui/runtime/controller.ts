@@ -206,7 +206,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
   };
 
   const entriesFromMessages = (messages: readonly HarnessMessage[]): readonly Entry[] =>
-    messages.map((message): Entry => {
+    messages.map((message): Entry | null => {
       const at = Date.parse(message.createdAt);
       const stamp = Number.isFinite(at) ? at : 0;
       switch (message.role) {
@@ -218,7 +218,10 @@ export function createController(engine: MastraEngine, store: Store): Controller
             ...(message.model !== undefined ? { model: message.model } : {}),
           };
         case 'thought':
-          return { kind: 'reasoning', id: nextId('r'), at: stamp, text: message.content };
+          // Saved reasoning is not replayed into the transcript, for the same
+          // reason it is not shown live: it is the model's private working, and
+          // a resume must not publish what the original session did not.
+          return null;
         case 'error':
           return { kind: 'notice', id: nextId('n'), at: stamp, level: 'error', text: message.content };
         case 'tool': {
@@ -235,7 +238,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
         default:
           return { kind: 'notice', id: nextId('n'), at: stamp, level: 'info', text: message.content };
       }
-    });
+    }).filter((entry): entry is Entry => entry !== null);
 
   return {
     get windows() { return windows; },

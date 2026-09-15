@@ -137,14 +137,16 @@ export function reduce(state: AppState, action: Action): AppState {
         live: { ...state.live, answer: state.live.answer + action.delta },
       };
     case 'stream/reasoningDone':
-      if (action.text === '') return { ...state, live: { ...state.live, reasoning: '' } };
-      return {
-        ...state,
-        transcript: append(state.transcript, {
-          kind: 'reasoning', id: nextId('r'), at: action.at, text: action.text,
-        }),
-        live: { ...state.live, reasoning: '' },
-      };
+      // Reasoning settles into nothing. It drives the phase while a turn is in
+      // flight — "thinking" in the status line is true and useful — and then it
+      // is dropped rather than written into the transcript.
+      //
+      // It is the model's private working, not an answer addressed to anyone,
+      // and a harness that prints it is publishing something the user did not
+      // ask to read and the model did not write to be read. The channel exists
+      // so that this content can be *kept out* of the answer; rendering it
+      // anyway would defeat the reason for separating it.
+      return { ...state, live: { ...state.live, reasoning: '' } };
     case 'stream/answerDone': {
       // A turn the user stopped did not produce a reply. The engine closes one
       // with a placeholder text event; rendering that as the assistant speaking

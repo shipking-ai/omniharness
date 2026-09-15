@@ -79,14 +79,23 @@ test('streamed text appears while it streams and settles once when it is final',
   app.unmount();
 });
 
-test('reasoning is labelled and kept visually secondary to the answer', async () => {
+test('reasoning drives the phase and is never shown', async () => {
   const app = await mount({ columns: 100, run: () => new Promise(() => { /* stays running */ }) });
   await app.submit('go');
   app.emit({ type: 'thinking_delta', delta: 'the race is in the retry loop' });
   await app.settle();
-  const screen = app.screen();
-  assert.match(screen, /thinking/);
-  assert.match(screen, /the race is in the retry loop/);
+  // The status line may say the model is thinking. What it is thinking is the
+  // model's private working, not an answer addressed to anyone, and printing it
+  // publishes something the user did not ask to read.
+  assert.match(app.live(), /thinking/, 'the phase is reported');
+  assert.ok(
+    !app.screen().includes('the race is in the retry loop'),
+    'the content of the reasoning never reaches the screen',
+  );
+
+  app.emit({ type: 'thinking', text: 'the race is in the retry loop', at: Date.now() } as never);
+  await app.settle(40);
+  assert.ok(!app.screen().includes('the race is in the retry loop'), 'and does not settle into the transcript');
   app.unmount();
 });
 
@@ -540,5 +549,30 @@ test('a turn that sits unanswered stops calling itself "starting"', async () => 
   assert.equal(phaseLabel(state, 1_500), 'starting', 'still starting a moment in');
   assert.equal(phaseLabel(state, 20_000), 'waiting on the gateway', 'and waiting once it has been a while');
   assert.equal(phaseLabel(state), 'starting', 'with no clock, it says only what it knows');
+  app.unmount();
+});
+
+test('protocol markup cannot reach the transcript even if it gets past the boundary', async () => {
+  // The fix is at the decode boundary (config/channels.ts) and is tested there
+  // and through the client. This covers the case that boundary is bypassed —
+  // a future edit, a provider marker nobody has seen — because the transcript
+  // must not print the model's private working or a raw envelope regardless of
+  // how it got there.
+  const app = await mount({ columns: 100, rows: 30, run: () => new Promise(() => { /* running */ }) });
+  await app.submit('hi');
+  app.emit({
+    type: 'text',
+    content: '<think>Adjusting response style</think>Workspace is empty.'
+      + '<tool>{"name":"index_workspace","arguments":{}}</tool>\n\nStart with a task.',
+    model: 'm',
+  });
+  await app.settle(80);
+
+  const screen = app.screen();
+  assert.match(screen, /Workspace is empty\./, 'the prose survives');
+  assert.match(screen, /Start with a task\./);
+  for (const leak of ['<think', '</think', '<tool', '</tool', 'Adjusting response style', 'index_workspace', '{"name"']) {
+    assert.ok(!screen.includes(leak), `"${leak}" reached the transcript`);
+  }
   app.unmount();
 });

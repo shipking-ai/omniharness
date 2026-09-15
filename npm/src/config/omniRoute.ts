@@ -1,4 +1,5 @@
 import type { ChatWireMessage, CompressionTracker, OmniRouteMetrics, ToolCallRequest, UsageTracker } from '../types/index.js';
+import { createChannelSplitter, parseInlineToolCall, splitContent, type ContentPiece } from './channels.js';
 
 /** Deltas surfaced incrementally while a streaming completion is in flight. */
 export type StreamDelta =
@@ -301,12 +302,40 @@ export class OmniRouteClient {
     let lineBuffer = '';
     // Partially-accumulated tool calls keyed by stream index.
     const toolStreams = new Map<number, { id: string; name: string; argsFragments: string[] }>();
+    /** Calls the provider wrote into `content` instead of `tool_calls`. */
+    const inlineToolCalls: ToolCallRequest[] = [];
     // OmniRoute's response headers are sent at stream start, before the
     // latency, usage and cost are known, so on a stream they carry zeros. With
     // OMNIROUTE_SSE_COMMENTS on, the gateway ends the stream with the same
     // fields as `: x-omniroute-<name>=<value>` comment lines — the values that
     // were final. They are collected here and read like a second header set.
     const trailer = new Headers();
+    const channels = createChannelSplitter();
+    let inlineCalls = 0;
+
+    /** Route one classified piece of content to the channel it belongs to. */
+    const takePiece = (piece: ContentPiece): void => {
+      if (piece.kind === 'text') {
+        content += piece.text;
+        options.onDelta?.({ type: 'text', delta: piece.text });
+        return;
+      }
+      if (piece.kind === 'reasoning') {
+        reasoning += piece.text;
+        options.onDelta?.({ type: 'reasoning', delta: piece.text });
+        return;
+      }
+      inlineCalls += 1;
+      const call = parseInlineToolCall(piece.raw, inlineCalls);
+      // An envelope that will not parse is dropped, not shown: it is protocol
+      // either way, and a malformed one is not a call anybody can run.
+      if (call === null) return;
+      const request: ToolCallRequest = {
+        id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments },
+      };
+      inlineToolCalls.push(request);
+      options.onDelta?.({ type: 'tool_call', call: request });
+    };
 
     const flushData = (line: string): void => {
       if (line.startsWith(':')) {
@@ -335,9 +364,13 @@ export class OmniRouteClient {
           reasoning += delta.reasoning;
           options.onDelta?.({ type: 'reasoning', delta: delta.reasoning });
         }
+        // Not straight through: a provider without native reasoning or function
+        // calling inlines both into `content` as markup, and everything here
+        // used to be classified as visible text. The splitter is stateful
+        // across deltas so a marker cut between chunks never reaches the
+        // transcript even momentarily. See ./channels.ts.
         if (typeof delta.content === 'string' && delta.content !== '') {
-          content += delta.content;
-          options.onDelta?.({ type: 'text', delta: delta.content });
+          for (const piece of channels.push(delta.content)) takePiece(piece);
         }
         if (Array.isArray(delta.tool_calls)) {
           for (const raw of delta.tool_calls) {
@@ -385,9 +418,17 @@ export class OmniRouteClient {
       return fallback;
     }
 
-    const toolCalls: ToolCallRequest[] = [...toolStreams.values()]
-      .filter((entry) => entry.id !== '' && entry.name !== '')
-      .map((entry) => ({ id: entry.id, type: 'function', function: { name: entry.name, arguments: entry.argsFragments.join('') } }));
+    // Whatever the splitter was still holding when the stream ended.
+    for (const piece of channels.end()) takePiece(piece);
+
+    const toolCalls: ToolCallRequest[] = [
+      ...[...toolStreams.values()]
+        .filter((entry) => entry.id !== '' && entry.name !== '')
+        .map((entry): ToolCallRequest => ({
+          id: entry.id, type: 'function', function: { name: entry.name, arguments: entry.argsFragments.join('') },
+        })),
+      ...inlineToolCalls,
+    ];
     // The trailer names the provider and model that finished the stream, so it
     // supersedes the routing picture taken from the initial headers.
     this.updateMetrics(trailer);
@@ -412,18 +453,29 @@ export class OmniRouteClient {
     // OpenAI-compatible responses report the model that actually answered
     // (the combo may have routed anywhere); fall back to the requested id.
     const answered = typeof payload.model === 'string' && payload.model.trim() !== '' ? payload.model : model;
-    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.map((call: unknown) => this.asToolCall(call)).filter((call): call is ToolCallRequest => call !== null) : undefined;
+    const structured = Array.isArray(message.tool_calls) ? message.tool_calls.map((call: unknown) => this.asToolCall(call)).filter((call): call is ToolCallRequest => call !== null) : [];
+    // The same split as the streaming path: a non-streamed body from the same
+    // provider carries the same inlined markup.
+    const pieces = splitContent(typeof message.content === 'string' ? message.content : '');
+    const visible = pieces.filter((piece) => piece.kind === 'text').map((piece) => piece.text).join('');
+    const thought = pieces.filter((piece) => piece.kind === 'reasoning').map((piece) => piece.text).join('');
+    const inlined = pieces
+      .filter((piece): piece is Extract<typeof piece, { kind: 'tool' }> => piece.kind === 'tool')
+      .map((piece, index) => parseInlineToolCall(piece.raw, index + 1))
+      .filter((call): call is NonNullable<typeof call> => call !== null)
+      .map((call): ToolCallRequest => ({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } }));
+    const toolCalls = [...structured, ...inlined];
     this.recordCompletion(response.headers, usage ? {
       inputTokens: this.number(usage.prompt_tokens),
       outputTokens: this.number(usage.completion_tokens),
       totalTokens: this.number(usage.total_tokens),
     } : undefined);
     return {
-      content: typeof message.content === 'string' ? message.content : '',
+      content: visible,
       model: answered,
       finishReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop',
-      reasoning: typeof message.reasoning === 'string' ? message.reasoning : undefined,
-      toolCalls,
+      reasoning: (typeof message.reasoning === 'string' ? message.reasoning : '') + thought || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: usage ? {
         inputTokens: this.number(usage.prompt_tokens),
         outputTokens: this.number(usage.completion_tokens),

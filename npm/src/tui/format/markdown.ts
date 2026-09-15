@@ -230,13 +230,34 @@ function renderTable(
  * Tables require a header row with pipes and a matching delimiter row, so a
  * stray pipe in prose is never rendered as a table.
  */
+/**
+ * The last line of defence, and one that should never fire.
+ *
+ * Protocol markup is classified out of visible text at the decode boundary
+ * (see `config/channels.ts`), which is the fix. This is the belt to that
+ * braces: if a provider invents a marker nobody has seen, or a future edit
+ * routes content around the splitter, the transcript still must not print the
+ * model's private reasoning or a raw tool envelope. Reaching this code means
+ * the boundary has a hole in it — so it strips rather than renders, and the
+ * tests assert the boundary directly so a hole is caught there first.
+ */
+const PROTOCOL_BLOCK =
+  /<(think|thinking|thought|analysis|reasoning|scratchpad|tool|tool_call|tool_use|function_call|function|invoke)(\s[^<>]*)?>[\s\S]*?<\/\1>/gi;
+/** An opening or closing marker left behind by a block that never closed. */
+const PROTOCOL_MARKER =
+  /<\/?(think|thinking|thought|analysis|reasoning|scratchpad|tool|tool_call|tool_use|function_call|function|invoke)(\s[^<>]*)?>/gi;
+
+export function stripProtocolMarkup(text: string): string {
+  return text.replace(PROTOCOL_BLOCK, '').replace(PROTOCOL_MARKER, '');
+}
+
 export function renderMarkdown(
   text: string, width: number, style: MarkdownStyle = {},
 ): MarkdownSegment[][] {
   const bullets = style.ascii === true ? ASCII_BULLETS : BULLETS;
   const rule = style.ascii === true ? '-' : '─';
   const out: MarkdownSegment[][] = [];
-  const src = text.replace(/\r/g, '').split('\n');
+  const src = stripProtocolMarkup(text).replace(/\r/g, '').split('\n');
   let i = 0;
   while (i < src.length) {
     const line = src[i];
