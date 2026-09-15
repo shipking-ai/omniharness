@@ -11,6 +11,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { renderMarkdown, type MarkdownSegment } from '../format/markdown.js';
 import { diffSegments, looksLikeDiff } from '../format/diff.js';
+import { activeGlyphs } from '../theme/tokens.js';
 
 /**
  * One line of styled segments.
@@ -106,7 +107,7 @@ export function Output({
   return <>
     {shown.map((line, index) => <Text key={index} dimColor>{line.slice(0, width)}</Text>)}
     {rows.length > limit
-      ? <Text dimColor>… {rows.length - limit} more line{rows.length - limit === 1 ? '' : 's'}</Text>
+      ? <Text dimColor>{activeGlyphs().ellipsis} {rows.length - limit} more line{rows.length - limit === 1 ? '' : 's'}</Text>
       : null}
   </>;
 }

@@ -127,3 +127,50 @@ test('a resize is reflected in the layout once it settles', async () => {
   }
   app.unmount();
 });
+
+test('a terminal that asked for the plain set gets no byte above 127, anywhere', async () => {
+  // The ASCII fallback existed but was not complete: the meter, the editor
+  // caret, every truncation ellipsis, the arrows in mode notices and a dozen em
+  // dashes in rendered copy were hardcoded Unicode. On a console that is not
+  // UTF-8 those are not a fallback, they are mojibake — which is exactly what
+  // "â€"" is: an em dash decoded as CP1252.
+  const before = process.env.OMNIHARNESS_ASCII;
+  process.env.OMNIHARNESS_ASCII = '1';
+  const app = await mount({ columns: 90, rows: 26, run: () => new Promise(() => { /* running */ }) });
+  try {
+    const seen: string[] = [];
+    const sweep = (): void => { seen.push(app.screen()); };
+
+    sweep();                                        // opening screen
+    await app.type('/mode research');
+    await app.submit('');
+    await app.settle(60);
+    sweep();                                        // a mode notice, with its arrow
+    await app.submit('why is the build failing');
+    app.emit({ type: 'tool_start', tool: 'index_workspace', input: {}, id: 'c1' });
+    app.emit({ type: 'tool_result', tool: 'index_workspace', summary: 'indexed 0 entries', id: 'c1', status: 'ok' });
+    app.emit({ type: 'tool_start', tool: 'run_command', input: { command: 'go build ./...' }, id: 'c2' });
+    app.emit({
+      type: 'tool_result', tool: 'run_command', summary: 'exit 1',
+      detail: 'undefined: Foo', id: 'c2', status: 'error',
+    });
+    app.emit({ type: 'route', fallback: true, attempts: 1, provider: 'anthropic', reason: 'rate limited' });
+    app.emit({ type: 'todos', todos: [{ id: '1', title: 'a step', status: 'active' }] });
+    await app.settle(80);
+    sweep();                                        // tools, a failover, a plan
+    await app.type('\x0b');                         // the palette
+    await app.settle(60);
+    sweep();
+    await app.type('\x1b');
+    for (let i = 0; i < 4; i += 1) { await app.type('\x0c'); await app.settle(30); sweep(); }
+
+    for (const [i, screen] of seen.entries()) {
+      const offenders = [...new Set([...screen].filter((ch) => ch.codePointAt(0)! > 127))];
+      assert.deepEqual(offenders, [], `frame ${i} still emits ${JSON.stringify(offenders)}`);
+    }
+  } finally {
+    app.unmount();
+    if (before === undefined) delete process.env.OMNIHARNESS_ASCII;
+    else process.env.OMNIHARNESS_ASCII = before;
+  }
+});

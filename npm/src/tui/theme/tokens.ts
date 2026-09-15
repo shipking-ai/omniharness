@@ -89,6 +89,15 @@ export interface Glyphs {
   readonly updown: string;
   /** Separator between inline metadata. */
   readonly dot: string;
+  /**
+   * Punctuation that is not decoration but still is not ASCII. Every one of
+   * these was hardcoded in a rendered string somewhere, which meant the plain
+   * set did not actually reach the screen: a terminal that cannot draw them got
+   * mojibake rather than the fallback it had asked for.
+   */
+  readonly dash: string;
+  readonly ellipsis: string;
+  readonly arrow: string;
   readonly caret: string;
   readonly cursor: string;
   readonly selected: string;
@@ -110,6 +119,9 @@ const UNICODE: Glyphs = {
   hrule: '─',
   updown: '↑↓',
   dot: '·',
+  dash: '—',
+  ellipsis: '…',
+  arrow: '→',
   caret: '›',
   cursor: '▍',
   selected: '›',
@@ -131,6 +143,9 @@ const ASCII: Glyphs = {
   hrule: '-',
   updown: 'up/down',
   dot: '-',
+  dash: '-',
+  ellipsis: '...',
+  arrow: '->',
   caret: '>',
   cursor: '_',
   selected: '>',
@@ -140,4 +155,19 @@ const ASCII: Glyphs = {
 
 export function glyphs(env: Record<string, string | undefined> = process.env): Glyphs {
   return unicodeSafe(env) ? UNICODE : ASCII;
+}
+
+/**
+ * The resolved set, for the few leaf utilities that render a glyph but are not
+ * given one: truncation markers, the context meter, the editor caret. They are
+ * pure functions of their arguments plus the environment, and re-resolving is a
+ * couple of string comparisons, so the answer is cached against the variables
+ * that decide it rather than computed once at import — a test that sets
+ * `OMNIHARNESS_ASCII` after the module loads still gets the plain set.
+ */
+let cached: { key: string; glyphs: Glyphs } | undefined;
+export function activeGlyphs(env: Record<string, string | undefined> = process.env): Glyphs {
+  const key = `${env.OMNIHARNESS_ASCII ?? ''}\u0000${env.LC_ALL ?? ''}\u0000${env.LC_CTYPE ?? ''}\u0000${env.LANG ?? ''}`;
+  if (cached?.key !== key) cached = { key, glyphs: glyphs(env) };
+  return cached.glyphs;
 }

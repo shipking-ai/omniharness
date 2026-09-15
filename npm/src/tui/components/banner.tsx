@@ -33,7 +33,7 @@ export interface BannerProps {
  */
 export function capabilityReport(session: SessionState): string {
   const loaded = capabilities(session);
-  if (loaded === undefined) return 'no skills, plugins or MCP tools are loaded — built-in tools only';
+  if (loaded === undefined) return 'no skills, plugins or MCP tools are loaded - built-in tools only';
   return `loaded: ${loaded}`;
 }
 

@@ -184,7 +184,7 @@ export function App({ engine }: AppProps): React.ReactElement {
       runStarted.current = undefined;
       if (startedAt !== undefined && shouldNudgeOnFinish(Date.now() - startedAt)) {
         try {
-          stdout.write(osc9Notify('OmniHarness — run finished'));
+          stdout.write(osc9Notify('OmniHarness - run finished'));
           stdout.write(BEL);
         } catch { /* a nudge is best-effort */ }
       }

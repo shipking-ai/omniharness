@@ -76,9 +76,21 @@ test('every mode is told it is a tool and not a chat partner', async () => {
       await engine.run('hi');
       const system = live.calls[0].messages[0].content;
       assert.match(system, /VOICE/, `${mode} carries the voice rules`);
-      assert.match(system, /No greetings/, `${mode} forbids the greeting`);
-      assert.match(system, /no emoji/, `${mode} forbids emoji`);
-      assert.match(system, /Do not offer further help/, `${mode} forbids the offer of more help`);
+      assert.match(system, /Never greet/, `${mode} forbids the greeting`);
+      assert.match(system, /No emoji/, `${mode} forbids emoji`);
+      assert.match(system, /Never list your own capabilities/, `${mode} forbids the capability list`);
+      assert.match(system, /What's on your mind/, `${mode} carries the worked counter-example`);
+      // Voice leads. Buried behind the work discipline it was the first thing
+      // the model dropped, and a harness that answers "hi" with a capability
+      // list is not a harness however good the terminal around it looks.
+      // "You are in PLAN mode" / "You are in CRAZY MODE" — the marker every
+      // mode shares, and the one thing the voice has to come before.
+      const modeAt = system.indexOf('You are in ');
+      assert.ok(modeAt > 0, `${mode} states its mode`);
+      assert.ok(
+        system.indexOf('VOICE') < modeAt,
+        `${mode} states the voice before the mode instructions`,
+      );
     } finally { live.close(); }
   }
 });

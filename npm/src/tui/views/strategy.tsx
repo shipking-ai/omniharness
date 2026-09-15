@@ -35,7 +35,7 @@ export function StrategyView({ state, width, rows, theme, glyphs }: StrategyView
     return <Box flexDirection="column" marginTop={1}>
       <Heading theme={theme}>plan</Heading>
       <Text color={theme.muted}>
-        no plan yet — the harness writes one as it works out what the task needs
+        no plan yet - the harness writes one as it works out what the task needs
       </Text>
       {calls.length > 0
         ? <Text color={theme.muted}>{calls.length} tool call{calls.length === 1 ? '' : 's'} so far</Text>
@@ -70,7 +70,7 @@ export function StrategyView({ state, width, rows, theme, glyphs }: StrategyView
           {denied.slice(0, 3).map((tool) => (
             <Text key={tool.id}>
               <Marker state="denied" glyphs={glyphs} theme={theme} />
-              <Text color={theme.warn}>{clip(`${tool.verb} ${tool.target || tool.name} — you declined`, Math.max(8, width - 2))}</Text>
+              <Text color={theme.warn}>{clip(`${tool.verb} ${tool.target || tool.name} - you declined`, Math.max(8, width - 2))}</Text>
             </Text>
           ))}
         </Box>

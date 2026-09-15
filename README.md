@@ -111,10 +111,17 @@ instead of permanently on screen.
   mode in force carries the composer's own mark, in the composer's own column,
   so the dial and the surface read as one device. It goes for good at the first
   keystroke.
-- **It talks like a tool.** No greeting, no sign-off, no offer of further help,
-  no emoji — the system frame says so in every mode, and there is a test that
-  keeps it there. Say "hi" and you get the state of the workspace, not a
-  welcome.
+- **It talks like a tool.** No greeting, no sign-off, no capability list, no
+  emoji. The voice rules lead the system frame in every mode — ahead of the work
+  discipline, because buried behind it they were the first thing dropped — and
+  carry a worked counter-example of the chat-product answer they exist to
+  prevent. Say "hi" and you get the state of the workspace, not a welcome.
+- **The plain set is actually plain.** On a terminal that cannot draw box
+  characters — `OMNIHARNESS_ASCII=1`, or a non-UTF-8 locale — every glyph, meter,
+  caret, ellipsis, arrow and dash falls back to ASCII. A test drives eight
+  screens in that mode and fails on any byte above 127, because a fallback that
+  leaks one Unicode character is not a fallback: it is `â€"` on a CP1252
+  console.
 - **The composer is a surface.** A spine down its left edge in the mode's
   colour, not a box and not a rule: two columns, no rows of its own, and it
   grows with a multi-line draft. It is the one mark on the screen that says

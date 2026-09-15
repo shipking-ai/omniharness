@@ -10,6 +10,7 @@
  */
 
 import { capabilityReport } from '../components/banner.js';
+import { activeGlyphs } from '../theme/tokens.js';
 import type { AgentMode, PermissionMode } from '../../types/index.js';
 import type { Controller } from '../runtime/controller.js';
 import type { Dispatch } from '../state/store.js';
@@ -81,7 +82,7 @@ export const COMMANDS: readonly Command[] = [
 
   permission('ask', 'ask', 'Approvals: ask every time', 'prompt before every high-risk call'),
   permission('acceptEdits', 'accept-edits', 'Approvals: accept edits', 'file edits go through; commands still ask'),
-  permission('bypass', 'bypass', 'Approvals: bypass', 'nothing is gated — use deliberately'),
+  permission('bypass', 'bypass', 'Approvals: bypass', 'nothing is gated - use deliberately'),
 
   {
     id: 'session.new', name: 'clear', group: 'session',
@@ -160,7 +161,7 @@ export const COMMANDS: readonly Command[] = [
       for (const entry of hits.slice(-6)) {
         dispatch({
           type: 'notice', level: 'info', at: Date.now(),
-          text: `  ${entry.kind} · ${textOf(entry).replace(/\s+/g, ' ').slice(0, 96)}`,
+          text: `  ${entry.kind} ${activeGlyphs().dot} ${textOf(entry).replace(/\s+/g, ' ').slice(0, 96)}`,
         });
       }
     },

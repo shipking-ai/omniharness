@@ -272,7 +272,7 @@ function submit(deps: RouterDeps): void {
     if (parsed?.command === undefined) {
       dispatch({
         type: 'notice', level: 'warn', at: Date.now(),
-        text: `unknown command '/${parsed?.typed ?? ''}' — Ctrl+K lists everything`,
+        text: `unknown command '/${parsed?.typed ?? ''}' - Ctrl+K lists everything`,
       });
       return;
     }
@@ -316,7 +316,7 @@ function revealOutput(deps: RouterDeps): void {
   dispatch({
     type: 'notice', level: 'info', at: Date.now(),
     text: state.transcript.some((entry) => entry.kind === 'tool')
-      ? 'nothing left to show — every call has already said what it had to'
+      ? 'nothing left to show - every call has already said what it had to'
       : 'no tool output yet',
   });
 }

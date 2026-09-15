@@ -119,7 +119,7 @@ export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): Re
     case 'route':
       return <Text color={theme.warn}>
         {glyphs.dot} route failed over to {entry.decision.provider ?? 'another provider'}
-        {entry.decision.reason !== undefined ? ` — ${clip(entry.decision.reason, Math.max(10, width - 40))}` : ''}
+        {entry.decision.reason !== undefined ? ` ${glyphs.dash} ${clip(entry.decision.reason, Math.max(10, width - 40))}` : ''}
       </Text>;
 
     case 'notice': {

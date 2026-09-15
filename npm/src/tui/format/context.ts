@@ -14,6 +14,8 @@
  * not be read at all.
  */
 
+import { activeGlyphs } from '../theme/tokens.js';
+
 export type ContextZone = 'ok' | 'warn' | 'danger';
 
 export interface ContextMeter {
@@ -128,5 +130,6 @@ export function contextMeter(used: number, modelId: string | undefined, provider
 /** A compact `[████░░░░░░] 41%` style bar, `cells` wide. */
 export function meterBar(fraction: number, cells = 10): string {
   const filled = Math.round(Math.min(1, Math.max(0, fraction)) * cells);
-  return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, cells - filled))}`;
+  const g = activeGlyphs();
+  return `${g.meterFull.repeat(filled)}${g.meterEmpty.repeat(Math.max(0, cells - filled))}`;
 }
