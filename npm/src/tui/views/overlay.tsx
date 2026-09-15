@@ -57,7 +57,7 @@ function PaletteList({
       <Text color={theme.muted}>{matches.length} match{matches.length === 1 ? '' : 'es'}</Text>
     </Box>
     {matches.length === 0
-      ? <Text color={theme.muted}>nothing matches — esc to close</Text>
+      ? <Text color={theme.muted}>nothing matches - esc to close</Text>
       : matches.slice(start, end).map((command, offset) => {
           const focused = start + offset === overlay.index;
           const name = `/${command.name}${command.argument !== undefined ? ` ${command.argument}` : ''}`;
@@ -87,7 +87,7 @@ function PaletteList({
           </Text>;
         })}
     {matches.length > capacity
-      ? <Text color={theme.muted}>{'  '}{matches.length - capacity} more — keep typing to narrow</Text>
+      ? <Text color={theme.muted}>{'  '}{matches.length - capacity} more - keep typing to narrow</Text>
       : null}
   </Box>;
 }
@@ -101,7 +101,7 @@ function ModelList({
   if (overlay.loading) {
     return <Box flexDirection="column" marginTop={1}>
       <Heading theme={theme}>engines</Heading>
-      <Text color={theme.muted}>asking OmniRoute…</Text>
+      <Text color={theme.muted}>asking OmniRoute{glyphs.ellipsis}</Text>
     </Box>;
   }
   if (overlay.error !== undefined) {

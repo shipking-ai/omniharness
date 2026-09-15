@@ -10,9 +10,17 @@
 import { contextMeter, type ContextMeter, type WindowIndex } from '../format/context.js';
 import { cost, elapsed, millis, tokens } from '../format/units.js';
 import type { AppState, PlanStep, RouteDecision, ToolRecord } from './types.js';
+import { activeGlyphs } from '../theme/tokens.js';
+
+/**
+ * How long a turn may sit in `preparing` before "starting" stops being the
+ * truest word for it. Past this the request is out and nothing has come back,
+ * which is a different fact and a more useful one.
+ */
+const STARTING_GRACE_MS = 4000;
 
 /** A short, honest description of what is happening right now. */
-export function phaseLabel(state: AppState): string {
+export function phaseLabel(state: AppState, now?: number): string {
   // A gate and a cancellation outrank everything; otherwise, if workers are
   // running, that is the truth about this moment — the main turn has already
   // handed off, and calling it "responding" describes nobody.
@@ -22,7 +30,15 @@ export function phaseLabel(state: AppState): string {
   if (working > 0) return `${working} agent${working === 1 ? '' : 's'} working`;
   switch (state.phase) {
     case 'idle': return state.composer.queued !== undefined ? 'queued' : 'ready';
-    case 'preparing': return 'starting';
+    case 'preparing':
+      // "starting · 18s" describes nothing anybody can act on. The honest
+      // reading once the request has been out a while is that the gateway has
+      // not answered yet — which is also the first thing worth knowing if it
+      // never does.
+      return now !== undefined && state.runStartedAt !== undefined
+        && now - state.runStartedAt > STARTING_GRACE_MS
+        ? 'waiting on the gateway'
+        : 'starting';
     case 'thinking': return 'thinking';
     case 'streaming': return 'responding';
     case 'tool': return describeTools(state.live.tools.filter((tool) => tool.outcome === 'running'));
@@ -32,7 +48,7 @@ export function phaseLabel(state: AppState): string {
 
 function describeTools(running: readonly ToolRecord[]): string {
   if (running.length === 0) return 'working';
-  if (running.length === 1) return running[0]!.verb === '$' ? 'running a command' : `${running[0]!.verb}…`;
+  if (running.length === 1) return running[0]!.verb === '$' ? 'running a command' : `${running[0]!.verb}${activeGlyphs().ellipsis}`;
   return `${running.length} tools`;
 }
 
@@ -113,7 +129,7 @@ export function routeFields(state: AppState): readonly Field[] {
  * session where nothing was measured shows no usage section at all, rather
  * than a column of zeroes that would read as "free and instant".
  */
-export function usageFields(state: AppState, dot = '·'): readonly Field[] {
+export function usageFields(state: AppState, dot = activeGlyphs().dot): readonly Field[] {
   const out: Field[] = [];
   const { usage } = state;
   const tin = tokens(usage.tokensIn);

@@ -19,6 +19,7 @@ import { ingest, verbFor } from './ingest.js';
 import { nextId } from '../state/reducer.js';
 import type { Dispatch, Store } from '../state/store.js';
 import type { Entry, PickerEntry, UsageState } from '../state/types.js';
+import { activeGlyphs as g } from '../theme/tokens.js';
 
 /**
  * How often buffered stream deltas reach the screen, in milliseconds. Roughly a
@@ -257,7 +258,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
     setMode(mode) {
       engine.state.mode = mode;
       dispatch({ type: 'session/mode', mode });
-      dispatch({ type: 'notice', level: 'info', at: now(), text: `mode → ${mode}` });
+      dispatch({ type: 'notice', level: 'info', at: now(), text: `mode ${g().arrow} ${mode}` });
     },
 
     setPermission(permission) {
@@ -265,7 +266,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
       dispatch({ type: 'session/permission', permission });
       dispatch({
         type: 'notice', level: permission === 'bypass' ? 'warn' : 'info', at: now(),
-        text: `permissions → ${PERMISSION_LABEL[permission]}`
+        text: `permissions ${g().arrow} ${PERMISSION_LABEL[permission]}`
           + (engine.state.mode === 'crazy' ? ' (crazy mode still bypasses)' : ''),
       });
     },
@@ -273,7 +274,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
     async selectModel(model) {
       await engine.selectModel(model);
       dispatch({ type: 'session/model', model });
-      dispatch({ type: 'notice', level: 'info', at: now(), text: `model → ${model} (saved as default)` });
+      dispatch({ type: 'notice', level: 'info', at: now(), text: `model ${g().arrow} ${model} (saved as default)` });
     },
 
     async loadModels() {
@@ -324,7 +325,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
         for (const file of loaded) {
           dispatch({
             type: 'notice', level: 'info', at: now(),
-            text: `attached ${file.name} · ${file.kind} · ${file.size} bytes — sent with your next prompt`,
+            text: `attached ${file.name} ${g().dot} ${file.kind} ${g().dot} ${file.size} bytes ${g().dash} sent with your next prompt`,
           });
         }
       } catch (reason: unknown) {
@@ -342,7 +343,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
           taskQueue: [...engine.state.taskQueue],
           savedAt: new Date().toISOString(),
         });
-        dispatch({ type: 'notice', level: 'success', at: now(), text: `session saved · ${name}` });
+        dispatch({ type: 'notice', level: 'success', at: now(), text: `session saved ${g().dot} ${name}` });
         await this.refreshSessions();
       } catch (reason: unknown) {
         dispatch({
@@ -354,7 +355,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
 
     async forget(name) {
       await deleteSnapshot(engine.state.workspace.root, name);
-      dispatch({ type: 'notice', level: 'info', at: now(), text: `session deleted · ${name}` });
+      dispatch({ type: 'notice', level: 'info', at: now(), text: `session deleted ${g().dot} ${name}` });
       await this.refreshSessions();
     },
 
@@ -376,7 +377,7 @@ export function createController(engine: MastraEngine, store: Store): Controller
       });
       dispatch({
         type: 'notice', level: 'success', at: now(),
-        text: `resumed ${name} · ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'}`,
+        text: `resumed ${name} ${g().dot} ${snapshot.messages.length} message${snapshot.messages.length === 1 ? '' : 's'}`,
       });
     },
 
@@ -415,7 +416,7 @@ export function explainFailure(reason: unknown, endpoint: string): string {
   const cause = reason instanceof Error && reason.cause instanceof Error ? reason.cause.message : '';
   const unreachable = /fetch failed|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|network|terminated/i;
   if (!unreachable.test(message) && !unreachable.test(cause)) return message;
-  return `cannot reach OmniRoute at ${endpoint} — check that it is running, `
+  return `cannot reach OmniRoute at ${endpoint} ${g().dash} check that it is running, `
     + 'or point OMNIROUTE_URL somewhere else. `omniharness doctor` reports the full picture.';
 }
 

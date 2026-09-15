@@ -10,6 +10,8 @@
  * width. The file even imported one of the correct copies under another name.
  */
 
+import { activeGlyphs } from '../theme/tokens.js';
+
 /**
  * Shorten text to at most `width` characters, marking a cut with an ellipsis.
  *
@@ -21,5 +23,6 @@
 export function clip(text: string, width: number): string {
   const runes = [...text.replace(/\s+/g, ' ')];
   if (runes.length <= width) return runes.join('');
-  return `${runes.slice(0, Math.max(0, width - 1)).join('')}…`;
+  const mark = activeGlyphs().ellipsis;
+  return `${runes.slice(0, Math.max(0, width - mark.length)).join('')}${mark}`;
 }

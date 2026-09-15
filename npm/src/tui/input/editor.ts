@@ -1,4 +1,6 @@
 /** Normalize terminal paste to \n line endings before inserting. */
+
+import { activeGlyphs } from '../theme/tokens.js';
 export function normalizePaste(value: string): string {
   return value.replace(/\r\n?/g, '\n');
 }
@@ -117,8 +119,8 @@ export function layoutEditor(text: string, cursor: number, width: number): Edito
     }
   }
   const lines = rows.map((span) => text.slice(span.start, span.end));
-  lines[line] = lines[line]!.slice(0, col) + CURSOR + lines[line]!.slice(col);
+  lines[line] = lines[line]!.slice(0, col) + cursorGlyph() + lines[line]!.slice(col);
   return { lines, cursorLine: line, cursorCol: col };
 }
 
-const CURSOR = '▍';
+const cursorGlyph = (): string => activeGlyphs().cursor;

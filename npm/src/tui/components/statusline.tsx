@@ -23,6 +23,7 @@ import type { Band } from '../layout/frame.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { Focus } from '../input/router.js';
 import type { AppState } from '../state/types.js';
+import { activeGlyphs } from '../theme/tokens.js';
 
 export interface StatusProps {
   readonly state: AppState;
@@ -82,7 +83,7 @@ export function StatusLine({ state, width, band, theme, glyphs, windows, now }: 
   // lead it as a bold coloured chip, which put the least volatile fact on the
   // row in the most prominent position and made the phase look like its
   // footnote. The mode is settings — it belongs with the other settings.
-  const phase = joinMeta([phaseLabel(state), runElapsed(state, now)], glyphs.dot);
+  const phase = joinMeta([phaseLabel(state, now), runElapsed(state, now)], glyphs.dot);
   const leftWidth = phase.length + (busy ? 2 : 0);
 
   // Narrow keeps only what changes what the next keystroke does; the engine and
@@ -139,7 +140,7 @@ export function hintsFor(
 ): readonly string[] {
   switch (focus) {
     case 'approval':
-      return ['y allow once', 'n deny', 'a always allow', `1–${Math.max(1, state.approval?.scopes.length ?? 1)} trust scope`];
+      return ['y allow once', 'n deny', 'a always allow', `1-${Math.max(1, state.approval?.scopes.length ?? 1)} trust scope`];
     case 'overlay':
       return state.overlay?.kind === 'palette'
         ? ['enter run', 'esc close', `${glyphs.updown} move`, 'type to filter']
@@ -173,7 +174,7 @@ export function hintsFor(
 }
 
 /** As many whole hints as fit, in order. Never a half one. */
-export function packHints(hints: readonly string[], width: number, dot = '·'): string {
+export function packHints(hints: readonly string[], width: number, dot = activeGlyphs().dot): string {
   const separator = `  ${dot}  `;
   const out: string[] = [];
   let used = 0;

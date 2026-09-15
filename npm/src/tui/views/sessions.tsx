@@ -30,7 +30,7 @@ export function SessionsView({ state, width, rows, theme, glyphs, now }: Session
   if (saved.length === 0) {
     return <Box flexDirection="column" marginTop={1}>
       <Heading theme={theme}>sessions</Heading>
-      <Text color={theme.muted}>no saved sessions in this workspace — /save {'<name>'} snapshots this one</Text>
+      <Text color={theme.muted}>no saved sessions in this workspace - /save {'<name>'} snapshots this one</Text>
     </Box>;
   }
 

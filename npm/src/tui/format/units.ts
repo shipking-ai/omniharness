@@ -7,6 +7,8 @@
  * free, and an unmeasured latency disappears instead of reading as instant.
  */
 
+import { activeGlyphs } from '../theme/tokens.js';
+
 /** Tokens read the way they are spoken: exact while small, then thousands. */
 export function tokens(n: number | undefined): string | undefined {
   if (n === undefined || !Number.isFinite(n) || n <= 0) return undefined;
@@ -73,5 +75,6 @@ export function since(iso: string, now: number = Date.now()): string {
 export function shortPath(value: string, width: number): string {
   if (width <= 1) return value.slice(-Math.max(1, width));
   if (value.length <= width) return value;
-  return `…${value.slice(-(width - 1))}`;
+  const mark = activeGlyphs().ellipsis;
+  return `${mark}${value.slice(-Math.max(1, width - mark.length))}`;
 }

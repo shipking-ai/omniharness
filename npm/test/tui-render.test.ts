@@ -525,3 +525,20 @@ test('the hints are two by default and grow only where a key would do something'
   assert.match(hintRow(), /Ctrl\+T output/, 'now there is something to show');
   app.unmount();
 });
+
+test('a turn that sits unanswered stops calling itself "starting"', async () => {
+  const app = await mount({ columns: 90, rows: 24, run: () => new Promise(() => { /* never answers */ }) });
+  await app.submit('go');
+  await app.settle(60);
+  assert.match(statusRow(app.live()), /starting/, 'a turn that just began is starting');
+
+  // Past the grace period the request is out and nothing has come back, which
+  // is a different fact from "starting" and the first one worth knowing if it
+  // never answers.
+  const { phaseLabel } = await import('../src/tui/state/selectors.js');
+  const state = { phase: 'preparing', runStartedAt: 1000, agents: [], composer: {}, live: { tools: [] } } as never;
+  assert.equal(phaseLabel(state, 1_500), 'starting', 'still starting a moment in');
+  assert.equal(phaseLabel(state, 20_000), 'waiting on the gateway', 'and waiting once it has been a while');
+  assert.equal(phaseLabel(state), 'starting', 'with no clock, it says only what it knows');
+  app.unmount();
+});

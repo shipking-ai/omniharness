@@ -279,7 +279,7 @@ export function renderMarkdown(
     if (/^\s*>\s?/.test(line)) {
       const quote = line.replace(/^\s*>\s?/, '');
       const segments = inline(quote).map((s) => ({ ...s, dim: true }));
-      out.push(...wrapWords(wordsOf([{ text: '│ ' }, ...segments]), width));
+      out.push(...wrapWords(wordsOf([{ text: style.ascii === true ? '| ' : '\u2502 ' }, ...segments]), width));
       i += 1;
       continue;
     }

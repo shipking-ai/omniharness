@@ -13,6 +13,7 @@
 import type { HarnessEvent } from '../../agent/mastraEngine.js';
 import type { Action } from '../state/actions.js';
 import type { AgentStatus, CompressionSummary, RouteDecision } from '../state/types.js';
+import { activeGlyphs as g } from '../theme/tokens.js';
 
 /**
  * Short verb for a tool row. Unknown tools keep their own name — inventing a
@@ -177,7 +178,7 @@ export function ingest(event: HarnessEvent, at: number): readonly Action[] {
         type: 'notice',
         level: 'info',
         at,
-        text: `attached ${event.name} · ${event.kind} · ${event.size} bytes`,
+        text: `attached ${event.name} ${g().dot} ${event.kind} ${g().dot} ${event.size} bytes`,
       }];
 
     default:

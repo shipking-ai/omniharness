@@ -26,6 +26,7 @@ import type {
   ToolRecord,
 } from './types.js';
 import type { Action } from './actions.js';
+import { activeGlyphs as g } from '../theme/tokens.js';
 
 let sequence = 0;
 /** Monotonic id for entries the UI creates. Never leaves the process. */
@@ -414,7 +415,7 @@ export function reduce(state: AppState, action: Action): AppState {
         ...state,
         preview: action.url,
         transcript: append(state.transcript, {
-          kind: 'notice', id: nextId('n'), at: Date.now(), level: 'success', text: `preview live · ${action.url}`,
+          kind: 'notice', id: nextId('n'), at: Date.now(), level: 'success', text: `preview live ${g().dot} ${action.url}`,
         }),
       };
 

@@ -45,7 +45,7 @@ export function AgentsView({ state, width, rows, theme, glyphs, now }: AgentsVie
     return <Box flexDirection="column" marginTop={1}>
       <Heading theme={theme}>agents</Heading>
       <Text color={theme.muted}>
-        no parallel workers in this session — crazy mode fans a plan out across them
+        no parallel workers in this session - crazy mode fans a plan out across them
       </Text>
     </Box>;
   }
