@@ -42,61 +42,60 @@ export function modeLines(): readonly { mode: AgentMode; hint: string }[] {
 
 /** Rows {@link Opening} draws, so the height plan can place the gap under it. */
 export function openingRows(_session: SessionState): number {
-  // A leading gap, the heading, and one row per mode.
-  return modeLines().length + 2;
+  // A leading gap, the heading, a breathing row under it, one row per mode.
+  return modeLines().length + 3;
 }
 
 export function Opening({
-  session, width, headingWidth, rows, theme, glyphs,
+  session, width, rows, theme, glyphs,
 }: {
   session: SessionState;
-  /** Reading measure, for the descriptions. */
+  /** Reading measure. */
   width: number;
-  /**
-   * The frame's full width, for the heading rule. The heading and its key are
-   * instrument, not prose: they close the same edge the status line closes, so
-   * the whole bottom cluster reads as one block instead of the panel stopping
-   * short of the row beneath it on a wide window.
-   */
-  headingWidth: number;
   rows: number; theme: Theme; glyphs: Glyphs;
 }): React.ReactElement | null {
-  const saved = session.saved.length;
   // Budgeted like every other section, because a short window is a real window:
   // at eight rows the full panel made the live region taller than the viewport,
-  // which is the one thing that corrupts Ink's redraw. The leading gap and the
-  // footnote go first, then the list shortens, then it is gone.
+  // which is the one thing that corrupts Ink's redraw. The rhythm rows go
+  // first, then the heading, then the list shortens, then it is gone.
+  const all = modeLines();
   const budget = Math.max(0, Math.floor(rows));
   if (budget < 2) return null;
-  const gap = budget >= modeLines().length + 2 ? 1 : 0;
-  // The heading carries the key that changes the thing under it, which is how
-  // the reader learns the control without a footer that states it forever.
-  const heading = budget - gap > modeLines().length;
-  const modes = modeLines().slice(0, budget - gap - (heading ? 1 : 0));
+  const lead = budget >= all.length + 2 ? 1 : 0;
+  const heading = budget - lead > all.length;
+  const breathe = budget - lead - (heading ? 1 : 0) > all.length;
+  const modes = all.slice(0, budget - lead - (heading ? 1 : 0) - (breathe ? 1 : 0));
   if (modes.length === 0) return null;
 
-  return <Box flexDirection="column" marginTop={gap}>
+  return <Box flexDirection="column" marginTop={lead}>
+    {/* The key sits beside the label it belongs to rather than against the far
+        margin. Pushed to the edge it was stranded sixty columns from the word
+        it explains, with nothing in between — alignment for its own sake. */}
     {heading
-      ? <Box flexDirection="row" justifyContent="space-between" width={headingWidth}>
+      ? <Text>
           <Text color={theme.muted} bold>MODE</Text>
-          <Text color={theme.muted} dimColor>
-            {KEY_LABEL.cycleMode} cycles{saved > 0 ? `  ${glyphs.dot}  /resume for ${saved} saved` : ''}
-          </Text>
-        </Box>
+          <Text color={theme.muted} dimColor>{'   '}{KEY_LABEL.cycleMode} cycles</Text>
+        </Text>
       : null}
+    {breathe ? <Box height={1} /> : null}
     {modes.map(({ mode, hint }) => {
       const current = mode === session.mode;
+      // The mode in force is marked with the composer's own spine, in the
+      // composer's own colour, in the same column. Two marks, one meaning: this
+      // is the mode, and that is the prompt it runs. It makes the selection
+      // unmistakable without a border, a box, or a second colour — and it is
+      // the one thing on the opening screen that ties the dial to the surface
+      // underneath it.
       return <Text key={mode}>
-        {/* The marker column is the same two cells every status row in this
-            interface uses, so the list hangs off the same edge as everything
-            above and below it. */}
-        <Text color={current ? modeColor(mode, theme) : theme.muted}>
-          {current ? `${glyphs.caret} ` : '  '}
+        <Text color={current ? modeColor(mode, theme) : theme.muted} bold={current}>
+          {current ? `${glyphs.spine} ` : '  '}
         </Text>
         <Text color={current ? modeColor(mode, theme) : theme.muted} bold={current}>
           {mode.padEnd(NAME_WIDTH)}
         </Text>
-        <Text color={theme.muted} dimColor={!current}>
+        {/* Three levels down the column, and none of them is a box: the mode in
+            force is bright, the rest are muted, the descriptions dimmer still. */}
+        <Text color={current ? theme.text : theme.muted} dimColor={!current}>
           {clip(hint, Math.max(8, width - NAME_WIDTH - 2))}
         </Text>
       </Text>;

@@ -10,12 +10,10 @@
     <text x="39.0" y="58.0" fill="#d5d9e2" font-weight="600" xml:space="preserve">OMNIHARNESS</text>
     <text x="121.8" y="58.0" fill="#8b93a7" xml:space="preserve">  0.1.114</text>
     <text x="39.0" y="75.5" fill="#8b93a7" xml:space="preserve">/tmp/omniharness-demo/omniharness</text>
-    <text x="39.0" y="320.5" fill="#8b93a7" font-weight="600" xml:space="preserve">MODE</text>
-    <text x="633.1" y="320.5" fill="#8b93a7" xml:space="preserve">Ctrl+E cycles</text>
+    <text x="39.0" y="303.0" fill="#8b93a7" font-weight="600" xml:space="preserve">MODE   Ctrl+E cycles</text>
     <text x="39.0" y="338.0" fill="#8b93a7" xml:space="preserve">  plan      map the work, change nothing</text>
-    <text x="39.0" y="355.5" fill="#8fd66f" xml:space="preserve">› </text>
-    <text x="54.1" y="355.5" fill="#8fd66f" font-weight="600" xml:space="preserve">build     </text>
-    <text x="129.3" y="355.5" fill="#8b93a7" xml:space="preserve">implement, verify, repair</text>
+    <text x="39.0" y="355.5" fill="#8fd66f" font-weight="600" xml:space="preserve">┃ build     </text>
+    <text x="129.3" y="355.5" fill="#d5d9e2" xml:space="preserve">implement, verify, repair</text>
     <text x="39.0" y="373.0" fill="#8b93a7" xml:space="preserve">  research  read and explain, touch nothing</text>
     <text x="39.0" y="390.5" fill="#8b93a7" xml:space="preserve">  crazy     fan out across parallel agents</text>
     <text x="39.0" y="425.5" fill="#8fd66f" xml:space="preserve">┃</text>

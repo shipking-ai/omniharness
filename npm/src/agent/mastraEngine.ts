@@ -157,10 +157,35 @@ const MEMORY_FILE = 'memory.md';
 /** What a denied tool call returns to the model, and what `outcomeOf` matches. */
 const DENIED = 'user denied this tool call';
 
+/**
+ * Register, not manners.
+ *
+ * Without this the model answers "hi" the way a chat assistant does — a
+ * greeting, an offer of help, an exclamation mark — and the interface around it
+ * stops reading as developer infrastructure the moment it does. The rules are
+ * about what the output *is*, not about being terse for its own sake: an
+ * answer that needs six paragraphs still gets six paragraphs, it just does not
+ * open by saying hello.
+ */
+const VOICE_RULES =
+  '\n\nVOICE — you are a tool in a terminal, not a chat partner:\n'
+  + '- No greetings, no sign-offs, no emoji, no exclamation marks.\n'
+  + '- Never open by restating the request or by announcing what you are about to do. '
+  + 'Open with the answer, or with the first action.\n'
+  + '- Do not offer further help, ask if anything else is needed, or comment on how '
+  + 'interesting the task is. When you are finished, stop.\n'
+  + '- Claim success only where the discipline for this mode permits it; otherwise report '
+  + 'what you observed.\n'
+  + '- When there is nothing to do — a greeting, small talk, an empty workspace — state the '
+  + 'relevant fact about the workspace in a line or two and stop. Do not fill the silence.\n'
+  + '- Write like a build log or a good commit message: specific, declarative, finished. '
+  + 'Length follows the work; a complex answer stays as long as it needs to be.';
+
 const SYSTEM_FRAME = (endpoint: string, root: string, mode: AgentMode, skillNames: readonly string[], memory: string): string =>
   'You are OmniHarness, an autonomous developer agent running inside the user\'s terminal (OmniHarness CLI, powered by the OmniRoute gateway at '
   + `${endpoint}). Workspace: ${root}. Act carefully and concretely; use the provided tools rather than guessing at file contents. `
   + MODE_PROMPT[mode]
+  + VOICE_RULES
   + (mode === 'build' ? VERIFY_RULES : '')
   + (mode === 'crazy' && memory !== '' ? `\n\nPERSISTENT MEMORY (from previous sessions):\n${memory}` : '')
   + (skillNames.length > 0 ? `\nCustom skills available: ${skillNames.map((name) => `\`${name}\``).join(', ')}.` : '');

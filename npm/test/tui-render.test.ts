@@ -424,7 +424,14 @@ test('the opening screen names the modes and marks the one in force', async () =
     assert.ok(rows.some((line) => line.includes(mode)), `${mode} is offered`);
   }
   const current = rows.find((line) => line.includes('research')) ?? '';
-  assert.match(current.trimStart(), /^[>›]/, 'the mode in force carries the marker');
+  // The mode in force is marked with the composer's own spine, in the same
+  // column as the composer's, so the two read as one device.
+  assert.match(current.trimStart(), /^[|┃]/, 'the mode in force carries the command surface mark');
+  const others = rows.filter((line) => /^\s+(plan|build|crazy)\s/.test(line));
+  assert.equal(others.length, 3, 'the other three are listed');
+  for (const line of others) {
+    assert.ok(!/^[|┃]/.test(line.trimStart()), `only one mode is marked, not ${JSON.stringify(line)}`);
+  }
   app.unmount();
 });
 

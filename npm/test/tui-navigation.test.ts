@@ -377,3 +377,15 @@ test('/find reports how many matches there are and shows the newest', async () =
   assert.match(app.screen(), /no match for "nothing-like-this"/);
   app.unmount();
 });
+
+test('/skills reports what the session can reach, and the masthead no longer does', async () => {
+  const app = await mount({ columns: 90, rows: 24 });
+  // The opening screen is identity and workspace. A count that cannot change
+  // during a session does not earn a permanent row on it.
+  assert.ok(!app.screen().includes('skill'), 'the masthead says nothing about skills');
+
+  await app.submit('/skills');
+  await app.settle(60);
+  assert.match(app.screen(), /built-in tools only/, 'and the command answers honestly when there are none');
+  app.unmount();
+});

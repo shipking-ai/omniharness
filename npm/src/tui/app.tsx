@@ -306,7 +306,6 @@ export function App({ engine }: AppProps): React.ReactElement {
             ? <Opening
                 session={state.session}
                 width={box.content}
-                headingWidth={box.chrome}
                 rows={heights.lens}
                 theme={theme}
                 glyphs={glyphs}
