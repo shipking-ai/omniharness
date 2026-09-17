@@ -63,6 +63,31 @@ type Approver interface {
 	RequestApproval(ctx context.Context, r Request, reason string) (granted bool, err error)
 }
 
+// BatchApprover is an Approver that can put several pending actions in front
+// of a person at once. Implementing it is optional; an approver that does not
+// is asked one at a time, as before.
+//
+// This exists because prompt *volume* is a safety problem, not a comfort one.
+// A model turn that asks to write six files produced six prompts, one after
+// another, each identical in shape and each answered in isolation. Nobody
+// reads the sixth. Published telemetry on a widely used harness puts approval
+// rates around 93% — at that rate a prompt is not an authorisation, it is a
+// log entry with a keystroke attached, and attackers have started writing
+// prompts designed to induce exactly that reflex.
+//
+// Six things asked once, shown together, is a decision someone can actually
+// make: the shape of the whole change is visible, and an item that does not
+// belong among the others stands out. Grouping is presentation only — every
+// request still gets its own decision, and a denial of one does not deny the
+// rest.
+type BatchApprover interface {
+	Approver
+	// RequestApprovalBatch asks about several actions together and returns one
+	// verdict per request, in the same order. Returning fewer verdicts than
+	// requests is an error: a missing answer must never be read as a yes.
+	RequestApprovalBatch(ctx context.Context, rs []Request, reasons []string) (granted []bool, err error)
+}
+
 // ApproverFunc adapts a function to the Approver interface.
 type ApproverFunc func(ctx context.Context, r Request, reason string) (bool, error)
 
@@ -282,6 +307,78 @@ func (e *Engine) EvaluateAndExecute(ctx context.Context, r Request) (Decision, e
 		return Allow, nil
 	}
 	return d, nil
+}
+
+// EvaluateBatch decides a whole model turn's worth of tool calls, consulting a
+// person once for everything that needs it rather than once per call.
+//
+// The decisions are per request and identical to what EvaluateAndExecute would
+// have returned for each on its own: blocks still block, allows still allow,
+// and only the *asking* is grouped. What changes is how many times someone is
+// interrupted, which is the thing that decides whether they are still reading.
+func (e *Engine) EvaluateBatch(ctx context.Context, rs []Request) ([]Decision, error) {
+	out := make([]Decision, len(rs))
+	var (
+		pending []Request
+		reasons []string
+		at      []int
+	)
+	for i, r := range rs {
+		d, reason, err := e.Evaluate(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		if d != Ask {
+			out[i] = d
+			continue
+		}
+		if AutoApproved(ctx) {
+			out[i] = Allow
+			continue
+		}
+		// Block is the default for anything that needs asking, so a failure
+		// anywhere below leaves it denied rather than allowed.
+		out[i] = Block
+		pending = append(pending, r)
+		reasons = append(reasons, reason)
+		at = append(at, i)
+	}
+	if len(pending) == 0 {
+		return out, nil
+	}
+	if e.approver == nil {
+		return out, fmt.Errorf("approval required (%s) but no approver is connected", reasons[0])
+	}
+
+	if batch, ok := e.approver.(BatchApprover); ok {
+		granted, err := batch.RequestApprovalBatch(ctx, pending, reasons)
+		if err != nil {
+			return out, err
+		}
+		if len(granted) != len(pending) {
+			// A short answer is not a partial yes. Everything stays denied.
+			return out, fmt.Errorf("approver answered %d of %d requests", len(granted), len(pending))
+		}
+		for i, ok := range granted {
+			if ok {
+				out[at[i]] = Allow
+			}
+		}
+		return out, nil
+	}
+
+	// An approver that cannot take a batch is asked one at a time, which is
+	// exactly what happened before this existed.
+	for i, r := range pending {
+		ok, err := e.approver.RequestApproval(ctx, r, reasons[i])
+		if err != nil {
+			return out, err
+		}
+		if ok {
+			out[at[i]] = Allow
+		}
+	}
+	return out, nil
 }
 
 func outsideWorkspace(p, root string) bool {

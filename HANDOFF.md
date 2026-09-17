@@ -7,7 +7,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
 - **Location:** repository root. Committed, so it travels with the branch.
-- **Last updated:** after hooks — backlog item 06 done
+- **Last updated:** item 07 part one (policy-side batching) committed; agent wiring still to do
 
 ---
 
@@ -17,7 +17,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 |---|---|
 | Commits on branch, unmerged | `a8d255d`, `855d4fc`, handoff commits, eviction fix |
 | Open PR | none — not opened yet, user has not asked |
-| Go tests | 659 test functions, `go test ./...` clean |
+| Go tests | 665 test functions, `go test ./...` clean |
 | npm tests | 463 pass |
 | `gofmt` / `go vet` / `typecheck` | clean |
 
@@ -44,7 +44,7 @@ Ranked in the research report (§09). Numbering is the report's.
 - [x] **04** Read AGENTS.md — *done in `a8d255d`*
 - [x] **05** Tier the context strategy — *done*; eviction order was fixed first, see above
 - [x] **06** Add hooks on top of the event spine — *done*
-- [ ] **07** Design for approval volume, not just classification — **NEXT**
+- [ ] **07** Design for approval volume — **IN PROGRESS**, policy side done, agent wiring next
 - [ ] **08** Close the sandbox gap, or document the trust model
 - [ ] **09** Put a learned router behind capability intent
 
@@ -114,6 +114,28 @@ points cannot deny, since the work has already happened.
 **Scope deliberately not taken:** hooks are in-process Go only. No shell hooks,
 which avoids the whole question of what a subprocess inherits (see `envguard` —
 it scopes the harness's own credentials and nothing else).
+
+### 07 — in progress
+
+**Done (policy side):** `policy.EvaluateBatch` decides a whole model turn at
+once and consults a person once for everything that needs it. `BatchApprover`
+is an optional interface — an approver that does not implement it is asked one
+at a time exactly as before.
+
+Grouping is presentation only. Every request keeps its own verdict, denying one
+does not deny the rest, blocks are never softened, a call that did not need
+asking is never padded into the prompt, and a short or failing answer denies
+everything rather than being read as a partial yes.
+
+**Still to do (agent side):** `agent.executeToolCall` still evaluates one call
+at a time, so nothing calls `EvaluateBatch` yet. The wiring needs
+`executeToolCall` split so a turn can be decided before the loop runs, without
+running hooks twice — the pre-pass has to cache hook and validation outcomes,
+not just policy ones. Note the trade-off: a pre-decided call that the loop
+never reaches (budget exhausted, repeat-stall) means someone was asked about
+work that did not happen. Still better than N prompts, but worth bounding.
+
+**Then:** grant expiry within a run, and structured evidence at the prompt.
 
 ### Deliberately NOT doing yet
 
@@ -193,6 +215,18 @@ it scopes the harness's own credentials and nothing else).
   (`look.py` is the PTY render harness; session-local, does not survive)
 
 ## Open questions for the user
+
+- **Commit authorship.** Commits up to and including `c537f2d` are authored
+  `Claude <noreply@anthropic.com>`, so none of the work shows on the owner's
+  contribution graph. Repo and global git identity are now
+  `shipking-ai <palmettopropertybuyer@gmail.com>`, so commits from here carry
+  the owner's name. Two things remain blocked by the permission classifier:
+  changing the address to the GitHub-linked `Ship King
+  <227889443+shipking-ai@users.noreply.github.com>` (a `git config` write —
+  better because it is guaranteed to link and keeps a personal address out of
+  public history), and re-authoring the 8 unmerged commits (a rebase, blocked
+  as destructive). Merged commits must not be rewritten either way.
+
 
 - **Cache directives are not emitted.** The prompt is now *shaped* for caching and the
   reported hit rate is *recorded*, but nothing sends `cache_control`. Whether OmniRoute
