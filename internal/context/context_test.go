@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"omniharness/internal/gateway"
 	"omniharness/internal/task"
 )
 
@@ -286,4 +287,119 @@ func tail(s string) string {
 		return s[len(s)-80:]
 	}
 	return s
+}
+
+// --- which end of history survives -------------------------------------------
+
+// The recent turns are the ones the next step depends on. Keeping the opening
+// exchange and dropping what just happened leaves an agent that cannot see
+// what its last tool call returned — so it calls it again, which is how a run
+// starts circling.
+func TestHistoryKeepsTheNewestTurns(t *testing.T) {
+	var hist []Message
+	for _, tag := range []string{"oldest", "second", "third", "newest"} {
+		hist = append(hist, Message{Role: "user", Content: tag + " " + strings.Repeat("x", 400)})
+	}
+	c := NewComposer(Limits{MaxTokens: 260, CondenseAt: 100})
+	out, err := c.Compose(Input{
+		Spec:    task.Spec{Prompt: "go"},
+		Profile: task.Profile{Complexity: task.ComplexityLow},
+		History: hist,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	joined := ""
+	for _, m := range out.Messages {
+		joined += m.Content + "\n"
+	}
+	if !strings.Contains(joined, "newest") {
+		t.Errorf("the most recent turn was dropped:\n%s", joined)
+	}
+	if strings.Contains(joined, "oldest") {
+		t.Errorf("the oldest turn survived while newer ones did not:\n%s", joined)
+	}
+	if !out.Condensed || out.Dropped == 0 {
+		t.Errorf("dropping history must be reported: condensed=%v dropped=%d", out.Condensed, out.Dropped)
+	}
+}
+
+// What survives must still be in the order it happened.
+func TestKeptHistoryStaysChronological(t *testing.T) {
+	var hist []Message
+	for _, tag := range []string{"one", "two", "three", "four", "five"} {
+		hist = append(hist, Message{Role: "user", Content: tag + " " + strings.Repeat("x", 200)})
+	}
+	c := NewComposer(Limits{MaxTokens: 400})
+	out, _ := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+
+	var seen []string
+	for _, m := range out.Messages {
+		for _, tag := range []string{"one", "two", "three", "four", "five"} {
+			if strings.HasPrefix(m.Content, tag+" ") {
+				seen = append(seen, tag)
+			}
+		}
+	}
+	order := map[string]int{"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+	for i := 1; i < len(seen); i++ {
+		if order[seen[i-1]] > order[seen[i]] {
+			t.Fatalf("history came back out of order: %v", seen)
+		}
+	}
+}
+
+// The wire format rejects a tool message with no matching assistant tool_calls
+// before it, so a cut that lands between the two produces a request the
+// gateway refuses outright. The boundary has to move back past the assistant
+// message that owns the results, even though that means keeping less.
+func TestHistoryNeverStartsOnAnOrphanedToolResult(t *testing.T) {
+	call := gateway.ToolCall{ID: "t1", Type: "function"}
+	hist := []Message{
+		{Role: "user", Content: "old question " + strings.Repeat("x", 600)},
+		{Role: "assistant", Content: "calling a tool", ToolCalls: []gateway.ToolCall{call}},
+		{Role: "tool", ToolCallID: "t1", Name: "read_file", Content: "file contents " + strings.Repeat("y", 300)},
+		{Role: "assistant", Content: "here is the answer"},
+	}
+	// A budget that lands the natural cut in the middle of the tool exchange.
+	for _, limit := range []int64{90, 100, 110, 120, 140, 160, 200} {
+		c := NewComposer(Limits{MaxTokens: limit})
+		out, err := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Find the first history message in the output and check it is not a
+		// tool result. Anything else is a request the gateway will reject.
+		for _, m := range out.Messages {
+			if m.Role == "tool" {
+				t.Fatalf("limit %d produced an orphaned tool result as the first history message", limit)
+			}
+			if m.Role == "assistant" || (m.Role == "user" && strings.HasPrefix(m.Content, "old question")) {
+				break // reached real history, and it was not a tool message
+			}
+		}
+	}
+}
+
+// A tool result kept at all must still have its assistant message with it.
+func TestKeptToolResultKeepsItsRequest(t *testing.T) {
+	call := gateway.ToolCall{ID: "t1", Type: "function"}
+	hist := []Message{
+		{Role: "user", Content: "q " + strings.Repeat("x", 2000)},
+		{Role: "assistant", Content: "calling", ToolCalls: []gateway.ToolCall{call}},
+		{Role: "tool", ToolCallID: "t1", Name: "read_file", Content: "result"},
+	}
+	c := NewComposer(Limits{MaxTokens: 200})
+	out, _ := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+
+	sawAssistant := false
+	for _, m := range out.Messages {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			sawAssistant = true
+		}
+		if m.Role == "tool" && !sawAssistant {
+			t.Fatal("a tool result was kept without the assistant message that requested it")
+		}
+	}
 }

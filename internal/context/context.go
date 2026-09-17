@@ -167,23 +167,69 @@ func (c *Composer) Compose(in Input) (Output, error) {
 	out.Messages = append(out.Messages, Message{Role: "user", Content: user})
 	out.Tokens += Estimate(user)
 
-	// Append history until the cap is reached; condense the overflow.
-	var kept []Message
-	for _, m := range in.History {
-		t := Estimate(m.Content)
-		if out.Tokens+t > limit {
-			out.Condensed = true
-			out.Dropped += len(in.History) - len(kept)
-			if c.Limits.CondenseAt > 0 && out.Tokens > c.Limits.CondenseAt {
-				kept = append(kept, Message{Role: "system", Content: condensedMarker()})
-			}
-			break
+	// Fit history newest-first, then restore chronological order.
+	//
+	// This used to walk oldest-first and stop at the cap, which kept the
+	// opening exchange and dropped everything recent — so a long run lost the
+	// tool results it had just received while carrying turns it had already
+	// acted on. That is the wrong end: the recent turns are the ones the next
+	// step depends on, and an agent that cannot see what its last tool call
+	// returned repeats it, which is how a run starts circling.
+	kept, dropped := c.fitNewestFirst(in.History, limit, &out.Tokens)
+	if dropped > 0 {
+		out.Condensed = true
+		out.Dropped += dropped
+		// The marker stands where the dropped turns were, so the model can see
+		// that the history it is reading is not the whole history. Without it
+		// the transcript looks complete and simply begins in the middle.
+		if c.Limits.CondenseAt > 0 && out.Tokens > c.Limits.CondenseAt {
+			kept = append([]Message{{Role: "system", Content: condensedMarker()}}, kept...)
 		}
-		kept = append(kept, m)
-		out.Tokens += t
 	}
 	out.Messages = append(out.Messages, kept...)
 	return out, nil
+}
+
+// fitNewestFirst keeps as much of the tail of history as the budget allows and
+// returns it in chronological order, with the number of messages dropped.
+//
+// Tool results cannot be separated from the assistant message that requested
+// them: the wire format rejects a tool message with no matching assistant
+// tool_calls before it, so a cut that lands between the two produces a request
+// the gateway refuses outright. A boundary that would orphan tool results is
+// therefore moved back past the assistant message that owns them, giving up a
+// little more history to keep what remains sendable.
+func (c *Composer) fitNewestFirst(history []Message, limit int64, tokens *int64) ([]Message, int) {
+	base := *tokens // everything already composed: system prompt, user message, files
+	start := len(history)
+	used := base
+	for i := len(history) - 1; i >= 0; i-- {
+		t := Estimate(history[i].Content)
+		if used+t > limit {
+			break
+		}
+		used += t
+		start = i
+	}
+	// Walk the boundary back until the first kept message is not an orphaned
+	// tool result. Every step past an assistant message that requested tool
+	// calls has to take that message too, so this drops rather than adds.
+	for start < len(history) && history[start].Role == "tool" {
+		start++
+	}
+	if start >= len(history) {
+		// Nothing can be kept without orphaning something. Dropping all of it
+		// is correct: a partial tool exchange is not shorter history, it is a
+		// request the gateway rejects.
+		return nil, len(history)
+	}
+	// Re-measure rather than reuse `used`: the orphan walk above may have
+	// dropped messages that were already counted into it.
+	*tokens = base
+	for _, m := range history[start:] {
+		*tokens += Estimate(m.Content)
+	}
+	return history[start:], start
 }
 
 // truncateToTokens trims text to approximately the given token budget. The

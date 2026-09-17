@@ -7,7 +7,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
 - **Location:** repository root. Committed, so it travels with the branch.
-- **Last updated:** in progress on history eviction, see In flight
+- **Last updated:** after `HEAD` — history eviction fixed
 
 ---
 
@@ -15,9 +15,9 @@ If you are picking this up cold, read this file top to bottom and you have every
 
 | | |
 |---|---|
-| Commits on branch, unmerged | `a8d255d`, `855d4fc` |
+| Commits on branch, unmerged | `a8d255d`, `855d4fc`, handoff commits, eviction fix |
 | Open PR | none — not opened yet, user has not asked |
-| Go tests | 630 test functions, `go test ./...` clean |
+| Go tests | 634 test functions, `go test ./...` clean |
 | npm tests | 463 pass |
 | `gofmt` / `go vet` / `typecheck` | clean |
 
@@ -42,29 +42,34 @@ Ranked in the research report (§09). Numbering is the report's.
 - [x] **02** Reorder the prompt, then cache it — *done in `a8d255d`* (reordering + `cached_tokens` accounting; **emitting** cache directives is NOT done, see Open questions)
 - [x] **03** Read the trajectories you already record — *done in `855d4fc`*
 - [x] **04** Read AGENTS.md — *done in `a8d255d`*
-- [ ] **05** Tier the context strategy — **NEXT**
+- [ ] **05** Tier the context strategy — **NEXT** (eviction order fixed first, see above)
 - [ ] **06** Add hooks on top of the event spine
 - [ ] **07** Design for approval volume, not just classification
 - [ ] **08** Close the sandbox gap, or document the trust model
 - [ ] **09** Put a learned router behind capability intent
 
-### IN FLIGHT — history eviction keeps the wrong end
+### DONE — history eviction kept the wrong end
 
-Found while starting 05, verified empirically rather than by reading. In
-`internal/context/context.go` the history loop appends oldest-first until the
-budget runs out and then breaks, so **it keeps the oldest turns and drops the
-newest**. With four turns and room for two, `OLDEST-turn` and `middle-one`
-survive; `middle-two` and `NEWEST-turn` are dropped.
+Found while starting 05, verified empirically rather than by reading. The
+history loop in `internal/context/context.go` appended oldest-first until the
+budget ran out and then broke, so **it kept the oldest turns and dropped the
+newest**. With four turns and room for two, `oldest` and `second` survived;
+`third` and `newest` were dropped.
 
-That is close to the worst possible eviction order: the agent loses the tool
-results it just received — the thing it needs to continue — and keeps the
-opening exchange it has already acted on. It also explains why a long run
-degrades rather than merely shortening.
+Close to the worst possible eviction order: the agent lost the tool results it
+had just received — the thing the next step depends on — and kept the opening
+exchange it had already acted on. An agent that cannot see what its last tool
+call returned calls it again, which is how a run starts circling; `diagnose`
+would have reported that as `repeated_call` without naming the cause.
 
-This is bigger than the tiering and goes first. 05 as written still stands,
-but the ladder is worth less than fixing which end survives.
-
-**Status:** verified, not yet fixed. Nothing changed on disk yet.
+**Fixed.** `fitNewestFirst` keeps the tail of history and returns it
+chronologically. The subtlety is tool results: the wire format rejects a tool
+message with no matching assistant `tool_calls` before it, so a cut landing
+between the two produces a request the gateway refuses outright. The boundary
+walks back past the assistant message that owns the results, keeping less in
+order to keep what remains sendable. Tests cover: newest survives, order is
+preserved, the first kept message is never an orphaned tool result across
+seven different budgets, and a kept tool result always has its request.
 
 ### 05 — what it means, concretely
 
