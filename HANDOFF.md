@@ -6,7 +6,8 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Branch:** `claude/inspiring-hypatia-wx35s3`
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
-- **Last updated:** in progress on **05**, see In flight
+- **Location:** repository root. Committed, so it travels with the branch.
+- **Last updated:** in progress on history eviction, see In flight
 
 ---
 
