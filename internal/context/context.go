@@ -4,6 +4,7 @@
 package context
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -46,12 +47,46 @@ type Input struct {
 	SystemPrompt string
 }
 
+// Tier is how far down the reduction ladder composition had to go to fit.
+//
+// The ladder exists because the things in a context are not equally worth
+// keeping, and a single threshold treats them as if they were. A tool result
+// from twenty steps ago is bulk the model has already extracted what it needs
+// from; the turn that produced it is the record that it happened. Losing the
+// first costs almost nothing and buys a lot of room, so it goes first.
+type Tier string
+
+const (
+	// TierNone: everything fitted.
+	TierNone Tier = ""
+	// TierToolResults: the bodies of older tool results were replaced with a
+	// note saying how much was elided. The messages stay — removing them would
+	// orphan the assistant turns that requested them — but their bulk goes.
+	// This is the cheapest thing in a context to lose.
+	TierToolResults Tier = "tool_results"
+	// TierDropTurns: whole turns were dropped from the start of history,
+	// oldest first, after eliding tool results was not enough.
+	TierDropTurns Tier = "drop_turns"
+	// TierTrimPrompt: even the system prompt and the task did not fit, so the
+	// system prompt was trimmed. Reaching here means the limit is too small
+	// for the task rather than the history being too long, and it is worth
+	// surfacing differently for that reason.
+	TierTrimPrompt Tier = "trim_prompt"
+)
+
 // Output of the composer.
 type Output struct {
 	Messages  []Message
 	Tokens    int64
 	Condensed bool
 	Dropped   int
+	// Tier is the furthest step down the ladder this composition needed. It is
+	// reported so the interface can say which one fired and so a regression
+	// can be seen: a run that used to fit on tool-result elision and now drops
+	// turns has got worse in a way total token count alone does not show.
+	Tier Tier
+	// Elided counts tool results whose bodies were replaced.
+	Elided int
 }
 
 // Limits control composition behavior.
@@ -132,6 +167,11 @@ func (c *Composer) Compose(in Input) (Output, error) {
 			sys = truncateToTokens(sys, limit/4)
 		}
 		out.Condensed = true
+		// The bottom of the ladder, and it means something different from the
+		// tiers above: the limit is too small for the task itself, not merely
+		// too small for its history. Nothing below this is recoverable by
+		// shedding context.
+		out.Tier = TierTrimPrompt
 	}
 	out.Messages = append(out.Messages, Message{Role: "system", Content: sys})
 	out.Tokens += Estimate(sys)
@@ -175,8 +215,27 @@ func (c *Composer) Compose(in Input) (Output, error) {
 	// acted on. That is the wrong end: the recent turns are the ones the next
 	// step depends on, and an agent that cannot see what its last tool call
 	// returned repeats it, which is how a run starts circling.
-	kept, dropped := c.fitNewestFirst(in.History, limit, &out.Tokens)
+	// Tier one: elide the bodies of older tool results before dropping
+	// anything. A tool result is the bulkiest thing in a trajectory and the
+	// least useful to re-read — the model already acted on it, and what it
+	// needs from that turn is that the call happened and roughly what came
+	// back. Dropping a whole turn to save the same room costs the record of a
+	// decision; eliding a result costs a page of file contents.
+	history := in.History
+	if base := out.Tokens; base+historyTokens(history) > limit {
+		elided, n := elideToolResults(history, limit-base)
+		if n > 0 {
+			history = elided
+			out.Elided = n
+			out.Tier = TierToolResults
+			out.Condensed = true
+		}
+	}
+
+	// Tier two: drop whole turns, oldest first, if eliding was not enough.
+	kept, dropped := c.fitNewestFirst(history, limit, &out.Tokens)
 	if dropped > 0 {
+		out.Tier = TierDropTurns
 		out.Condensed = true
 		out.Dropped += dropped
 		// The marker stands where the dropped turns were, so the model can see
@@ -306,4 +365,70 @@ func Summarize(messages []Message, maxChars int) string {
 		b.WriteString("\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// historyTokens is what a whole history would cost.
+func historyTokens(history []Message) int64 {
+	var n int64
+	for _, m := range history {
+		n += Estimate(m.Content)
+	}
+	return n
+}
+
+// elideToolResults replaces the bodies of the oldest tool results with a note
+// saying what was there, stopping as soon as the history fits the room it is
+// given. It returns the rewritten history and how many results it elided.
+//
+// The messages themselves stay. Removing a tool message would orphan the
+// assistant turn that requested it — the wire format rejects the pairing —
+// and the fact that a call was made is exactly the part worth keeping. What
+// goes is the payload: a file listing, a diff, a page of output the model has
+// already read once and acted on.
+//
+// Oldest first, because a recent result is still being worked with.
+func elideToolResults(history []Message, room int64) ([]Message, int) {
+	if room < 0 {
+		room = 0
+	}
+	total := historyTokens(history)
+	if total <= room {
+		return history, 0
+	}
+	out := append([]Message(nil), history...)
+	elided := 0
+	for i := range out {
+		if total <= room {
+			break
+		}
+		if out[i].Role != "tool" || out[i].Content == "" {
+			continue
+		}
+		before := Estimate(out[i].Content)
+		note := elidedNote(out[i].Name, len(out[i].Content))
+		after := Estimate(note)
+		if after >= before {
+			// Nothing to gain: the note would be as long as the result.
+			continue
+		}
+		out[i].Content = note
+		total -= before - after
+		elided++
+	}
+	if elided == 0 {
+		return history, 0
+	}
+	return out, elided
+}
+
+// elidedNote is what stands in for a tool result that was dropped. It names
+// the tool and the size, because "a result was here and it was large" is the
+// part the model can still act on — it can call the tool again if it turns out
+// to need the detail, and silently shortening the content would leave it
+// reasoning from a truncated payload without knowing it.
+func elidedNote(tool string, size int) string {
+	if tool == "" {
+		tool = "tool"
+	}
+	return fmt.Sprintf("[%s result elided to save context: %d bytes. Call it again if you need the detail.]", tool, size)
 }

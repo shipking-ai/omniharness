@@ -403,3 +403,159 @@ func TestKeptToolResultKeepsItsRequest(t *testing.T) {
 		}
 	}
 }
+
+// --- the reduction ladder -----------------------------------------------------
+
+func toolExchange(tag string, resultSize int) []Message {
+	call := gateway.ToolCall{ID: "t-" + tag, Type: "function"}
+	return []Message{
+		{Role: "assistant", Content: "calling read_file for " + tag, ToolCalls: []gateway.ToolCall{call}},
+		{Role: "tool", ToolCallID: "t-" + tag, Name: "read_file", Content: tag + "-body " + strings.Repeat("z", resultSize)},
+	}
+}
+
+// The things in a context are not equally worth keeping. A tool result from
+// twenty steps ago is bulk the model has already extracted what it needs from;
+// the turn that produced it is the record that it happened. So the result goes
+// first, and the turn survives.
+func TestToolResultsAreElidedBeforeTurnsAreDropped(t *testing.T) {
+	var hist []Message
+	for _, tag := range []string{"first", "second", "third"} {
+		hist = append(hist, toolExchange(tag, 1200)...)
+	}
+	// Room for the turns but not for their payloads.
+	c := NewComposer(Limits{MaxTokens: 400})
+	out, err := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out.Tier != TierToolResults {
+		t.Fatalf("tier = %q, want %q — turns were dropped before payloads were", out.Tier, TierToolResults)
+	}
+	if out.Elided == 0 {
+		t.Fatal("nothing was elided")
+	}
+	if out.Dropped != 0 {
+		t.Fatalf("dropped %d turns when eliding was enough", out.Dropped)
+	}
+
+	var joined string
+	for _, m := range out.Messages {
+		joined += m.Content + "\n"
+	}
+	// The record that each call happened survives.
+	for _, tag := range []string{"first", "second", "third"} {
+		if !strings.Contains(joined, "calling read_file for "+tag) {
+			t.Errorf("the %s call was lost — eliding a payload should not cost the record of the call", tag)
+		}
+	}
+	// The elision says what it replaced, so the model can go get it again
+	// rather than reasoning from a gap it cannot see.
+	if !strings.Contains(joined, "elided to save context") {
+		t.Errorf("an elided result must say so:\n%s", joined)
+	}
+	if !strings.Contains(joined, "read_file") {
+		t.Error("the note should name the tool that produced the result")
+	}
+}
+
+// The newest result is still being worked with, so the oldest goes first.
+func TestElisionStartsWithTheOldestResult(t *testing.T) {
+	var hist []Message
+	hist = append(hist, toolExchange("oldest", 2000)...)
+	hist = append(hist, toolExchange("newest", 2000)...)
+
+	c := NewComposer(Limits{MaxTokens: 620})
+	out, _ := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+
+	var joined string
+	for _, m := range out.Messages {
+		joined += m.Content + "\n"
+	}
+	if out.Elided != 1 {
+		t.Fatalf("elided %d results, wanted exactly the one that was needed", out.Elided)
+	}
+	if strings.Contains(joined, "oldest-body") {
+		t.Error("the oldest result should have been the one elided")
+	}
+	if !strings.Contains(joined, "newest-body") {
+		t.Errorf("the newest result is still being worked with and should survive:\n%s", joined)
+	}
+}
+
+// When eliding is not enough, the ladder goes on to dropping turns — and says
+// which rung it reached, because a run that used to fit on elision and now
+// drops turns has got worse in a way a token count does not show.
+func TestLadderFallsThroughToDroppingTurns(t *testing.T) {
+	var hist []Message
+	for _, tag := range []string{"a", "b", "c", "d", "e", "f"} {
+		hist = append(hist, toolExchange(tag, 3000)...)
+	}
+	c := NewComposer(Limits{MaxTokens: 120})
+	out, _ := c.Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+
+	if out.Tier != TierDropTurns {
+		t.Fatalf("tier = %q, want %q", out.Tier, TierDropTurns)
+	}
+	if out.Dropped == 0 {
+		t.Fatal("turns should have been dropped at this budget")
+	}
+}
+
+// The bottom rung means something different: the limit is too small for the
+// task itself, not for its history, and nothing below it is recoverable by
+// shedding context.
+func TestLadderBottomsOutOnTheSystemPrompt(t *testing.T) {
+	c := NewComposer(Limits{MaxTokens: 12})
+	out, err := c.Compose(Input{
+		Spec:         task.Spec{Prompt: strings.Repeat("a long task description ", 40)},
+		SystemPrompt: strings.Repeat("a long system prompt ", 40),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Tier != TierTrimPrompt {
+		t.Fatalf("tier = %q, want %q", out.Tier, TierTrimPrompt)
+	}
+}
+
+// A context that fits reports no tier at all, so "which rung" is only ever
+// asked about runs that needed one.
+func TestFittingContextReportsNoTier(t *testing.T) {
+	out, _ := NewComposer(Limits{MaxTokens: 100000}).Compose(Input{
+		Spec:    task.Spec{Prompt: "go"},
+		History: toolExchange("one", 50),
+	})
+	if out.Tier != TierNone {
+		t.Fatalf("tier = %q, want none", out.Tier)
+	}
+	if out.Elided != 0 || out.Dropped != 0 || out.Condensed {
+		t.Fatalf("nothing should have been reduced: %+v", out)
+	}
+}
+
+// Eliding must not break the pairing the wire format requires: the tool
+// message stays where it was, with its content replaced.
+func TestElisionKeepsToolMessagesPairedWithTheirRequests(t *testing.T) {
+	var hist []Message
+	for _, tag := range []string{"a", "b", "c"} {
+		hist = append(hist, toolExchange(tag, 1500)...)
+	}
+	out, _ := NewComposer(Limits{MaxTokens: 500}).Compose(Input{Spec: task.Spec{Prompt: "go"}, History: hist})
+
+	sawCall := false
+	for _, m := range out.Messages {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			sawCall = true
+		}
+		if m.Role == "tool" {
+			if !sawCall {
+				t.Fatal("a tool message appeared with no assistant tool_calls before it")
+			}
+			if m.Content == "" {
+				t.Fatal("an elided result must carry a note, not an empty body")
+			}
+		}
+	}
+}

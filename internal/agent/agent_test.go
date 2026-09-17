@@ -389,3 +389,57 @@ func TestAgentWithNoReplanRequestHasNoReason(t *testing.T) {
 		t.Fatalf("ReplanReason() = %q, want empty", got)
 	}
 }
+
+// --- what the interface is told about context reduction ----------------------
+
+// "Condensed" alone cannot distinguish a run that shed a few stale tool
+// payloads from one throwing away whole turns. The second is a run in trouble;
+// the first is the system working. A reader who cannot tell them apart tunes
+// neither.
+func TestContextReasonNamesTheRungAndItsCost(t *testing.T) {
+	cases := []struct {
+		name string
+		out  composer.Output
+		want []string
+		deny []string
+	}{
+		{
+			name: "elision only",
+			out:  composer.Output{Condensed: true, Tier: composer.TierToolResults, Elided: 2},
+			want: []string{"elided", "2"},
+			deny: []string{"dropped"},
+		},
+		{
+			name: "turns dropped after elision",
+			out:  composer.Output{Condensed: true, Tier: composer.TierDropTurns, Elided: 3, Dropped: 7},
+			want: []string{"elided", "3", "dropped", "7"},
+		},
+		{
+			name: "turns dropped with nothing to elide",
+			out:  composer.Output{Condensed: true, Tier: composer.TierDropTurns, Dropped: 4},
+			want: []string{"dropped", "4"},
+			deny: []string{"elided"},
+		},
+		{
+			name: "the task itself does not fit",
+			out:  composer.Output{Condensed: true, Tier: composer.TierTrimPrompt},
+			want: []string{"task alone exceeds"},
+			deny: []string{"dropped", "elided"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := contextReason(tc.out)
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("reason %q is missing %q", got, want)
+				}
+			}
+			for _, deny := range tc.deny {
+				if strings.Contains(got, deny) {
+					t.Errorf("reason %q should not mention %q", got, deny)
+				}
+			}
+		})
+	}
+}

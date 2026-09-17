@@ -7,7 +7,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
 - **Location:** repository root. Committed, so it travels with the branch.
-- **Last updated:** after `HEAD` — history eviction fixed
+- **Last updated:** after the context ladder — backlog item 05 done
 
 ---
 
@@ -17,7 +17,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 |---|---|
 | Commits on branch, unmerged | `a8d255d`, `855d4fc`, handoff commits, eviction fix |
 | Open PR | none — not opened yet, user has not asked |
-| Go tests | 634 test functions, `go test ./...` clean |
+| Go tests | 641 test functions, `go test ./...` clean |
 | npm tests | 463 pass |
 | `gofmt` / `go vet` / `typecheck` | clean |
 
@@ -42,8 +42,8 @@ Ranked in the research report (§09). Numbering is the report's.
 - [x] **02** Reorder the prompt, then cache it — *done in `a8d255d`* (reordering + `cached_tokens` accounting; **emitting** cache directives is NOT done, see Open questions)
 - [x] **03** Read the trajectories you already record — *done in `855d4fc`*
 - [x] **04** Read AGENTS.md — *done in `a8d255d`*
-- [ ] **05** Tier the context strategy — **NEXT** (eviction order fixed first, see above)
-- [ ] **06** Add hooks on top of the event spine
+- [x] **05** Tier the context strategy — *done*; eviction order was fixed first, see above
+- [ ] **06** Add hooks on top of the event spine — **NEXT**
 - [ ] **07** Design for approval volume, not just classification
 - [ ] **08** Close the sandbox gap, or document the trust model
 - [ ] **09** Put a learned router behind capability intent
@@ -71,12 +71,22 @@ order to keep what remains sendable. Tests cover: newest survives, order is
 preserved, the first kept message is never an orphaned tool result across
 seven different budgets, and a kept tool result always has its request.
 
-### 05 — what it means, concretely
+### 05 — what shipped
 
-`internal/context/context.go` condenses at one `CondenseAt` threshold. Replace with an
-ordered ladder: **evict tool results → condense history → summarise → refuse**, emitting a
-distinct event per tier so the TUI can say which fired and `diagnose` can measure whether
-it helped. Evidence: context editing is worth 29–39% on the published numbers.
+`internal/context` now reduces in tiers instead of at one threshold, and reports
+which rung it reached (`Output.Tier`):
+
+1. **`tool_results`** — elide the bodies of the oldest tool results, keeping the
+   messages so the assistant turns that requested them are not orphaned. The note
+   left behind names the tool and the byte count and tells the model it can call
+   again, so it is not reasoning from a gap it cannot see.
+2. **`drop_turns`** — drop whole turns, oldest first, when eliding was not enough.
+3. **`trim_prompt`** — trim the system prompt. Different in kind: the limit is too
+   small for the task, and no amount of shedding history fixes it.
+
+`agent.contextReason` turns the tier into what the interface says, with counts.
+"Condensed" alone could not distinguish shedding a few stale payloads from
+throwing away whole turns, and those are opposite situations.
 
 ### Deliberately NOT doing yet
 

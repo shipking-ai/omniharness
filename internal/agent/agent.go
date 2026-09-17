@@ -614,7 +614,11 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 		return nil, err
 	}
 	if out.Condensed {
-		a.publish(&event.ContextData{Reason: "history condensed at token limit"})
+		// Name the rung. "Condensed" alone cannot distinguish a run that shed
+		// a few stale tool payloads from one that is throwing away whole turns
+		// — and the second is a run in trouble while the first is the system
+		// working. A reader who cannot tell them apart tunes neither.
+		a.publish(&event.ContextData{Reason: contextReason(out)})
 	}
 
 	a.setLifecycle(LifecycleThinking, task.StatusRunning, "thinking")
@@ -971,4 +975,26 @@ func (a *Agent) flushPendingImages() *gateway.Message {
 			Summary: fmt.Sprintf("attached %d image(s) for %s to look at", len(refs), viewer)})
 	}
 	return &gateway.Message{Role: "user", Content: b.String(), Images: refs}
+}
+
+// contextReason describes what composition had to give up, in the terms the
+// ladder uses. It reports counts because "two results elided" and "eleven
+// turns dropped" are different situations and the number is what separates
+// them.
+func contextReason(out composer.Output) string {
+	switch out.Tier {
+	case composer.TierToolResults:
+		return fmt.Sprintf("context: elided %d stale tool result(s) to stay under the token limit", out.Elided)
+	case composer.TierDropTurns:
+		if out.Elided > 0 {
+			return fmt.Sprintf("context: elided %d tool result(s) and dropped %d older turn(s)", out.Elided, out.Dropped)
+		}
+		return fmt.Sprintf("context: dropped %d older turn(s) to stay under the token limit", out.Dropped)
+	case composer.TierTrimPrompt:
+		// Different in kind from the rungs above: no amount of shedding
+		// history fixes it.
+		return "context: the task alone exceeds the token limit — the system prompt was trimmed"
+	default:
+		return "history condensed at token limit"
+	}
 }
