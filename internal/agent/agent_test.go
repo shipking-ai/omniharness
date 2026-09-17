@@ -3,15 +3,18 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	composer "omniharness/internal/context"
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
+	"omniharness/internal/hook"
 	"omniharness/internal/model"
 	"omniharness/internal/policy"
 	"omniharness/internal/session"
@@ -441,5 +444,220 @@ func TestContextReasonNamesTheRungAndItsCost(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- hooks on the tool path ---------------------------------------------------
+
+func writeCall(id, path, content string) gateway.ToolCall {
+	c := gateway.ToolCall{ID: id, Type: "function"}
+	c.Function.Name = "write_file"
+	c.Function.Arguments = `{"path":"` + path + `","content":"` + content + `"}`
+	return c
+}
+
+// A rule in a system prompt is a request. A hook is on the path the action has
+// to travel, so it holds whether or not the model cooperates.
+func TestHookRefusesAToolCallTheModelInsistsOn(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{writeCall("w1", "secrets.env", "KEY=1")}},
+		testutil.FakeStep{Content: "gave up"},
+	)
+	deps := testDeps(t, fake, dir)
+	hooks := hook.NewRegistry()
+	if err := hooks.Add(hook.Func{
+		HookName: "no-env-files",
+		At:       []hook.Point{hook.BeforeTool},
+		Fn: func(_ context.Context, c hook.Call) error {
+			if p, _ := c.Args["path"].(string); strings.HasSuffix(p, ".env") {
+				return fmt.Errorf("writing %s is not allowed in this workspace", p)
+			}
+			return nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deps.Hooks = hooks
+
+	ag, err := runAgent(t, deps, task.Spec{Prompt: "write the env file", CWD: dir}, RoleImplementer)
+	if err != nil {
+		t.Fatalf("the run should continue after a refusal, not fail: %v", err)
+	}
+	_ = ag
+
+	if _, err := os.Stat(filepath.Join(dir, "secrets.env")); err == nil {
+		t.Fatal("the hook refused the write and the file exists anyway")
+	}
+	// The model is told which rule refused it and why, so it can do something
+	// else rather than retry the same call.
+	var refusal string
+	for _, m := range ag.Transcript {
+		if m.Role == "tool" && strings.Contains(m.Content, "refused") {
+			refusal = m.Content
+		}
+	}
+	if refusal == "" {
+		t.Fatalf("no refusal reached the model:\n%+v", ag.Transcript)
+	}
+	if !strings.Contains(refusal, "no-env-files") {
+		t.Errorf("the refusal should name the rule: %q", refusal)
+	}
+}
+
+// The property the design rests on, tested where it actually matters: a hook
+// that stands aside must not turn into an approval. Policy still runs, and a
+// tool policy blocks stays blocked no matter how permissive the hooks are.
+func TestPermissiveHookCannotUnblockWhatPolicyBlocks(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{writeCall("w1", "a.txt", "x")}},
+		testutil.FakeStep{Content: "gave up"},
+	)
+	deps := testDeps(t, fake, dir)
+
+	// Policy blocks every write.
+	blocking := policy.NewEngine(policy.Config{
+		RiskAction: map[string]string{
+			"low": "allow", "medium": "block", "high": "block", "critical": "block",
+		},
+		ShellAllowed: true,
+	}, nil)
+	blocking.SetApprover(policy.ApproverFunc(func(context.Context, policy.Request, string) (bool, error) {
+		return true, nil
+	}))
+	deps.Policy = blocking
+
+	hooks := hook.NewRegistry()
+	_ = hooks.Add(hook.Func{
+		HookName: "approve-everything",
+		At:       []hook.Point{hook.BeforeTool},
+		Fn:       func(context.Context, hook.Call) error { return nil },
+	})
+	deps.Hooks = hooks
+
+	ag, err := runAgent(t, deps, task.Spec{Prompt: "write a file", CWD: dir}, RoleImplementer)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "a.txt")); statErr == nil {
+		t.Fatal("a permissive hook got a policy-blocked write through — hooks must not be able to grant")
+	}
+	denied := false
+	for _, m := range ag.Transcript {
+		if m.Role == "tool" && strings.Contains(m.Content, "denied by policy") {
+			denied = true
+		}
+	}
+	if !denied {
+		t.Fatalf("policy should still have denied the call:\n%+v", ag.Transcript)
+	}
+}
+
+// With no hooks configured nothing changes, so the feature costs nothing to
+// anyone who has not asked for it.
+func TestNoHooksLeavesTheToolPathAlone(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{writeCall("w1", "a.txt", "x")}},
+		testutil.FakeStep{Content: "done"},
+	)
+	deps := testDeps(t, fake, dir) // Hooks left nil
+	if _, err := runAgent(t, deps, task.Spec{Prompt: "write a file", CWD: dir}, RoleImplementer); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a.txt")); err != nil {
+		t.Fatalf("the write should have happened normally: %v", err)
+	}
+}
+
+// Hooks run before policy, and the observable consequence is this: when a rule
+// was always going to refuse a call, nobody is asked to approve it.
+//
+// An approval prompt for something that cannot happen is the exact shape of
+// prompt that teaches people to approve without reading, so the ordering is
+// not an implementation detail.
+func TestHookDenialSparesTheHumanAnApprovalPrompt(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{writeCall("w1", "secrets.env", "KEY=1")}},
+		testutil.FakeStep{Content: "gave up"},
+	)
+	deps := testDeps(t, fake, dir)
+
+	// Policy asks a human about every write.
+	var asked int32
+	asking := policy.NewEngine(policy.Config{
+		RiskAction: map[string]string{
+			"low": "allow", "medium": "ask", "high": "ask", "critical": "block",
+		},
+		ShellAllowed: true,
+	}, nil)
+	asking.SetApprover(policy.ApproverFunc(func(context.Context, policy.Request, string) (bool, error) {
+		atomic.AddInt32(&asked, 1)
+		return true, nil
+	}))
+	deps.Policy = asking
+
+	hooks := hook.NewRegistry()
+	_ = hooks.Add(hook.Func{
+		HookName: "no-env-files",
+		At:       []hook.Point{hook.BeforeTool},
+		Fn: func(_ context.Context, c hook.Call) error {
+			if p, _ := c.Args["path"].(string); strings.HasSuffix(p, ".env") {
+				return fmt.Errorf("writing %s is not allowed", p)
+			}
+			return nil
+		},
+	})
+	deps.Hooks = hooks
+
+	if _, err := runAgent(t, deps, task.Spec{Prompt: "write the env file", CWD: dir}, RoleImplementer); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if n := atomic.LoadInt32(&asked); n != 0 {
+		t.Fatalf("a human was asked %d time(s) to approve a call a rule had already refused", n)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "secrets.env")); err == nil {
+		t.Fatal("the file was written")
+	}
+}
+
+// And a call no hook objects to still reaches the approver, so the ordering
+// does not quietly skip policy.
+func TestCallsHooksAllowStillReachPolicy(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t,
+		testutil.FakeStep{ToolCalls: []gateway.ToolCall{writeCall("w1", "notes.txt", "x")}},
+		testutil.FakeStep{Content: "done"},
+	)
+	deps := testDeps(t, fake, dir)
+
+	var asked int32
+	asking := policy.NewEngine(policy.Config{
+		RiskAction: map[string]string{
+			"low": "allow", "medium": "ask", "high": "ask", "critical": "block",
+		},
+		ShellAllowed: true,
+	}, nil)
+	asking.SetApprover(policy.ApproverFunc(func(context.Context, policy.Request, string) (bool, error) {
+		atomic.AddInt32(&asked, 1)
+		return true, nil
+	}))
+	deps.Policy = asking
+
+	hooks := hook.NewRegistry()
+	_ = hooks.Add(hook.Func{
+		HookName: "no-env-files",
+		At:       []hook.Point{hook.BeforeTool},
+		Fn:       func(context.Context, hook.Call) error { return nil },
+	})
+	deps.Hooks = hooks
+
+	if _, err := runAgent(t, deps, task.Spec{Prompt: "write notes", CWD: dir}, RoleImplementer); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if n := atomic.LoadInt32(&asked); n == 0 {
+		t.Fatal("a hook standing aside skipped policy entirely — silence is not approval")
 	}
 }

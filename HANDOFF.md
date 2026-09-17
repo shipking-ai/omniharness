@@ -7,7 +7,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
 - **Location:** repository root. Committed, so it travels with the branch.
-- **Last updated:** after the context ladder — backlog item 05 done
+- **Last updated:** after hooks — backlog item 06 done
 
 ---
 
@@ -17,7 +17,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 |---|---|
 | Commits on branch, unmerged | `a8d255d`, `855d4fc`, handoff commits, eviction fix |
 | Open PR | none — not opened yet, user has not asked |
-| Go tests | 641 test functions, `go test ./...` clean |
+| Go tests | 659 test functions, `go test ./...` clean |
 | npm tests | 463 pass |
 | `gofmt` / `go vet` / `typecheck` | clean |
 
@@ -43,8 +43,8 @@ Ranked in the research report (§09). Numbering is the report's.
 - [x] **03** Read the trajectories you already record — *done in `855d4fc`*
 - [x] **04** Read AGENTS.md — *done in `a8d255d`*
 - [x] **05** Tier the context strategy — *done*; eviction order was fixed first, see above
-- [ ] **06** Add hooks on top of the event spine — **NEXT**
-- [ ] **07** Design for approval volume, not just classification
+- [x] **06** Add hooks on top of the event spine — *done*
+- [ ] **07** Design for approval volume, not just classification — **NEXT**
 - [ ] **08** Close the sandbox gap, or document the trust model
 - [ ] **09** Put a learned router behind capability intent
 
@@ -87,6 +87,33 @@ which rung it reached (`Output.Tier`):
 `agent.contextReason` turns the tier into what the interface says, with counts.
 "Condensed" alone could not distinguish shedding a few stale payloads from
 throwing away whole turns, and those are opposite situations.
+
+### 06 — what shipped
+
+`internal/hook`: a registry consulted at `before_tool`, `before_model` and
+`after_tool`, wired into `agent.executeToolCall` **ahead of policy**.
+
+The design rests on one property: **a hook can refuse and nothing else.** There
+is no permissive verdict in the interface, because if there were, a hook would
+be a way around the policy engine and the approval gate. Policy runs regardless
+of what hooks say; a call survives only if both let it through. Two tests pin
+this — one at the unit level, one that puts a permissive hook in front of a
+policy that blocks writes and checks the file still is not written. *Adding an
+allow verdict later would not extend this design, it would end it.*
+
+Ordering matters and is tested by its observable consequence: when a hook
+refuses, the approver is never called. An approval prompt for something that
+cannot happen is the exact shape of prompt that teaches people to approve
+without reading — which is the §07 problem, so 06 already helps it.
+
+A guard that fails denies: a panicking or hanging hook refuses the call rather
+than letting it through, because a broken guard that stays quiet means the
+interface claims a rule is enforced while nothing enforces it. Observation
+points cannot deny, since the work has already happened.
+
+**Scope deliberately not taken:** hooks are in-process Go only. No shell hooks,
+which avoids the whole question of what a subprocess inherits (see `envguard` —
+it scopes the harness's own credentials and nothing else).
 
 ### Deliberately NOT doing yet
 

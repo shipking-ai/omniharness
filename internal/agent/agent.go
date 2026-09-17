@@ -17,6 +17,7 @@ import (
 	composer "omniharness/internal/context"
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
+	"omniharness/internal/hook"
 	"omniharness/internal/id"
 	"omniharness/internal/model"
 	"omniharness/internal/policy"
@@ -212,6 +213,11 @@ type Deps struct {
 	ModelSel *model.Selector
 	Tools    *tools.Registry
 	Policy   *policy.Engine
+	// Hooks are consulted before a tool call reaches policy. They can refuse
+	// and nothing else: a hook standing aside is not an approval, and policy
+	// runs whatever they say. Nil means no hooks are configured and none of
+	// this is paid for.
+	Hooks    *hook.Registry
 	Composer *composer.Composer
 	Roles    map[Role]RoleConfig
 	// VisionModels are the provider/model refs that accept image input. Not
@@ -736,6 +742,22 @@ func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCf
 		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Error: err.Error()})
 		_ = a.recordToolCall(name, "failed", spec.Risk, 0, err.Error())
 		return toolErrorMessage(name, err, "")
+	}
+
+	// Hooks run before policy, not after. A rule that was always going to
+	// refuse this call should refuse it before a human is asked to sanction
+	// it — an approval prompt for something that cannot happen is the exact
+	// shape of prompt that teaches people to approve without reading.
+	//
+	// Standing aside is not approval. Policy runs next regardless, and the
+	// call survives only if both let it through.
+	if err := a.deps.Hooks.Run(ctx, hook.Call{
+		Point: hook.BeforeTool, Tool: name, Args: args, Risk: string(spec.Risk),
+		AgentID: a.ID, TaskID: a.TaskID,
+	}); err != nil {
+		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied", Error: err.Error()})
+		_ = a.recordToolCall(name, "denied", spec.Risk, 0, err.Error())
+		return fmt.Sprintf("tool %s was refused: %v", name, err)
 	}
 
 	req := policy.Request{Tool: name, Input: args, Risk: spec.Risk, AgentID: a.ID, Effects: spec.Effects}
