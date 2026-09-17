@@ -653,11 +653,20 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 	if a.deps.Budget != nil {
 		a.deps.Budget.AddTokens(usage.PromptTokens+usage.CompletionTokens, cost)
 	}
+	// What the provider served from its prompt cache, when it says. An agent
+	// loop re-sends the same frame every turn, so this is the difference
+	// between paying for it once and paying for it once per step — and a
+	// number nobody can see is a number nobody tunes.
+	var cachedIn int64
+	if d := usage.PromptTokensDetails; d != nil {
+		cachedIn = d.CachedTokens
+	}
 	a.publish(&event.ModelRespondedData{
 		// modelRef, not a.Model: a routed vision turn runs on a different
 		// model, and the reply must be attributed to the one that produced it.
 		Model: modelRef, ResolvedModel: resp.Model, TaskID: a.TaskID, AgentID: a.ID,
-		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CostUSD: cost, Latency: latency,
+		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CachedIn: cachedIn,
+		CostUSD: cost, Latency: latency,
 	})
 	_ = a.recordModelCall(req, resp, latency, nil)
 	return resp, nil

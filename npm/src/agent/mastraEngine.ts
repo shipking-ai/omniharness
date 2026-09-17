@@ -197,8 +197,14 @@ const SYSTEM_FRAME = (endpoint: string, root: string, mode: AgentMode, skillName
   + '\n\n'
   + MODE_PROMPT[mode]
   + (mode === 'build' ? VERIFY_RULES : '')
-  + (mode === 'crazy' && memory !== '' ? `\n\nPERSISTENT MEMORY (from previous sessions):\n${memory}` : '')
-  + (skillNames.length > 0 ? `\nCustom skills available: ${skillNames.map((name) => `\`${name}\``).join(', ')}.` : '');
+  + (skillNames.length > 0 ? `\nCustom skills available: ${skillNames.map((name) => `\`${name}\``).join(', ')}.` : '')
+  // Memory goes last, and the order is a cost decision rather than a stylistic
+  // one. Providers cache a prompt by matching a prefix, so the first byte that
+  // changes ends the saving for everything after it — and memory is the one
+  // part of this frame that changes mid-run: `write_memory` appends to it and
+  // the frame is rebuilt on the next turn. Ahead of the skill list, every
+  // remembered fact re-charged the skill list too, for the rest of the run.
+  + (mode === 'crazy' && memory !== '' ? `\n\nPERSISTENT MEMORY (from previous sessions):\n${memory}` : '');
 
 const MAX_TURNS: Record<AgentMode, number> = { plan: 12, build: 24, research: 12, crazy: 120 };
 const MAX_OUTPUT = 32_000;

@@ -96,9 +96,9 @@ func (n *Native) Register(r *Registry) error {
 			"path":    map[string]any{"type": "string", "description": "path to write"},
 			"content": map[string]any{"type": "string", "description": "full file content"},
 		}, "path", "content"), n.writeFile),
-		n.tool("edit_file", "Replace one exact substring in a file with new text.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
+		n.tool("edit_file", "Replace one exact, unique substring in a file with new text. old_text must appear exactly once — include surrounding lines to make it unique.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":     map[string]any{"type": "string", "description": "path to edit"},
-			"old_text": map[string]any{"type": "string", "description": "exact text to replace"},
+			"old_text": map[string]any{"type": "string", "description": "exact text to replace, unique within the file"},
 			"new_text": map[string]any{"type": "string", "description": "replacement text"},
 		}, "path", "old_text", "new_text"), n.editFile),
 		n.tool("list_dir", "List entries in a directory.", RiskLow, caps(CapReadFiles), schema(map[string]any{
@@ -336,10 +336,30 @@ func (n *Native) editFile(ctx context.Context, in map[string]any) (Result, error
 		return Result{}, err
 	}
 	s := string(b)
-	idx := strings.Index(s, oldText)
-	if idx < 0 {
-		return Result{}, fmt.Errorf("old_text not found in %s", p)
+	// An edit must name exactly one place. Replacing the first of several
+	// matches silently edits the wrong line and reports success, which is the
+	// worst outcome available here: the model is told the edit landed, so it
+	// moves on, and the real defect surfaces later somewhere else entirely.
+	//
+	// The count goes in the error because it is what the model needs to fix
+	// the call — it says "widen old_text" without the model having to re-read
+	// the file to discover why.
+	switch n := strings.Count(s, oldText); {
+	case n == 0:
+		return Result{}, &Error{
+			Kind:    ErrInvalidInput,
+			Tool:    "edit_file",
+			Message: fmt.Sprintf("old_text not found in %s", p),
+		}
+	case n > 1:
+		return Result{}, &Error{
+			Kind: ErrInvalidInput,
+			Tool: "edit_file",
+			Message: fmt.Sprintf("old_text appears %d times in %s — include surrounding lines so it matches "+
+				"exactly once, or use write_file to replace the whole file", n, p),
+		}
 	}
+	idx := strings.Index(s, oldText)
 	s = s[:idx] + newText + s[idx+len(oldText):]
 	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
 		return Result{}, err

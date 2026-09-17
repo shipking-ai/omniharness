@@ -118,6 +118,16 @@ type ChatResponse struct {
 		PromptTokens     int64 `json:"prompt_tokens"`
 		CompletionTokens int64 `json:"completion_tokens"`
 		TotalTokens      int64 `json:"total_tokens"`
+		// How much of PromptTokens the provider served from its prompt cache.
+		//
+		// An agent loop re-sends the same system prompt on every turn, so this
+		// is the difference between paying for the frame once and paying for
+		// it once per step. It is read and never estimated: a provider that
+		// does not report it leaves this at zero, which reads as "unknown",
+		// and no surface may present that as a measured miss.
+		PromptTokensDetails *struct {
+			CachedTokens int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details,omitempty"`
 	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`

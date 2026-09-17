@@ -196,3 +196,94 @@ func TestNoAcceptanceCriteriaMeansNoSection(t *testing.T) {
 		t.Fatalf("empty criteria produced a section anyway: %q", out.Messages[0].Content)
 	}
 }
+
+// --- prompt-prefix stability -------------------------------------------------
+
+// A provider caches a prompt by matching a prefix, so the first byte that
+// changes between two turns is where the cache stops paying. The summary is
+// the only part of this prompt that changes during a run — it is rewritten on
+// every condensation — so everything else has to sit in front of it.
+//
+// This is a cost invariant, not a formatting preference: with the summary in
+// the middle, every condensation re-charged the task profile and the
+// acceptance criteria as well as itself, for the rest of the run.
+func TestSystemPromptKeepsStablePrefixWhenSummaryChanges(t *testing.T) {
+	c := NewComposer(Limits{})
+	in := Input{
+		Spec:                task.Spec{Prompt: "Implement a parser."},
+		SystemPrompt:        "You are an implementer.",
+		ProjectInstructions: []string{"run go test ./... before finishing"},
+		Profile: task.Profile{
+			Complexity:         task.ComplexityMedium,
+			Domain:             task.DomainSoftware,
+			AcceptanceCriteria: []string{"the parser round-trips"},
+		},
+	}
+
+	in.Summary = "read three files, found the lexer"
+	first, err := c.Compose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Summary = "read nine files, rewrote the lexer, tests now fail on the second case"
+	second, err := c.Compose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a, b := first.Messages[0].Content, second.Messages[0].Content
+	shared := 0
+	for shared < len(a) && shared < len(b) && a[shared] == b[shared] {
+		shared++
+	}
+	prefix := a[:shared]
+
+	// Everything that did not change must still be inside the shared prefix.
+	for _, stable := range []string{
+		"You are an implementer.",
+		"PROJECT INSTRUCTIONS",
+		"go test ./...",
+		"TASK PROFILE",
+		"ACCEPTANCE CRITERIA",
+		"the parser round-trips",
+	} {
+		if !strings.Contains(prefix, stable) {
+			t.Errorf("%q fell outside the cacheable prefix — a changed summary should not move it\nprefix: %q", stable, prefix)
+		}
+	}
+
+	// And the summary itself must be the tail that differs, not something in
+	// the middle that drags the rest along with it.
+	if !strings.HasSuffix(strings.TrimSpace(a), "found the lexer") {
+		t.Errorf("the summary must be last in the system prompt, got tail %q", tail(a))
+	}
+	if strings.Contains(prefix, "found the lexer") {
+		t.Errorf("the changed summary should not be in the shared prefix: %q", prefix)
+	}
+}
+
+// With no summary at all the prompt must still end on the stable frame, so a
+// run that has not condensed yet shares its prefix with one that has.
+func TestSystemPromptWithoutSummaryIsAPrefixOfOneWithSummary(t *testing.T) {
+	c := NewComposer(Limits{})
+	in := Input{
+		Spec:         task.Spec{Prompt: "Implement a parser."},
+		SystemPrompt: "You are an implementer.",
+		Profile:      task.Profile{Complexity: task.ComplexityMedium, Domain: task.DomainSoftware},
+	}
+	bare, _ := c.Compose(in)
+	in.Summary = "condensed once"
+	withSummary, _ := c.Compose(in)
+
+	if !strings.HasPrefix(withSummary.Messages[0].Content, bare.Messages[0].Content) {
+		t.Fatalf("adding a summary rewrote the prompt instead of appending to it:\nbare: %q\nwith: %q",
+			bare.Messages[0].Content, withSummary.Messages[0].Content)
+	}
+}
+
+func tail(s string) string {
+	if len(s) > 80 {
+		return s[len(s)-80:]
+	}
+	return s
+}

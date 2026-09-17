@@ -85,9 +85,6 @@ func (c *Composer) Compose(in Input) (Output, error) {
 	if len(in.ProjectInstructions) > 0 {
 		sys += "\n\nPROJECT INSTRUCTIONS:\n- " + strings.Join(in.ProjectInstructions, "\n- ")
 	}
-	if in.Summary != "" {
-		sys += "\n\nSUMMARY OF PRIOR WORK:\n" + in.Summary
-	}
 	if p := in.Profile; p.Complexity != "" {
 		sys += "\n\nTASK PROFILE: complexity=" + string(p.Complexity) +
 			" domain=" + string(p.Domain) +
@@ -105,6 +102,23 @@ func (c *Composer) Compose(in Input) (Output, error) {
 			sys += "\n\nACCEPTANCE CRITERIA (this task is done when all of these hold):\n- " +
 				strings.Join(p.AcceptanceCriteria, "\n- ")
 		}
+	}
+
+	// The running summary goes last, and that ordering is load-bearing rather
+	// than cosmetic.
+	//
+	// Providers cache a prompt by matching a prefix, so everything after the
+	// first byte that changes is re-read and re-charged. The summary is the
+	// one part of this prompt that changes during a run: it is rewritten every
+	// time history is condensed. Sitting where it used to — between the
+	// project instructions and the task profile — it invalidated the profile
+	// and the acceptance criteria along with itself, on every condensation,
+	// for the rest of the run.
+	//
+	// Placed last, the whole stable frame survives: base prompt, project
+	// instructions, profile, acceptance criteria. Only the summary is re-read.
+	if in.Summary != "" {
+		sys += "\n\nSUMMARY OF PRIOR WORK:\n" + in.Summary
 	}
 
 	// The system prompt and the task prompt are not discretionary — the run is

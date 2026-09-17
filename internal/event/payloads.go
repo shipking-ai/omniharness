@@ -224,13 +224,18 @@ type ModelRespondedData struct {
 	// the two are the same; for an alias like "auto/best-coding" this is the
 	// only place the real model appears, and it is what a reader wants to see.
 	// Empty when the gateway did not say.
-	ResolvedModel string        `json:"resolvedModel,omitempty"`
-	TaskID        string        `json:"taskId,omitempty"`
-	AgentID       string        `json:"agentId,omitempty"`
-	TokensIn      int64         `json:"tokensIn"`
-	TokensOut     int64         `json:"tokensOut"`
-	CostUSD       float64       `json:"costUsd"`
-	Latency       time.Duration `json:"latency"`
+	ResolvedModel string `json:"resolvedModel,omitempty"`
+	TaskID        string `json:"taskId,omitempty"`
+	AgentID       string `json:"agentId,omitempty"`
+	TokensIn      int64  `json:"tokensIn"`
+	TokensOut     int64  `json:"tokensOut"`
+	// CachedIn is the part of TokensIn the provider served from its prompt
+	// cache. Reported, never estimated: a provider that does not say leaves
+	// this zero, and zero means "not reported" rather than "measured miss" —
+	// so no surface may render it as a 0% hit rate.
+	CachedIn int64         `json:"cachedIn,omitempty"`
+	CostUSD  float64       `json:"costUsd"`
+	Latency  time.Duration `json:"latency"`
 }
 
 func (*ModelRespondedData) EventType() Type { return ModelResponded }

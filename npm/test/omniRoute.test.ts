@@ -602,3 +602,44 @@ test('an api key appearing in an error body is redacted everywhere it appears', 
     );
   } finally { live.close(); }
 });
+
+// --- prompt cache accounting -------------------------------------------------
+
+test('a reply that reports cached prompt tokens carries the count through', async () => {
+  const live = server(() => Response.json({
+    choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 4000, completion_tokens: 20, total_tokens: 4020, prompt_tokens_details: { cached_tokens: 3600 } },
+  }));
+  try {
+    const reply = await new OmniRouteClient({ endpoint: live.url }).chat('m', [{ role: 'user', content: 'hi' }]);
+    assert.equal(reply.usage?.cachedInputTokens, 3600);
+    assert.equal(reply.usage?.inputTokens, 4000, 'the cached part is still part of the input count');
+  } finally { live.close(); }
+});
+
+test('a provider silent about caching reports nothing, not zero', async () => {
+  // Absent and zero mean different things — "said nothing" versus "measured a
+  // miss" — and a surface that renders silence as a 0% hit rate is inventing a
+  // measurement.
+  const live = server(() => Response.json({
+    choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105 },
+  }));
+  try {
+    const reply = await new OmniRouteClient({ endpoint: live.url }).chat('m', [{ role: 'user', content: 'hi' }]);
+    assert.equal(reply.usage?.cachedInputTokens, undefined);
+  } finally { live.close(); }
+});
+
+test('a stream reports its cached prompt tokens from the final usage chunk', async () => {
+  const body = [
+    { choices: [{ index: 0, delta: { content: 'hello' } }] },
+    { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 8000, completion_tokens: 12, total_tokens: 8012, prompt_tokens_details: { cached_tokens: 7800 } } },
+  ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join('') + 'data: [DONE]\n\n';
+  const live = sseServer(body, {});
+  try {
+    const reply = await new OmniRouteClient({ endpoint: live.url }).chatStream('m', [{ role: 'user', content: 'hi' }], {});
+    assert.equal(reply.usage?.cachedInputTokens, 7800);
+  } finally { live.close(); }
+});

@@ -219,3 +219,47 @@ test('crazy mode: a single-step plan is finished in one pass rather than fanned 
   assert.equal(app.calls.swarms, 0, 'spinning up workers for one step costs more than it saves');
   app.unmount();
 });
+
+// --- the volatile tail -------------------------------------------------------
+
+test('persistent memory is the last thing in the system frame', async () => {
+  // Providers cache a prompt by matching a prefix, so the first byte that
+  // changes ends the saving for everything after it. Memory is the one part of
+  // this frame that changes mid-run — `write_memory` appends to it and the
+  // frame is rebuilt on the next turn — so it has to be last or it re-charges
+  // whatever follows it, for the rest of the run.
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'oh-frame-'));
+  await fs.mkdir(path.join(root, '.omniharness'), { recursive: true });
+  await fs.writeFile(path.join(root, '.omniharness', 'memory.md'), '- the parser lives in src/lex.ts\n', 'utf8');
+  // A workspace skill, so the skill list is actually rendered. Without one the
+  // line never appears and an assertion about where it sits passes vacuously —
+  // which is how the first version of this test failed to catch the bug it
+  // was written for.
+  await fs.writeFile(path.join(root, 'OMNIHARNESS.md'),
+    '## lint\ndescription: run the linter\ncommand: echo lint\n', 'utf8');
+
+  const live = chatServer(() => ({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] }));
+  try {
+    const engine = await createMastraEngine({ workspaceRoot: root, endpoint: live.url, mode: 'crazy' });
+    await engine.run('hi');
+    const system: string = live.calls[0].messages[0].content;
+
+    const memoryAt = system.indexOf('PERSISTENT MEMORY');
+    assert.ok(memoryAt > 0, 'the memory file should have reached the frame');
+    assert.ok(system.includes('Custom skills available'), 'the skill list must actually be present for this test to mean anything');
+    assert.ok(
+      system.indexOf('src/lex.ts') > 0,
+      'and its contents with it',
+    );
+    // Nothing stable may follow it.
+    assert.equal(
+      system.slice(memoryAt).indexOf('Custom skills available'), -1,
+      'the skill list must come before memory, or every remembered fact re-charges it',
+    );
+    assert.equal(system.slice(memoryAt).indexOf('VOICE'), -1, 'nothing of the stable frame may sit after memory');
+    assert.equal(system.slice(memoryAt).indexOf('You are in '), -1, 'the mode prompt must precede memory');
+  } finally {
+    live.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

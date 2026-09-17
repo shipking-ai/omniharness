@@ -101,7 +101,21 @@ export interface ChatResult {
   finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter' | string;
   reasoning?: string;
   toolCalls?: readonly ToolCallRequest[];
-  usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    /**
+     * How much of `inputTokens` the provider served from its prompt cache.
+     *
+     * An agent loop re-sends the same frame every turn, so this is the
+     * difference between paying for that frame once and paying for it once per
+     * step. It is read off the reply and never inferred: a provider that does
+     * not report it leaves this `undefined`, which means "not reported" and
+     * must not be rendered as a measured zero.
+     */
+    cachedInputTokens?: number;
+  };
   headers: Headers;
   compression?: CompressionInfo;
 }
@@ -294,7 +308,7 @@ export class OmniRouteClient {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model, messages, stream: true, tools: options.tools }),
     });
-    const usage: { inputTokens: number; outputTokens: number; totalTokens: number } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const usage: { inputTokens: number; outputTokens: number; totalTokens: number; cachedInputTokens?: number } = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
     let finishReason: ChatResult['finishReason'] = 'stop';
     let content = '';
     let reasoning = '';
@@ -355,6 +369,8 @@ export class OmniRouteClient {
         usage.inputTokens = this.number(chunk.usage.prompt_tokens);
         usage.outputTokens = this.number(chunk.usage.completion_tokens);
         usage.totalTokens = this.number(chunk.usage.total_tokens);
+        const cached = this.cachedInputTokens(chunk.usage);
+        if (cached !== undefined) usage.cachedInputTokens = cached;
       }
       for (const choice of chunk.choices) {
         if (!this.isRecord(choice)) continue;
@@ -480,10 +496,25 @@ export class OmniRouteClient {
         inputTokens: this.number(usage.prompt_tokens),
         outputTokens: this.number(usage.completion_tokens),
         totalTokens: this.number(usage.total_tokens),
+        cachedInputTokens: this.cachedInputTokens(usage),
       } : undefined,
       headers: response.headers,
       compression: this.compressionFrom(response.headers),
     };
+  }
+
+  /**
+   * The cached-prompt count a provider reports alongside its usage, if any.
+   *
+   * Absent and zero mean different things — "the provider said nothing" versus
+   * "the provider measured a miss" — so an absent field stays undefined rather
+   * than collapsing to 0, and no surface can turn silence into a 0% hit rate.
+   */
+  private cachedInputTokens(usage: Record<string, unknown>): number | undefined {
+    const details = usage.prompt_tokens_details;
+    if (!this.isRecord(details)) return undefined;
+    const cached = details.cached_tokens;
+    return typeof cached === 'number' && Number.isFinite(cached) ? cached : undefined;
   }
 
   /**

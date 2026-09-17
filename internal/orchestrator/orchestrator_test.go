@@ -1173,3 +1173,45 @@ func TestRecallSaysNothingAboutTruncationWhenItFits(t *testing.T) {
 		t.Errorf("claimed to hold notes back when everything fit:\n%s", sys)
 	}
 }
+
+// --- repository instructions --------------------------------------------------
+
+// A fresh clone of a repository that documents exactly how to build itself
+// used to tell the agent nothing: ProjectInstructions was fed only from the
+// harness's own memory, so the agent rediscovered the build command by trial.
+// The file was always right there.
+func TestAgentsFileReachesTheAgentPrompt(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"),
+		[]byte("# Conventions\n\nAlways run `make verify` before declaring a task done.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := testutil.NewFakeOmniRoute(t, testutil.FakeStep{Content: "done"})
+	o, _, _ := newOrchestrator(t, fake, dir)
+
+	got := o.recallProjectInstructions(&task.Task{Spec: task.Spec{Prompt: "add a flag"}})
+	if len(got) == 0 {
+		t.Fatal("AGENTS.md did not reach the project instructions")
+	}
+	if !strings.Contains(got[0], "make verify") {
+		t.Fatalf("instruction content missing: %q", got)
+	}
+	// The repository speaks for itself and leads; a remembered note is one
+	// agent's inference from one run. Order is how the prompt says which wins.
+	if !strings.HasPrefix(got[0], "From AGENTS.md") {
+		t.Fatalf("the repository's own file must come first, got %q", got[0])
+	}
+}
+
+// No instruction file is the normal case for most repositories, and it must
+// stay silent rather than producing an entry that says nothing.
+func TestNoAgentsFileAddsNothing(t *testing.T) {
+	dir := t.TempDir()
+	fake := testutil.NewFakeOmniRoute(t, testutil.FakeStep{Content: "done"})
+	o, _, _ := newOrchestrator(t, fake, dir)
+
+	if got := o.recallProjectInstructions(&task.Task{Spec: task.Spec{Prompt: "add a flag"}}); len(got) != 0 {
+		t.Fatalf("expected no instructions, got %q", got)
+	}
+}
