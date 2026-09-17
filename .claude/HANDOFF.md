@@ -6,7 +6,7 @@ If you are picking this up cold, read this file top to bottom and you have every
 - **Branch:** `claude/inspiring-hypatia-wx35s3`
 - **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
 - **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
-- **Last updated:** after `855d4fc`
+- **Last updated:** in progress on **05**, see In flight
 
 ---
 
@@ -46,6 +46,24 @@ Ranked in the research report (§09). Numbering is the report's.
 - [ ] **07** Design for approval volume, not just classification
 - [ ] **08** Close the sandbox gap, or document the trust model
 - [ ] **09** Put a learned router behind capability intent
+
+### IN FLIGHT — history eviction keeps the wrong end
+
+Found while starting 05, verified empirically rather than by reading. In
+`internal/context/context.go` the history loop appends oldest-first until the
+budget runs out and then breaks, so **it keeps the oldest turns and drops the
+newest**. With four turns and room for two, `OLDEST-turn` and `middle-one`
+survive; `middle-two` and `NEWEST-turn` are dropped.
+
+That is close to the worst possible eviction order: the agent loses the tool
+results it just received — the thing it needs to continue — and keeps the
+opening exchange it has already acted on. It also explains why a long run
+degrades rather than merely shortening.
+
+This is bigger than the tiering and goes first. 05 as written still stands,
+but the ladder is worth less than fixing which end survives.
+
+**Status:** verified, not yet fixed. Nothing changed on disk yet.
 
 ### 05 — what it means, concretely
 
