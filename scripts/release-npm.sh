@@ -8,6 +8,10 @@
 #   scripts/release-npm.sh 0.2.0         # explicit version
 #   scripts/release-npm.sh --dry-run     # bump + verify only, skip publish
 #
+# To jump to a new version line (a major release, say), set it in
+# npm/package.json. A version there that is newer than the one on npm is
+# released exactly as written; every release after it bumps from it as usual.
+#
 # Prerequisites:
 #   - npm authenticated. In CI this is npm trusted publishing (OIDC): the
 #     workflow's id-token permission is the credential, so no token is stored.
@@ -35,18 +39,36 @@ done
 
 # latest_published queries npm for the current published version of the package.
 # Returns empty string when the package has never been published.
+# RELEASE_LATEST_PUBLISHED stands in for the registry, so the version rules
+# below can be checked without network access or a real package.
 latest_published() {
+  if [[ -n "${RELEASE_LATEST_PUBLISHED+set}" ]]; then
+    echo "$RELEASE_LATEST_PUBLISHED"
+    return
+  fi
   npm view omniharness-cli version 2>/dev/null || true
 }
 
 # next_version prints the version that would be published, writing nothing.
+#
+# The baseline is the *latest published* version on npm, not the local
+# package.json, so a CI run never tries to re-publish an existing version —
+# except that a local version newer than anything published is a deliberate
+# jump (2.0.0 over 0.1.122) and is released as written, without a bump.
 next_version() {
   VERSION_ARG="$VERSION_ARG" BUMP="$BUMP" LATEST_PUBLISHED="$(latest_published)" node -e '
     const fs = require("fs");
     const j = JSON.parse(fs.readFileSync("npm/package.json", "utf8"));
-    const base = process.env.LATEST_PUBLISHED || j.version;
-    const [maj, min, pat] = base.split(".").map(Number);
+    const parse = (v) => v.split(".").map(Number);
+    const newer = (a, b) => {
+      const [x, y] = [parse(a), parse(b)];
+      for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] > y[i];
+      return false;
+    };
+    const published = process.env.LATEST_PUBLISHED;
+    const [maj, min, pat] = parse(published || j.version);
     if (process.env.VERSION_ARG) console.log(process.env.VERSION_ARG);
+    else if (published && newer(j.version, published)) console.log(j.version);
     else if (process.env.BUMP === "major") console.log(`${maj + 1}.0.0`);
     else if (process.env.BUMP === "minor") console.log(`${maj}.${min + 1}.0`);
     else console.log(`${maj}.${min}.${pat + 1}`);
@@ -54,26 +76,18 @@ next_version() {
 }
 
 # bump_version writes the next version into npm/package.json and prints it.
-# It bumps from the *latest published* version on npm (not the local
-# package.json) so that CI runs never try to re-publish an existing version.
+# One rule for both: it is whatever next_version says.
 bump_version() {
-  VERSION_ARG="$VERSION_ARG" BUMP="$BUMP" LATEST_PUBLISHED="$(latest_published)" node -e '
+  local v
+  v="$(next_version)"
+  V="$v" node -e '
     const fs = require("fs");
     const p = "npm/package.json";
     const j = JSON.parse(fs.readFileSync(p, "utf8"));
-    // Use the latest published version as the baseline when available,
-    // falling back to the local package.json version.
-    const base = process.env.LATEST_PUBLISHED || j.version;
-    const [maj, min, pat] = base.split(".").map(Number);
-    let v;
-    if (process.env.VERSION_ARG) v = process.env.VERSION_ARG;
-    else if (process.env.BUMP === "major") v = `${maj + 1}.0.0`;
-    else if (process.env.BUMP === "minor") v = `${maj}.${min + 1}.0`;
-    else v = `${maj}.${min}.${pat + 1}`;
-    j.version = v;
+    j.version = process.env.V;
     fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-    console.log(v);
   '
+  echo "$v"
 }
 
 # --print-next-version resolves the next version and stops, without publishing.

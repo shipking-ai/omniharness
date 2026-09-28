@@ -8,9 +8,9 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 21 |
+| **Unmerged commits** | 22 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
-| **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
+| **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. **Merging it releases `2.0.0`** (see *Version 2* below). |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
 | **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 488 npm tests (from 459) |
 
@@ -161,6 +161,22 @@ masthead to scrollback*, *an overlay does not bring home back*, and *a narrow ma
 the path from the front*. **8 of 9 deliberate breaks caught.** The miss is the truncate backstop,
 which is only reachable when the width formula is also broken; the two broken together are
 caught.
+
+### Version 2
+
+The user asked for this release to be v2. `npm/package.json` (and the lockfile) now say `2.0.0`.
+That alone did nothing, because `scripts/release-npm.sh` bumped from the version *on npm* and
+ignored the local one: with 2.0.0 local and 0.1.122 published, it would have released
+**0.1.123**. That was checked against the unmodified script. The rule now: a local version newer
+than the published one is released as written; otherwise it bumps from npm as before. Checked
+offline with `RELEASE_LATEST_PUBLISHED` standing in for the registry:
+- local 2.0.0 with npm at 0.1.122 gives 2.0.0
+- local 2.0.0 with npm at 2.0.0 gives 2.0.1 (the push after that)
+- local 0.1.114 with npm at 0.1.122 gives 0.1.123 (unchanged)
+- `--minor` still gives 0.2.0
+
+The workflow file is untouched. The Go binaries take the same resolved version via ldflags, so both
+channels ship 2.0.0.
 
 ---
 
