@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 20 |
+| **Unmerged commits** | 21 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 480 npm tests (from 459) |
+| **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 488 npm tests (from 459) |
 
 ---
 
@@ -137,6 +137,30 @@ sits between the tip and the composer, and the dial has one breathing row under 
 (`openingRows` 4 → 5; that row is dropped first in a short window). Test: *the mode dial sits
 under the masthead*. With the gap put back above the dial, it fails ("15 rows under the
 masthead"). Rendered at 120 and 50 columns and at 12 rows.
+
+**Superseded next commit — the home screen is now centred, OpenCode/Kilo style** (user asked).
+`components/home.tsx` draws the wordmark, the product line, a 72-column composer, the mode dial
+and the tip as one group, centred both ways. It lives in the *live region*, not `<Static>`, so the
+`banner` Static item is held back until the session first leaves home. The first task, or an
+overlay opened first, flips `leftHome` in `app.tsx` and it never flips back: the masthead is then
+printed into scrollback once, left-aligned, and the old bottom-anchored layout takes over (spacer
+included). `homePlan` budgets `rows − 1 − status − hints`. When the window is short it gives up
+the tip, then the description, then the wordmark, then the dial.
+
+Two traps found on the way:
+- The composer has its own `marginTop`. A wrapper margin doubled it, and the frame came out as
+  tall as the window, which sends Ink down `clearTerminal` + full reprint. The symptom in the test
+  harness was a row reading `…Ctrl+L views  OMNIHARNESS…`. It looked like a harness bug but wasn't.
+- `Banner` clipped the path to `width − version − 16`, but its fixed text is 18 columns, so it
+  wrapped at 40 columns. Fixed, with `truncate-end` as a backstop.
+
+Tests that located the settings row as "third row from the bottom" now find it by shape
+(`┃ … approvals X`). New: *centres its group both ways* (and only one masthead on screen), *never
+fills the window to its last row* (5 sizes, and no `ESC[2J` after the first task), *hands the
+masthead to scrollback*, *an overlay does not bring home back*, and *a narrow masthead shortens
+the path from the front*. **8 of 9 deliberate breaks caught.** The miss is the truncate backstop,
+which is only reachable when the width formula is also broken; the two broken together are
+caught.
 
 ---
 

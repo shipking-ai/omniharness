@@ -26,6 +26,7 @@ import { Banner, bannerRows } from './components/banner.js';
 import { ApprovalBanner, approvalRows } from './components/approval.js';
 import { COMPOSER_EXTRA_ROWS, Composer, composerTextWidth } from './components/composer.js';
 import { Opening, openingRows } from './components/opening.js';
+import { HOME_COMPOSER_MAX, Home, homePlan } from './components/home.js';
 import { Rail } from './components/rail.js';
 import { HintLine, StatusLine, permissionTone } from './components/statusline.js';
 import { TranscriptEntry } from './components/transcript.js';
@@ -118,6 +119,11 @@ export function App({ engine }: AppProps): React.ReactElement {
   // Whether the opening screen was ever shown, and the rows printed under the
   // masthead when the first turn arrived. See the spacer note at the render.
   const sawOpening = useRef(false);
+  // Latched the first time the session is anywhere but the untouched home
+  // screen. The home screen never comes back after that: its masthead has been
+  // printed into scrollback by then, and drawing it a second time, centred,
+  // would put two of them on screen.
+  const leftHome = useRef(false);
   const spacer = useRef<number | null>(null);
   useEffect(() => {
     const onResize = (): void => store.dispatch({
@@ -201,7 +207,16 @@ export function App({ engine }: AppProps): React.ReactElement {
   // lens it would draw the very list the user just opened, twice.
   const wantRail = state.lens === 'run' && state.overlay === undefined && railHasContent(state);
   const box = measure(state.terminal.columns, wantRail);
-  const composerWidth = composerTextWidth(box.content);
+  // The home screen: nothing asked yet, nothing open over it, and never since.
+  const homeCandidate = state.transcript.length === 0
+    && state.phase === 'idle'
+    && state.overlay === undefined
+    && state.approval === undefined
+    && state.lens === 'run';
+  if (!homeCandidate) leftHome.current = true;
+  const home = homeCandidate && !leftHome.current;
+  const homeWidth = Math.min(box.content, HOME_COMPOSER_MAX);
+  const composerWidth = composerTextWidth(home ? homeWidth : box.content);
   const composerLines = layoutEditor(state.composer.value, state.composer.cursor, composerWidth).lines.length
     + COMPOSER_EXTRA_ROWS;
   // The opening state: nothing said, nothing running, nothing modal over it.
@@ -277,7 +292,7 @@ export function App({ engine }: AppProps): React.ReactElement {
   // position, so an item that appeared, moved or vanished later would reprint
   // or swallow an entry; one fixed at the moment it is first needed does not.
   // A resumed session never saw the opening screen and gets none.
-  if (opening) sawOpening.current = true;
+  if (opening || home) sawOpening.current = true;
   if (spacer.current === null && state.transcript.length > 0) {
     spacer.current = sawOpening.current
       ? anchorRows(state.terminal.rows, bannerRows(state.session, box.content, glyphs.ascii), composerLines)
@@ -286,13 +301,29 @@ export function App({ engine }: AppProps): React.ReactElement {
   const spacerRows = spacer.current ?? 0;
   const items: StaticItem[] = useMemo(
     () => [
-      { kind: 'banner' as const },
+      // Held back while the home screen draws the masthead live.
+      ...(home ? [] : [{ kind: 'banner' as const }]),
       ...(spacerRows > 0 ? [{ kind: 'spacer' as const, rows: spacerRows }] : []),
       ...state.transcript.map((entry) => ({ kind: 'entry' as const, entry })),
     ],
-    [state.transcript, spacerRows],
+    [state.transcript, spacerRows, home],
   );
   const focus = focusOf(state);
+  const composerNode = (
+    <Composer
+      composer={state.composer}
+      width={home ? homeWidth : box.content}
+      mode={state.session.mode}
+      phase={state.phase}
+      theme={theme}
+      glyphs={glyphs}
+      failed={lastEntryFailed(state.transcript)}
+      model={state.session.model}
+      permission={permissionTone(state, theme)}
+      band={box.band}
+      span={home ? homeWidth : box.chrome}
+    />
+  );
 
   return <Box flexDirection="column" width={state.terminal.columns} paddingLeft={box.gutter}>
     <Static items={items}>
@@ -310,84 +341,84 @@ export function App({ engine }: AppProps): React.ReactElement {
             />}
     </Static>
 
-
-    <Box flexDirection="row">
-      <Box flexDirection="column" width={box.content}>
-        {state.overlay !== undefined
-          ? <OverlayView
-              overlay={state.overlay}
-              state={state}
-              width={box.content}
-              rows={heights.overlay}
-              theme={theme}
-              glyphs={glyphs}
-            />
-          : opening
-            ? <Opening
-                session={state.session}
-                width={box.content}
-                rows={heights.lens}
-                theme={theme}
-                glyphs={glyphs}
-              />
-            : <Lens
-                state={state}
-                width={box.content}
-                rows={heights.lens}
-                streamRows={heights.stream}
-                theme={theme}
-                glyphs={glyphs}
-                windows={controller.windows}
-                now={now}
-                compact={box.band === 'narrow'}
-                railed={box.rail > 0}
-              />}
-      </Box>
-      {box.rail > 0
-        ? <Box marginLeft={box.railGap}>
-            <Rail
-              state={state}
-              width={box.rail}
-              rows={heights.lens + heights.stream}
-              theme={theme}
-              glyphs={glyphs}
-            />
-          </Box>
-        : null}
-    </Box>
-
-    {/* The opening state's gap. It sits *under* the standing panel, so the
-        mode dial and its tip read as part of the masthead above them and the
-        composer alone stays on the floor of the window. (It used to go above
-        the panel, grouping the dial with the composer, which left a blank
-        band between the masthead and everything else on the first screen.)
-        Zero in every other state, where content is what fills the window. */}
-    {heights.pad > 0 ? <Box height={heights.pad} /> : null}
-
-    {state.approval !== undefined
-      ? <ApprovalBanner
-          approval={state.approval}
-          width={box.content}
+    {home
+      ? <Home
+          session={state.session}
+          plan={homePlan(state.terminal.rows, composerLines, state.session, box.chrome, glyphs.ascii)}
+          width={box.chrome}
+          composerWidth={homeWidth}
           theme={theme}
           glyphs={glyphs}
-          workspace={state.session.workspace}
-          compact={compactApproval}
+          now={now}
+          composer={composerNode}
         />
-      : null}
+      : <>
+        <Box flexDirection="row">
+          <Box flexDirection="column" width={box.content}>
+            {state.overlay !== undefined
+              ? <OverlayView
+                  overlay={state.overlay}
+                  state={state}
+                  width={box.content}
+                  rows={heights.overlay}
+                  theme={theme}
+                  glyphs={glyphs}
+                />
+              : opening
+                ? <Opening
+                    session={state.session}
+                    width={box.content}
+                    rows={heights.lens}
+                    theme={theme}
+                    glyphs={glyphs}
+                  />
+                : <Lens
+                    state={state}
+                    width={box.content}
+                    rows={heights.lens}
+                    streamRows={heights.stream}
+                    theme={theme}
+                    glyphs={glyphs}
+                    windows={controller.windows}
+                    now={now}
+                    compact={box.band === 'narrow'}
+                    railed={box.rail > 0}
+                  />}
+          </Box>
+          {box.rail > 0
+            ? <Box marginLeft={box.railGap}>
+                <Rail
+                  state={state}
+                  width={box.rail}
+                  rows={heights.lens + heights.stream}
+                  theme={theme}
+                  glyphs={glyphs}
+                />
+              </Box>
+            : null}
+        </Box>
 
-    <Composer
-      composer={state.composer}
-      width={box.content}
-      mode={state.session.mode}
-      phase={state.phase}
-      theme={theme}
-      glyphs={glyphs}
-      failed={lastEntryFailed(state.transcript)}
-      model={state.session.model}
-      permission={permissionTone(state, theme)}
-      band={box.band}
-      span={box.chrome}
-    />
+        {/* The opening state's gap. It sits *under* the standing panel, so the
+            mode dial and its tip read as part of the masthead above them and the
+            composer alone stays on the floor of the window. (It used to go above
+            the panel, grouping the dial with the composer, which left a blank
+            band between the masthead and everything else on the first screen.)
+            Zero in every other state, where content is what fills the window. */}
+        {heights.pad > 0 ? <Box height={heights.pad} /> : null}
+
+        {state.approval !== undefined
+          ? <ApprovalBanner
+              approval={state.approval}
+              width={box.content}
+              theme={theme}
+              glyphs={glyphs}
+              workspace={state.session.workspace}
+              compact={compactApproval}
+            />
+          : null}
+
+        {composerNode}
+      </>}
     {/* The instrument row and its hints span the window rather than stopping at
         the reading measure: they are read by position, not left to right. */}
     <StatusLine

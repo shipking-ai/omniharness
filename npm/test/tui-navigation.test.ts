@@ -100,10 +100,10 @@ test('Shift+Tab cycles how approvals are handled', async () => {
 test('crazy mode reports bypass however the permission setting is left', async () => {
   const app = await mount({ columns: 100, mode: 'crazy', permissionMode: 'ask' });
   // How freely the agent may act is a setting of the next task, so it sits in
-  // the composer's settings row: the last row of the composer, directly above
-  // the status and hint rows that close the frame.
+  // the composer's settings row: the last row of the composer, the one that
+  // starts with its spine and ends with the approvals setting.
   const rows = app.live().split('\n').map((line) => line.trim()).filter((line) => line !== '');
-  const settings = rows.at(-3) ?? '';
+  const settings = rows.find((line) => /^[┃|] .*\bapprovals \S+$/.test(line)) ?? '';
   assert.match(settings, /approvals bypass/, 'the composer does not claim approvals are still being asked for');
   assert.ok(!settings.includes('manual'), 'crazy mode is never reported as the safe default');
   app.unmount();

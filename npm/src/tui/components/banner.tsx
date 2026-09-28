@@ -33,6 +33,10 @@ export interface BannerProps {
   readonly theme: Theme;
   readonly glyphs: Glyphs;
   readonly now: number;
+  /** Draw the wordmark or not; by default, wherever it fits. */
+  readonly mark?: boolean;
+  /** Centre each row in the block, for the home screen. */
+  readonly centered?: boolean;
 }
 
 /**
@@ -70,7 +74,7 @@ export function bannerRows(session: SessionState, width = 0, ascii = true): numb
   return mark + (session.saved.length > 0 ? 2 : 1);
 }
 
-export function Banner({ session, width, theme, glyphs, now }: BannerProps): React.ReactElement {
+export function Banner({ session, width, theme, glyphs, now, mark: markWanted, centered = false }: BannerProps): React.ReactElement {
   const recent = session.saved[0];
   // The product, the version, and where it is operating. Nothing else.
   //
@@ -80,14 +84,17 @@ export function Banner({ session, width, theme, glyphs, now }: BannerProps): Rea
   // a terminal to find out. "60 skills from 15 plugins" was the second-largest
   // thing on an empty screen and it never changed. `/skills` has it now.
 
-  const mark = showsWordmark(width, glyphs.ascii);
+  const mark = markWanted ?? showsWordmark(width, glyphs.ascii);
   // Teal into the input blue: the two colours this interface already uses for
   // "the product" and "your words", so the mark introduces the palette rather
   // than adding to it. A terminal without truecolor gets the accent alone.
   const ramp = mark ? gradient(theme.active, theme.accent, WORDMARK_WIDTH) : [];
-  const place = shortPath(tildePath(session.workspace), Math.max(8, width - session.version.length - 16));
+  // "OMNIHARNESS", two gaps of two, the dot and its two gaps: 18 columns
+  // besides the version and the path. It said 16, and at 40 columns the line
+  // wrapped onto a row nobody had reserved for it.
+  const place = shortPath(tildePath(session.workspace), Math.max(8, width - session.version.length - 18));
 
-  return <Box flexDirection="column">
+  return <Box flexDirection="column" alignItems={centered ? 'center' : 'flex-start'}>
     {mark
       ? <Box flexDirection="column" marginBottom={1}>
           {wordmarkRows().map((row, index) => (
@@ -99,7 +106,7 @@ export function Banner({ session, width, theme, glyphs, now }: BannerProps): Rea
           ))}
         </Box>
       : null}
-    <Text>
+    <Text wrap="truncate-end">
       <Text bold>OMNIHARNESS</Text>
       <Text color={theme.muted}>  {session.version}  {glyphs.dot}  {place}</Text>
     </Text>

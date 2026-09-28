@@ -7,6 +7,8 @@ import { tildePath } from '../src/tui/format/units.js';
 import type { ApprovalAction } from '../src/agent/mastraEngine.js';
 
 const rowsOf = (screen: string): string[] => screen.split('\n');
+/** The rows of a frame; Ink ends each with a newline, which is not a row. */
+const frameRows = (frame: string): string[] => frame.replace(/\n$/, '').split('\n');
 const nonBlank = (screen: string): string[] => rowsOf(screen).map((l) => l.trimEnd()).filter((l) => l.trim() !== '');
 
 // --- the wordmark ----------------------------------------------------------
@@ -67,18 +69,79 @@ test('an ASCII terminal gets the name in letters, not the block mark', async () 
 
 // --- the opening dial ------------------------------------------------------
 
-test('the mode dial sits under the masthead, and the composer alone on the floor', async () => {
+test('on the home screen the mode dial and the tip follow the composer', async () => {
   const app = await mount({ columns: 100, rows: 30 });
   await app.settle(60);
   try {
-    const rows = rowsOf(app.screen());
+    const rows = rowsOf(app.live());
     const mast = rows.findIndex((line) => /OMNIHARNESS\s+\S/.test(line));
+    const prompt = rows.findIndex((line) => line.includes('describe the work'));
     const dial = rows.findIndex((line) => /\bmode\s+plan\b/.test(line));
     const tip = rows.findIndex((line) => /\bTip\b/.test(line));
-    const prompt = rows.findIndex((line) => line.includes('describe the work'));
-    assert.ok(mast >= 0 && dial > mast, 'the dial follows the masthead');
-    assert.ok(dial - mast <= 2, `the dial is ${dial - mast} rows under the masthead, not across a gap`);
-    assert.ok(prompt - tip >= 8, `the gap is between the tip and the composer (${prompt - tip} rows)`);
+    assert.ok(mast >= 0 && mast < prompt && prompt < dial && dial < tip, `order: masthead ${mast}, composer ${prompt}, dial ${dial}, tip ${tip}`);
+    assert.ok(prompt - mast <= 3 && dial - prompt <= 3, 'as one group, not across gaps');
+  } finally {
+    app.unmount();
+  }
+});
+
+for (const [columns, rows] of [[40, 12], [72, 20], [100, 30], [160, 40], [100, 9]] as const) {
+  test(`the home screen never fills the window to its last row (${columns}x${rows})`, async () => {
+    // A live region as tall as the window sends Ink down its clear-the-terminal
+    // path, which wipes the scrollback and reprints everything in it.
+    const app = await mount({ columns, rows, run: () => new Promise(() => { /* running */ }) });
+    await app.settle(60);
+    try {
+      assert.ok(frameRows(app.live()).length < rows, `drew ${frameRows(app.live()).length} rows in ${rows}`);
+      await app.submit('first task');
+      await app.settle(80);
+      assert.ok(!app.stdout.output.includes('\x1b[2J'), 'the terminal was never cleared');
+      assert.match(app.live(), /describe the work|type to queue/, 'a composer is still drawn');
+    } finally {
+      app.unmount();
+    }
+  });
+}
+
+test('a narrow masthead shortens the path from the front and keeps it on one row', async () => {
+  const app = await mount({ columns: 40, rows: 20, workspace: '/srv/some/deeply/nested/workspace' });
+  await app.settle(60);
+  try {
+    const row = rowsOf(app.live()).find((line) => /OMNIHARNESS\s+\S/.test(line)) ?? '';
+    assert.ok(row.trimEnd().length <= 40, `a row of ${row.trimEnd().length} columns`);
+    assert.match(row, /…\S*workspace\s*$/, `the folder name survives: ${JSON.stringify(row)}`);
+  } finally {
+    app.unmount();
+  }
+});
+
+test('the first task hands the masthead to scrollback and the composer to the floor', async () => {
+  const app = await mount({ columns: 100, rows: 30, run: () => new Promise(() => { /* running */ }) });
+  await app.settle(60);
+  await app.submit('first task');
+  await app.settle(80);
+  try {
+    assert.ok(!app.live().includes('█'), 'the live region no longer draws the mark');
+    const rows = rowsOf(app.live()).map((line) => line.trimEnd()).filter((line) => line.trim() !== '');
+    assert.match(rows.at(-3) ?? '', /approvals/, 'the composer sits directly above the status line');
+    const printed = rowsOf(app.screen()).filter((line) => /^\s{0,2}OMNIHARNESS\s+\S/.test(line));
+    assert.equal(printed.length, 1, 'the masthead is printed into scrollback once, left-aligned');
+  } finally {
+    app.unmount();
+  }
+});
+
+test('an overlay opened on the home screen does not bring it back, or print the masthead twice', async () => {
+  const app = await mount({ columns: 100, rows: 30 });
+  await app.settle(60);
+  await app.type('\x0b'); // Ctrl+K
+  await app.settle(60);
+  await app.type('\x1b'); // Esc
+  await app.settle(120);
+  try {
+    assert.ok(!app.live().includes('█'), 'the home screen is not redrawn over its own masthead');
+    const printed = rowsOf(app.screen()).filter((line) => /^\s{0,2}OMNIHARNESS\s+\S/.test(line));
+    assert.equal(printed.length, 1, `the masthead is printed once, got ${printed.length}`);
   } finally {
     app.unmount();
   }

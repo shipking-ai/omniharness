@@ -181,12 +181,14 @@ const statusRow = (screen: string): string => {
 };
 
 /**
- * The composer's settings row — mode, engine, approvals — which is the last row
- * of the composer and so the one directly above the status line.
+ * The composer's settings row — mode, engine, approvals — the last row of the
+ * composer. Found by its shape, the spine and then the approvals setting at the
+ * right, because the home screen puts the composer mid-window rather than
+ * directly above the status line.
  */
 const settingsRow = (screen: string): string => {
-  const rows = screen.split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '');
-  return rows.at(-3) ?? '';
+  const rows = screen.split('\n').map((line) => line.trimEnd());
+  return rows.filter((line) => /^\s*[┃|] .*\bapprovals \S+$/.test(line)).at(-1) ?? '';
 };
 
 test('a narrow terminal drops secondary metadata instead of truncating it', async () => {
@@ -421,19 +423,39 @@ test('a reply keeps the paragraph breaks it was written with', async () => {
 
 // --- the opening state -----------------------------------------------------
 
-test('an untouched session fills the window instead of sitting above a void', async () => {
+test('the home screen centres its group in the window, both ways', async () => {
+  // OpenCode's and Kilo's arrangement: the mark, the composer and the tip as
+  // one group in the middle of the window, with the status and hint rows on
+  // the floor. 100 columns: a 96-column frame after the two-column gutters.
   const app = await mount({ columns: 100, rows: 30 });
   await app.settle(60);
-  const rows = app.live().split('\n');
-  const composer = rows.findIndex((line) => line.includes('describe the work'));
-  assert.ok(composer >= 0, 'the composer is on screen');
-  // The command surface sits on the floor of the window: its own settings row,
-  // then the status line and the hint line, are all that follow the prompt.
-  const after = rows.slice(composer + 1).filter((line) => line.trim() !== '');
-  assert.equal(after.length, 3, `only the settings, status and hint rows follow the prompt, got ${JSON.stringify(after)}`);
-  assert.match(after[0] ?? '', /approvals/, 'the first of them is the composer\'s settings row');
-  assert.ok(composer >= 12, `the composer is near the foot of a 30-row window, not at row ${composer}`);
-  app.unmount();
+  try {
+    // Ink ends a frame with a newline, which is not a row.
+    const rows = app.live().replace(/\n$/, '').split('\n');
+    const status = rows.findIndex((line) => /^\s*ready\b/.test(line));
+    assert.equal(status, rows.length - 2, 'the status line is the second-last row');
+    const first = rows.findIndex((line) => line.trim() !== '');
+    const last = rows.slice(0, status).map((line) => line.trim() !== '').lastIndexOf(true);
+    const above = first;
+    const below = status - last - 1;
+    assert.ok(above >= 3, `the group does not sit on the ceiling (${above} rows above it)`);
+    assert.ok(Math.abs(above - below) <= 2, `the group is centred: ${above} rows above, ${below} below`);
+
+    // Across: the mark's middle, and the composer's, at the frame's middle.
+    const middle = 2 + 96 / 2;
+    const mark = rows.find((line) => line.includes('█▀▀█')) ?? '';
+    const markLeft = mark.length - mark.trimStart().length;
+    assert.ok(Math.abs(markLeft + 27 - middle) <= 1, `the mark starts at column ${markLeft}`);
+    const composer = rows.find((line) => line.includes('describe the work')) ?? '';
+    const spine = composer.search(/[┃|]/);
+    assert.ok(Math.abs(spine + 36 - middle) <= 1, `the 72-column composer starts at column ${spine}`);
+
+    // And it is the only masthead: the printed one waits for the first task.
+    const mastheads = app.screen().split('\n').filter((line) => /OMNIHARNESS\s+\S/.test(line));
+    assert.equal(mastheads.length, 1, `one masthead on the home screen, not ${mastheads.length}`);
+  } finally {
+    app.unmount();
+  }
 });
 
 test('the opening screen names the modes and marks the one in force', async () => {
