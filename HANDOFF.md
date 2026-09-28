@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 13 |
+| **Unmerged commits** | 14 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 671 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 463 npm tests (from 459) |
+| **Tests** | 674 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 463 npm tests (from 459) |
 
 ---
 
@@ -77,7 +77,7 @@ Ranked in the research report §09; the numbering is the report's.
 - [x] **07** Approval volume — `34e79b1` + `70405d9` *(batching done; two pieces left, below)*
 - [~] **08** Close the sandbox gap, or document the trust model — **trust model documented**
   in `SECURITY.md`, and the live hole found on the way is **fixed** (see *08 — evaluators* below).
-  Open: the `.git` write gap, and real OS confinement if the user wants it.
+  The `.git` write gap is **closed** too. Open: real OS confinement, not started.
 - [ ] **09** Learned router behind capability intent
 
 ### 07 — the two pieces not done
@@ -119,10 +119,17 @@ the plant fires when allowed).
 
 ### 08 — still open
 
-1. **An approved `git` call can run commands planted in `.git/config`** (`core.fsmonitor`,
-   `diff.external`, filter drivers). The `git` tool asks by default, but the approver sees
-   `git status`, not the config. Proposed fix: file tools refuse writes under `.git`. Not done;
-   put to the user. Documented as a known gap in `SECURITY.md`.
+1. ~~**An approved `git` call can run commands planted in `.git/config`**~~ **FIXED.**
+   `write_file`/`edit_file` call `refuseGitDir` after workspace confinement: any `.git` component
+   below the workspace root is refused, lexically and after symlink resolution, in every spelling
+   (`isGitDirName`: case, trailing `. `, `:stream`, `GIT~1`, HFS+ zero-width chars). Reading stays
+   allowed. Only components *inside* the root are judged, so a workspace under some `.git` dir
+   still works. Tests in `internal/tools/gitdir_test.go`, all watched to fail with the guard
+   disabled. With it off, the end-to-end test shows the git tool running the planted command.
+   Checked and ruled out: the root itself posing as a bare repo (`HEAD`, `objects/`, `refs/`,
+   `config` written at the root). `git status` refuses without a work tree, and the model cannot
+   write the binary objects `git log -p` would need. Belt-and-braces `-c safe.bareRepository=explicit`
+   on the harness's own git calls was **not** added because no exploit could be shown.
 2. **No OS confinement.** `SECURITY.md` now says so plainly (trusted workspace, run untrusted
    repos in a container). Implementing Landlock/Seatbelt is a separate, larger decision.
 

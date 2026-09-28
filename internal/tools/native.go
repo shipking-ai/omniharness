@@ -283,6 +283,83 @@ func confine(root, p string) error {
 	return nil
 }
 
+// refuseGitDir stops the file tools writing inside a git directory.
+//
+// git runs commands named in a repository's own config: core.fsmonitor on a
+// plain `git status`, diff.external on `git diff`, filter drivers on both. A
+// model that can write .git/config can therefore turn the next git call into
+// any command it likes — an approved `git status` from the git tool, or the
+// harness's own diff check — and the person approving sees `git status`, not
+// the config. Nothing an agent is asked to do needs to write inside .git; the
+// git tool is the way to change a repository.
+//
+// Reading is still allowed. The check runs on both the path as given and the
+// path with symlinks resolved, so a workspace file linked into .git is caught
+// too, and it matches every spelling a filesystem treats as ".git".
+//
+// Only components below the workspace root are judged, so a workspace that
+// itself lives under some directory named .git still works. With no root
+// configured, the whole path is.
+func refuseGitDir(tool, root, p string) error {
+	candidates := []string{p}
+	if real, err := resolveDeepest(p); err == nil {
+		candidates = append(candidates, real)
+	}
+	var bases []string
+	if root != "" {
+		if abs, err := filepath.Abs(root); err == nil {
+			bases = append(bases, abs)
+			if real, err := resolveDeepest(abs); err == nil {
+				bases = append(bases, real)
+			}
+		}
+	}
+	for _, c := range candidates {
+		rels := []string{c}
+		if len(bases) > 0 {
+			rels = rels[:0]
+			for _, base := range bases {
+				rel, err := filepath.Rel(base, c)
+				if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					rels = append(rels, rel)
+				}
+			}
+		}
+		for _, rel := range rels {
+			for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+				if isGitDirName(part) {
+					return &Error{
+						Kind: ErrInvalidInput,
+						Tool: tool,
+						Message: fmt.Sprintf("refusing to write %s: it is inside a .git directory, where git "+
+							"reads commands it will run; use the git tool to change the repository", p),
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// isGitDirName reports whether one path component would open a .git
+// directory on some filesystem git runs on: any case (macOS and Windows fold
+// it), trailing dots and spaces and an NTFS stream suffix (Windows drops
+// them), the 8.3 short name, and the zero-width characters HFS+ ignores.
+func isGitDirName(part string) bool {
+	if i := strings.IndexByte(part, ':'); i >= 0 {
+		part = part[:i]
+	}
+	part = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0x200c && r <= 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x206a && r <= 0x206f, r == 0xfeff:
+			return -1
+		}
+		return r
+	}, part)
+	part = strings.TrimRight(part, ". ")
+	return strings.EqualFold(part, ".git") || strings.EqualFold(part, "git~1")
+}
+
 func (n *Native) readFile(ctx context.Context, in map[string]any) (Result, error) {
 	p, err := n.resolvePath(in)
 	if err != nil {
@@ -303,6 +380,9 @@ func (n *Native) writeFile(ctx context.Context, in map[string]any) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
+	if err := refuseGitDir("write_file", n.WorkspaceRoot, p); err != nil {
+		return Result{}, err
+	}
 	content, err := StringArg(in, "content")
 	if err != nil {
 		return Result{}, err
@@ -321,6 +401,9 @@ func (n *Native) writeFile(ctx context.Context, in map[string]any) (Result, erro
 func (n *Native) editFile(ctx context.Context, in map[string]any) (Result, error) {
 	p, err := n.resolvePath(in)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := refuseGitDir("edit_file", n.WorkspaceRoot, p); err != nil {
 		return Result{}, err
 	}
 	oldText, err := StringArg(in, "old_text")

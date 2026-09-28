@@ -46,6 +46,14 @@ These are guarantees. If you can break one, that is a vulnerability:
   those commands read, so running them would be running a script it chose.
   `go build` and `go vet` still run; they compile and analyse without
   executing workspace code.
+- **The file tools do not write inside `.git`.** git runs commands named in a
+  repository's own config (`core.fsmonitor` on a plain `git status`,
+  `diff.external`, filter drivers), so a writable `.git/config` would turn an
+  approved `git status` into any command, and the approval prompt could not
+  show it. `write_file` and `edit_file` refuse any path with a `.git`
+  component, in every spelling a filesystem treats as one (any case, trailing
+  dots or spaces, an NTFS stream suffix, the `GIT~1` short name, zero-width
+  characters), and through symlinks. Reading `.git` is still allowed.
 - **Cost and token budgets** stop a run at the ceiling, including a run that
   would exceed it in a single turn.
 - **The local HTTP API** (`omniharness serve`) rejects any request carrying an
@@ -77,14 +85,6 @@ seccomp on Linux, Seatbelt on macOS). This one does not yet. Until it does:
 - To work on a repository you do not trust, run OmniHarness inside a
   container, VM or dev container, and give it only the credentials the task
   needs.
-
-**An approved `git` call can run a command the model planted.** git reads
-commands from the repository's own `.git/config` (`core.fsmonitor`,
-`diff.external`, filter drivers), and the file tools can write inside `.git`.
-The approval prompt shows `git status`; it cannot show what that config will
-make git execute. The `git` tool is high risk and asks by default, so this
-needs an approval, but the approval is not informed. Blocking file-tool writes
-under `.git` would close it; that has not been done yet.
 
 **Repository instruction files are instructions.** `AGENTS.md`, `CLAUDE.md`
 and `GEMINI.md` in the workspace are read into the agent's prompt. A repository
