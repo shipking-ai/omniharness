@@ -47,11 +47,39 @@ type Evaluator interface {
 	Evaluate(ctx context.Context, r Request) (Outcome, string, error)
 }
 
+// RunsWorkspaceCode marks an evaluator whose command executes code the
+// workspace itself defines: a package.json script, a test binary, a build.rs,
+// a conftest.py, or a command git reads from the repository's own config
+// (core.fsmonitor runs on a plain `git status`). The model can write every one
+// of those with write_file, which is not an approval-gated tool, so running
+// such an evaluator is running a command the model chose.
+type RunsWorkspaceCode interface {
+	RunsWorkspaceCode()
+}
+
 // Registry holds evaluators and can build the right set for a task.
 type Registry struct {
 	evaluators map[string]Evaluator
 	// Timeout bounds evaluator commands.
 	Timeout time.Duration
+	// AllowWorkspaceCode lets RunsWorkspaceCode evaluators run. The runtime
+	// sets it from policy.shell_allowed, because SECURITY.md promises that
+	// shell_allowed = false means no shell by way of any tool, and an
+	// evaluator running `npm test` is a shell the model scripted. It defaults
+	// to false so a registry built without thinking about it fails closed.
+	AllowWorkspaceCode bool
+}
+
+// shellOff stands in for an evaluator that would execute workspace code
+// while the shell is disabled. It keeps the evaluator's name so the record
+// says which check did not run, and reports NeedsReview rather than Pass:
+// the check was not made, and a pass would claim it was.
+type shellOff struct{ name string }
+
+func (s shellOff) Name() string { return s.name }
+
+func (s shellOff) Evaluate(context.Context, Request) (Outcome, string, error) {
+	return NeedsReview, "not run: it executes code from the workspace, and policy.shell_allowed is false", nil
 }
 
 // NewRegistry returns an empty registry.
@@ -75,6 +103,19 @@ func (r *Registry) Register(e Evaluator) error {
 // tasks get build/test checks; diff-check is added only when the task set out
 // to change files. Research tasks get evidence checks.
 func (r *Registry) ForTask(p task.Profile) []Evaluator {
+	out := r.forTask(p)
+	if r.AllowWorkspaceCode {
+		return out
+	}
+	for i, e := range out {
+		if _, ok := e.(RunsWorkspaceCode); ok {
+			out[i] = shellOff{name: e.Name()}
+		}
+	}
+	return out
+}
+
+func (r *Registry) forTask(p task.Profile) []Evaluator {
 	var out []Evaluator
 	// The Go evaluators are offered to every software task rather than
 	// gated on a detected toolchain: each one checks for a module itself
@@ -221,6 +262,8 @@ func (e *GoBuildEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, st
 // GoTestEvaluator runs `go test ./...`.
 type GoTestEvaluator struct{}
 
+func (e *GoTestEvaluator) RunsWorkspaceCode() {}
+
 func (e *GoTestEvaluator) Name() string { return "go-test" }
 
 func (e *GoTestEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, string, error) {
@@ -262,6 +305,8 @@ func hasNpmScript(dir, script string) bool {
 // build), same as GoBuildEvaluator skips a workspace with no go.mod.
 type NpmBuildEvaluator struct{}
 
+func (e *NpmBuildEvaluator) RunsWorkspaceCode() {}
+
 func (e *NpmBuildEvaluator) Name() string { return "npm-build" }
 
 func (e *NpmBuildEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, string, error) {
@@ -285,6 +330,8 @@ func (e *NpmBuildEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, s
 // when there is no package.json or no "test" script, same reasoning as
 // NpmBuildEvaluator.
 type NpmTestEvaluator struct{}
+
+func (e *NpmTestEvaluator) RunsWorkspaceCode() {}
 
 func (e *NpmTestEvaluator) Name() string { return "npm-test" }
 
@@ -340,6 +387,8 @@ func plural(n int, one, many string) string {
 
 // DiffCheckEvaluator verifies a change-producing task actually changed files.
 type DiffCheckEvaluator struct{}
+
+func (e *DiffCheckEvaluator) RunsWorkspaceCode() {}
 
 func (e *DiffCheckEvaluator) Name() string { return "diff-check" }
 
@@ -436,6 +485,8 @@ func exitCode(err error) int {
 // way a workspace with no Cargo.toml is not one.
 type CargoBuildEvaluator struct{}
 
+func (e *CargoBuildEvaluator) RunsWorkspaceCode() {}
+
 func (e *CargoBuildEvaluator) Name() string { return "cargo-build" }
 
 func (e *CargoBuildEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, string, error) {
@@ -454,6 +505,8 @@ func (e *CargoBuildEvaluator) Evaluate(ctx context.Context, r Request) (Outcome,
 
 // CargoTestEvaluator runs `cargo test` for a Rust workspace.
 type CargoTestEvaluator struct{}
+
+func (e *CargoTestEvaluator) RunsWorkspaceCode() {}
 
 func (e *CargoTestEvaluator) Name() string { return "cargo-test" }
 
@@ -479,6 +532,8 @@ var pythonMarkers = []string{"pyproject.toml", "setup.py", "setup.cfg", "require
 // Exit status 5 is pytest's "no tests were collected", which is not a
 // failing suite — a project that has no tests yet has not broken anything.
 type PytestEvaluator struct{}
+
+func (e *PytestEvaluator) RunsWorkspaceCode() {}
 
 func (e *PytestEvaluator) Name() string { return "pytest" }
 
@@ -533,6 +588,8 @@ func (e *GoVetEvaluator) Evaluate(ctx context.Context, r Request) (Outcome, stri
 // NpmLintEvaluator runs `npm run lint` when the project declares that
 // script. Same warning-not-failure reasoning as GoVetEvaluator.
 type NpmLintEvaluator struct{}
+
+func (e *NpmLintEvaluator) RunsWorkspaceCode() {}
 
 func (e *NpmLintEvaluator) Name() string { return "npm-lint" }
 

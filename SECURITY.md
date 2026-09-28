@@ -38,6 +38,14 @@ These are guarantees. If you can break one, that is a vulnerability:
   errors, or has no UI attached is a denial. Critical-risk tools are refused
   outright and cannot be downgraded to a prompt.
 - **`shell_allowed = false`** means no shell, including by way of another tool.
+  That covers verification: the evaluators that run a project's own code
+  (`npm test`, `npm run build`, `npm run lint`, `go test`, `cargo build`,
+  `cargo test`, `pytest`, and the `git status` behind the diff check, which
+  runs commands from the repository's own git config) are skipped and
+  recorded as not assessed while it is false. The model can write every file
+  those commands read, so running them would be running a script it chose.
+  `go build` and `go vet` still run; they compile and analyse without
+  executing workspace code.
 - **Cost and token budgets** stop a run at the ceiling, including a run that
   would exceed it in a single turn.
 - **The local HTTP API** (`omniharness serve`) rejects any request carrying an
@@ -51,6 +59,37 @@ These are guarantees. If you can break one, that is a vulnerability:
 
 Stated plainly, because a limitation you know about is a decision and one you
 do not is a trap.
+
+**There is no operating-system sandbox. OmniHarness assumes a trusted
+workspace and a trusted machine.** Everything it spawns (a shell command, a
+`[[commands]]` tool, an MCP server, an evaluator, `git`) runs as you, with
+your filesystem and your network. Workspace confinement is enforced by the
+file tools themselves, not by the kernel: a shell command can read `~/.ssh`,
+edit `~/.omniharness.toml` to loosen the next run's policy, or open any
+connection your machine can. The policy gate runs in the same process and
+decides which tool calls happen; it does not constrain a program once it is
+running. Some other agent CLIs confine subprocesses by default (Landlock and
+seccomp on Linux, Seatbelt on macOS). This one does not yet. Until it does:
+
+- Turning on `shell_allowed` hands the model code execution as you, gated
+  only by the approval prompt. Together with `--yes` or `bypass`, there is
+  no gate at all.
+- To work on a repository you do not trust, run OmniHarness inside a
+  container, VM or dev container, and give it only the credentials the task
+  needs.
+
+**An approved `git` call can run a command the model planted.** git reads
+commands from the repository's own `.git/config` (`core.fsmonitor`,
+`diff.external`, filter drivers), and the file tools can write inside `.git`.
+The approval prompt shows `git status`; it cannot show what that config will
+make git execute. The `git` tool is high risk and asks by default, so this
+needs an approval, but the approval is not informed. Blocking file-tool writes
+under `.git` would close it; that has not been done yet.
+
+**Repository instruction files are instructions.** `AGENTS.md`, `CLAUDE.md`
+and `GEMINI.md` in the workspace are read into the agent's prompt. A repository
+you did not write can use them to steer the model, the same way any file it
+reads can. The policy gate still applies.
 
 **Third-party credentials reach subprocesses.** `GITHUB_TOKEN`,
 `AWS_SECRET_ACCESS_KEY`, `NPM_TOKEN` and the rest are inherited by design — an

@@ -180,6 +180,10 @@ func New(cfg config.Config, opts Options) (*Runtime, error) {
 	if err := evals.RegisterDefaults(); err != nil {
 		return nil, err
 	}
+	// Build and test evaluators run code the model can write (a package.json
+	// script, a test file). With the shell off, that would be a shell by
+	// another name, so they only run when the shell is allowed.
+	evals.AllowWorkspaceCode = cfg.Policy.ShellAllowed
 
 	composerLimits := composer.Limits{CondenseAt: 96 << 10}
 	advisor := &memory.Advisor{Store: store}

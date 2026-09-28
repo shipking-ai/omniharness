@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 12 |
+| **Unmerged commits** | 13 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 668 Go test functions (from 598 at branch start) · 463 npm tests (from 459) |
+| **Tests** | 671 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 463 npm tests (from 459) |
 
 ---
 
@@ -75,8 +75,9 @@ Ranked in the research report §09; the numbering is the report's.
 - [x] **05** Tier the context strategy — `2a22b42` *(history-eviction bug fixed first in `eabc459`)*
 - [x] **06** Hooks on the event spine — `c537f2d`
 - [x] **07** Approval volume — `34e79b1` + `70405d9` *(batching done; two pieces left, below)*
-- [ ] **08** Close the sandbox gap, or document the trust model — **IN PROGRESS**; found a
-  live hole first, see *08 — verified finding* below. Waiting on the user's choice of fix.
+- [~] **08** Close the sandbox gap, or document the trust model — **trust model documented**
+  in `SECURITY.md`, and the live hole found on the way is **fixed** (see *08 — evaluators* below).
+  Open: the `.git` write gap, and real OS confinement if the user wants it.
 - [ ] **09** Learned router behind capability intent
 
 ### 07 — the two pieces not done
@@ -91,31 +92,39 @@ Batching is in. Still outstanding, both smaller than what shipped:
    a diff, a path list, or a size. The batch prompt is the right place for it now that there is one
    prompt per turn to put it in.
 
-### 08 — verified finding, NOT FIXED YET
+### 08 — evaluators ran model-written scripts with the shell off (FIXED)
 
-**`shell_allowed = false` does not mean no shell.** Found while mapping every subprocess spawn site
-for 08. `SECURITY.md` lists "`shell_allowed = false` means no shell, including by way of another
-tool" as a guarantee. It does not hold:
+**Was:** `SECURITY.md` guarantees "`shell_allowed = false` means no shell, including by way of
+another tool". But `internal/evaluate` ran `npm test`/`build`/`lint`, `go test`, `cargo build`/`test`
+and `pytest` after every software task with no policy check. `write_file` is allowed by default,
+so a model-written `package.json` script ran through `sh -c` with nobody asked. `diff-check`'s
+`git status` did the same through a planted `core.fsmonitor` in `.git/config`. Both were
+reproduced end to end.
 
-- `internal/evaluate` runs `npm test`, `npm run build`, `npm run lint`, `go test`, `cargo build`,
-  `cargo test` and `pytest` in the workspace after **every software task**
-  (`Registry.ForTask`, `orchestrator.evaluate`). None of it passes through `policy`, and nothing
-  reads `ShellAllowed` outside `policy.go:141`.
-- `write_file` is `medium` → `allow` by default. So a model writes
-  `package.json` with `"scripts":{"test":"<anything>"}` and the evaluator runs it via `sh -c`.
-  No prompt at all. Same shape via a `_test.go` file, `build.rs`, or `conftest.py`.
-- **Reproduced end to end**, default config, through `omniharness run --headless`:
-  fake gateway writes that `package.json` with `"test":"touch PWNED"`; after the run, `PWNED`
-  exists and the log shows `evaluate: npm-test -> PASS`. The repro was a throwaway test in
-  `internal/cli` (drive `run` like `diagnose_test.go`, one `write_file` step then `"fixed"`,
-  prompt `"fix the build script in this package"` so the keyword analyzer picks SOFTWARE);
-  not committed because it fails by design until fixed.
+**Fix (the user chose option A):** evaluators that execute workspace-defined code implement
+`evaluate.RunsWorkspaceCode`. `Registry.AllowWorkspaceCode` (default **false**, fail-closed) is set
+from `policy.shell_allowed` in `runtime.go`; when false, `ForTask` swaps those checks for a stub
+that keeps the name and reports `NEEDS_REVIEW` ("not run: …"). Never `PASS`: a check that did not
+run must not read as one that did. `go build` and `go vet` still run; they compile and analyse
+but never execute workspace code.
 
-Fix options put to the user (touches the policy guarantee, so it is their call per `AGENTS.md`):
-(A) evaluators that execute workspace-defined code are skipped with `NEEDS_REVIEW` when
-`shell_allowed = false`; (B) route them through the policy gate as an execute-code request so
-they need approval; (C) change the guarantee in `SECURITY.md` instead. Whichever lands, the repro
-becomes a committed test and must be watched to fail on the unfixed code.
+**Cost the user accepted:** at default config, software tasks are no longer verified by the
+repo's own tests. The run records that honestly instead.
+
+**Tests**, all three watched to fail with the fix reverted or the markers removed:
+`internal/cli/evaluate_shell_test.go` (real `run`, shell off → script not run; shell on → it
+runs, which proves the first test isn't vacuous) and `internal/evaluate/shell_test.go` (an
+allowlist of what still runs with the shell off, plus a planted-fsmonitor test that also checks
+the plant fires when allowed).
+
+### 08 — still open
+
+1. **An approved `git` call can run commands planted in `.git/config`** (`core.fsmonitor`,
+   `diff.external`, filter drivers). The `git` tool asks by default, but the approver sees
+   `git status`, not the config. Proposed fix: file tools refuse writes under `.git`. Not done;
+   put to the user. Documented as a known gap in `SECURITY.md`.
+2. **No OS confinement.** `SECURITY.md` now says so plainly (trusted workspace, run untrusted
+   repos in a container). Implementing Landlock/Seatbelt is a separate, larger decision.
 
 ### 08 — what it means, concretely
 
