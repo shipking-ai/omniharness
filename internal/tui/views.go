@@ -124,11 +124,10 @@ func (m *Model) renderChat() string {
 		}
 	}
 
-	// Streaming result.
-	if m.streamFull != "" && m.streamIdx < len(m.streamFull) {
+	// The answer while it is being typed out. Once finished it is committed to
+	// the conversation above, so it is never drawn from here as well.
+	if m.streamFull != "" {
 		blocks = append(blocks, m.renderStreamingBubble(m.stream))
-	} else if m.streamFull != "" && m.stream != "" {
-		blocks = append(blocks, m.renderResultBubble(m.streamFull))
 	}
 
 	// Live activity.
@@ -172,11 +171,11 @@ func (m *Model) renderUserBubble(text string) string {
 }
 
 func (m *Model) renderResultBubble(text string) string {
-	return m.block("[ result ]", m.styles.ok, pMuted, text)
+	return m.block("[ result ]", m.styles.ok, pMuted, renderMarkdown(text))
 }
 
 func (m *Model) renderStreamingBubble(text string) string {
-	return m.block("[ working ]", m.styles.accent, pAccent, text+" "+m.spinner())
+	return m.block("[ working ]", m.styles.accent, pAccent, renderMarkdown(text)+" "+m.spinner())
 }
 
 func (m *Model) renderErrorBubble(text string) string {
@@ -209,12 +208,19 @@ func (m *Model) renderFooter() string {
 			m.styles.footer.Render("[y] approve    [n] deny")
 	}
 
-	input := m.input.View()
+	mark := m.styles.muted.Render("> ")
 	if m.inputFocused {
-		input = m.styles.accent.Render("> ") + m.input.View()
+		mark = m.styles.accent.Render("> ")
 	}
+	input := mark + m.input.View()
 
-	status := m.styles.muted.Render(fmt.Sprintf("$%.3f  %s", m.metrics.CostUSD, m.cfg.Models.Default))
+	// A zero cost is not shown: the store sums an unreported cost as zero, and
+	// "$0.000" reads as "this was free".
+	statusText := m.cfg.Models.Default
+	if m.metrics.CostUSD > 0 {
+		statusText = fmt.Sprintf("$%.3f  %s", m.metrics.CostUSD, statusText)
+	}
+	status := m.styles.muted.Render(statusText)
 	shortcuts := m.styles.footer.Render("Ctrl+O model  Ctrl+A sessions  Ctrl+K key  ? help")
 
 	return lipgloss.JoinHorizontal(lipgloss.Left,
@@ -382,7 +388,11 @@ func compactEvent(e event.Event) string {
 	case event.ModelResponded:
 		var d event.ModelRespondedData
 		decode(e, &d)
-		return fmt.Sprintf("<- %s %d+%d tok $%.4f", d.Model, d.TokensIn, d.TokensOut, d.CostUSD)
+		line := fmt.Sprintf("<- %s %d+%d tok", d.Model, d.TokensIn, d.TokensOut)
+		if d.CostUSD > 0 {
+			line += fmt.Sprintf(" $%.4f", d.CostUSD)
+		}
+		return line
 	case event.ModelFailed:
 		var d event.ModelFailedData
 		decode(e, &d)

@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 18 |
+| **Unmerged commits** | 19 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 674 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 477 npm tests (from 459) |
+| **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 479 npm tests (from 459) |
 
 ---
 
@@ -35,8 +35,8 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 - **Terminal Agent Lookbook** (28 Sep 2026): 14 agent TUIs captured in one xterm.js terminal at 120x34
   with the same scripted answer, ranked on looks, plus official shots and an 8-step redesign spec for
   the npm TUI: https://claude.ai/artifact/6JP56nnobyqaJM4ErEKDPb
-  Verified bugs from it, **not fixed**: the Go TUI (`internal/tui`) draws each final answer twice
-  (once truncated, once full), prints raw markdown, and its prompt reads `> >`. The npm TUI renders
+  Verified bugs from it in the Go TUI (`internal/tui`), **all fixed** (see *Go TUI fixes* below):
+  each final answer drawn twice, raw markdown, and a prompt reading `> >`. The npm TUI renders
   well; its gaps were layout (composer not pinned to the bottom, empty start screen, no end-of-turn
   line) and wording (the status line says "via OmniRoute" and "manual"). **All four are addressed by
   the npm TUI redesign below.** The capture rig lived in the session scratchpad and is gone; the
@@ -107,6 +107,34 @@ drawn alike, wordmark forced on, key hint forced on, dial truncation removed, re
 dropped, band at reading width, spacer zeroed, `approvalRows` ignored, compact never chosen,
 workspace dropped from the dialog, `tildePath` prefix without `/`. Rendered in a real xterm.js +
 pty at 120, 80, 50 columns, 16 rows, and ASCII.
+
+### Go TUI fixes and code wrap (`fix(tui)`, after the redesign)
+
+- **Answer drawn twice.** `TaskCompleted` appended the summary as a result bubble. Then
+  `taskDoneMsg` re-streamed `resultText(task)` below it, and for a failed task that text is
+  `t.Error`, so the error also came back labelled `[ result ]`. The answer is now shown once, in
+  either arrival order, and only for a completed task. The animation commits into the conversation
+  when it finishes, or when the next task starts; before, a finished answer vanished at the next task.
+- **Mid-character animation.** The typing effect advanced 5 *bytes* a tick and split multi-byte
+  characters. It now steps by runes (`advanceRunes`).
+- **`> >` prompt.** `textinput.Prompt` was `"> "` and the footer added its own. The input's mark
+  is now empty; the footer draws one, muted when unfocused.
+- **Raw markdown.** `internal/tui/markdown.go` handles headings, `**bold**`, `` `code` ``, bullets
+  and fences. Each segment is styled explicitly, so a span's reset can't cancel the block colour.
+- **`$0.000` / `$0.0000`.** The store `COALESCE`s an unreported cost to 0, so the footer, the
+  "model reply" line and the event log now show a cost only when it is non-zero.
+- **npm code wrap.** An overlong code line was hard-cut at the width (`includes('--verbose` /
+  `') };`). It now breaks at a space or after `,;({[` in the back half of the row, and hangs the
+  continuation two columns past the line's indent (`format/highlight.ts`).
+
+Tests: `internal/tui/answer_test.go` (8) and two in `npm/test/highlight.test.ts`. **10 of 11
+deliberate breaks were caught.** The miss was a `resultShown` guard in `taskDoneMsg` that the real
+flow can't reach, so it was deleted rather than kept untested. Rendered in the xterm.js rig:
+the Go TUI answer at 120 columns, the npm TUI at 50.
+
+Still open: the npm opening screen has an intentional gap between the masthead and the mode dial
+(the command surface sits at the foot). Moving the dial under the masthead is a small change if
+the user prefers it; they have not said.
 
 ---
 

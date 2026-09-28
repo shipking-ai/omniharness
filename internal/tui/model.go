@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -180,6 +181,12 @@ type Model struct {
 	stream         string
 	streamFull     string
 	streamIdx      int
+	// The finished answer is shown once. TaskCompleted carries it as an event
+	// and taskDoneMsg carries it again on the returned task, in either order;
+	// whichever arrives first shows it and the other is dropped. Showing both
+	// drew every answer twice.
+	resultShown   bool
+	pendingResult string
 
 	// Model combo picker.
 	comboSel int
@@ -240,7 +247,9 @@ type Styles struct {
 func New(cfg config.Config, rt *runtime.Runtime, configPath string) *Model {
 	in := textinput.New()
 	in.Placeholder = "describe a task…"
-	in.Prompt = "> "
+	// The footer draws the prompt mark; the input drawing its own as well read
+	// as "> > " on every frame.
+	in.Prompt = ""
 	in.CharLimit = 1000
 
 	convo := []chatLine{
@@ -415,11 +424,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.frame++
 		if m.streamIdx < len(m.streamFull) {
-			m.streamIdx += 5
-			if m.streamIdx > len(m.streamFull) {
-				m.streamIdx = len(m.streamFull)
-			}
+			m.streamIdx = advanceRunes(m.streamFull, m.streamIdx, 5)
 			m.stream = m.streamFull[:m.streamIdx]
+			if m.streamIdx >= len(m.streamFull) {
+				m.commitStream()
+			}
 		}
 		if m.sessionID != "" {
 			if mm, err := telemetry.ForSession(m.rt.Store, m.sessionID); err == nil {
@@ -467,9 +476,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastModel = ""
 		m.modelStats = nil
 		m.modelStatID = map[string]int{}
-		m.streamFull = ""
-		m.stream = ""
-		m.streamIdx = 0
+		m.commitStream()
+		m.resultShown = false
+		m.pendingResult = ""
 		return m, nil
 
 	case taskDoneMsg:
@@ -481,13 +490,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = task.StatusFailed
 		}
 		m.refreshSessions()
-		if msg.Task != nil {
-			if full := resultText(msg.Task); full != "" {
-				m.streamFull = full
-				m.streamIdx = 0
-				m.stream = ""
+		// A failed task's text is its error, which TaskFailed already showed
+		// as one; only a completed task has an answer to show.
+		full := m.pendingResult
+		if msg.Task != nil && msg.Task.Status == task.StatusCompleted {
+			if t := resultText(msg.Task); t != "" {
+				full = t
 			}
 		}
+		if full != "" {
+			m.resultShown = true
+			m.streamFull = full
+			m.streamIdx = 0
+			m.stream = ""
+		}
+		m.pendingResult = ""
 		return m, nil
 
 	case sessionsMsg:
@@ -932,7 +949,7 @@ func (m *Model) applyEvent(e event.Event) {
 			s.Cost += d.CostUSD
 			s.LastState = "ok"
 		})
-		m.chat(chatHarness, fmt.Sprintf("model reply %s (%d+%d tok, $%.4f)", d.Model, d.TokensIn, d.TokensOut, d.CostUSD))
+		m.chat(chatHarness, modelReplyLine(d))
 	case event.RepairStarted:
 		var d event.RepairData
 		decode(e, &d)
@@ -942,9 +959,15 @@ func (m *Model) applyEvent(e event.Event) {
 		var d event.TaskCompletedData
 		decode(e, &d)
 		m.status = task.StatusCompleted
-		if d.Summary != "" {
+		if d.Summary != "" && !m.resultShown {
 			m.prompt = d.Summary
-			m.chat(chatResult, d.Summary)
+			if m.running {
+				// The returned task may carry the full text; wait for it.
+				m.pendingResult = d.Summary
+			} else {
+				m.resultShown = true
+				m.chat(chatResult, d.Summary)
+			}
 		}
 	case event.TaskFailed:
 		var d event.TaskFailedData
@@ -1035,6 +1058,39 @@ func (m *Model) recordModelStat(id string, mutate func(*modelStat)) {
 		m.modelStats = append(m.modelStats, modelStat{ID: id})
 	}
 	mutate(&m.modelStats[idx])
+}
+
+// commitStream moves a finished (or interrupted) answer animation into the
+// conversation, where it stays. Left in the stream fields, it vanished the
+// moment the next task started.
+func (m *Model) commitStream() {
+	if m.streamFull != "" {
+		m.chat(chatResult, m.streamFull)
+	}
+	m.streamFull = ""
+	m.stream = ""
+	m.streamIdx = 0
+}
+
+// advanceRunes moves a byte offset forward by n runes, never landing inside a
+// multi-byte character.
+func advanceRunes(s string, from, n int) int {
+	i := from
+	for ; n > 0 && i < len(s); n-- {
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	return i
+}
+
+// modelReplyLine describes one model reply. A cost of zero is left out: the
+// store sums an unreported cost as zero, and "$0.0000" reads as "free".
+func modelReplyLine(d event.ModelRespondedData) string {
+	line := fmt.Sprintf("model reply %s (%d+%d tok", d.Model, d.TokensIn, d.TokensOut)
+	if d.CostUSD > 0 {
+		line += fmt.Sprintf(", $%.4f", d.CostUSD)
+	}
+	return line + ")"
 }
 
 func (m *Model) chat(k chatKind, text string) {
