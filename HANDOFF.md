@@ -1,235 +1,207 @@
 # Handoff
 
-Live state of the agent-harness improvement work. **Updated after every change.**
-If you are picking this up cold, read this file top to bottom and you have everything.
-
-- **Branch:** `claude/inspiring-hypatia-wx35s3`
-- **Base:** `main` (fast-forwarded to `cca9b4b` after PR #126 merged)
-- **Published:** `omniharness-cli@0.1.122` (auto-published on merge to `main`)
-- **Location:** repository root. Committed, so it travels with the branch.
-- **Last updated:** item 07 part one (policy-side batching) committed; agent wiring still to do
-
----
-
-## Where things stand
+Live state of the agent-harness improvement work. **Updated in the same commit as every change.**
+Read this top to bottom and you have everything; nothing here depends on a previous session's memory.
 
 | | |
 |---|---|
-| Commits on branch, unmerged | `a8d255d`, `855d4fc`, handoff commits, eviction fix |
-| Open PR | none — not opened yet, user has not asked |
-| Go tests | 665 test functions, `go test ./...` clean |
-| npm tests | 463 pass |
-| `gofmt` / `go vet` / `typecheck` | clean |
+| **Branch** | `claude/inspiring-hypatia-wx35s3` |
+| **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
+| **Head** | `70405d9` — pushed, working tree clean |
+| **Unmerged commits** | 10 |
+| **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
+| **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
+| **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
+| **Tests** | 668 Go test functions (from 598 at branch start) · 463 npm tests (from 459) |
 
-### Unmerged commits
+---
 
-- **`a8d255d`** — `fix(harness): refuse ambiguous edits, stop breaking the prompt cache, read AGENTS.md`
-  - `edit_file` refuses a non-unique `old_text` (was silently editing the first match and reporting success)
-  - Volatile prompt segments moved last in both agents (Go `SUMMARY OF PRIOR WORK`, npm `PERSISTENT MEMORY`) so the cacheable prefix survives
-  - `prompt_tokens_details.cached_tokens` read and carried through both clients
-  - New `internal/instructions` reads `AGENTS.md` → `CLAUDE.md` → `GEMINI.md`
-- **`855d4fc`** — `feat(diagnose): read the trajectory, not just the outcome`
-  - New `internal/diagnose` + `omniharness diagnose <session>` with `--json` / `--strict`
-  - Four deterministic rules: `repeated_call`, `tool_thrash`, `unverified_completion`, `unapproved_risk`
+## Read these first
+
+- **`AGENTS.md`** (repo root) — the authoritative rules. It predates this work. Two of its rules
+  have already caught real mistakes here, so treat them as load-bearing rather than boilerplate:
+  *a test not watched to fail on the broken version is a guess*, and *never fabricate a number*.
+- **`SECURITY.md`** — read before touching `internal/policy`, `internal/envguard`,
+  `internal/budget`, or `internal/cli/serve.go`. Several of the commits below touch `policy`.
+- **Research report** — the source of the ranked backlog, 3 editions:
+  https://claude.ai/artifact/5gge1j8cfVov9RXCcodZzK
+
+A pleasing loop worth knowing: commit `a8d255d` taught OmniHarness to read `AGENTS.md`, so when
+the harness is pointed at this repository it now reads the same instructions you just did.
+
+---
+
+## What is on this branch
+
+Ten commits, oldest first. Every one has tests that were confirmed to fail against the unfixed
+version by actually reverting the fix.
+
+| commit | what it does |
+|---|---|
+| `a8d255d` | **Three fixes.** `edit_file` refuses a non-unique `old_text` (it was silently editing the first match and reporting success). Volatile prompt segments moved last in both agents so the cacheable prefix survives. `internal/instructions` reads `AGENTS.md` → `CLAUDE.md` → `GEMINI.md`. |
+| `855d4fc` | **`internal/diagnose` + `omniharness diagnose <session>`.** Four deterministic rules over the recorded trajectory. |
+| `04c6296` `8112499` `761fff6` | This handoff: created, a finding recorded mid-investigation, moved to the repo root. |
+| `eabc459` | **History eviction kept the wrong end** — it kept the oldest turns and dropped the newest. Now keeps the tail, without orphaning tool results. |
+| `2a22b42` | **Context reduces in tiers** — elide tool-result bodies → drop turns → trim prompt — and reports which rung fired. |
+| `c537f2d` | **`internal/hook`** — deny-only guards on the tool path, ahead of policy. |
+| `34e79b1` | **`policy.EvaluateBatch`** — decide a whole turn, ask once. |
+| `70405d9` | **`agent.planTurn`** — wires the above in; a four-write turn now interrupts a person once, not four times. |
+
+### Design decisions you should not quietly undo
+
+- **Hooks can refuse and nothing else.** There is deliberately no permissive verdict. If a hook
+  could sanction an action it becomes a route around the policy engine and the approval gate, and
+  the first one anyone writes is the hook that approves everything. Policy runs regardless of what
+  hooks say. Adding an allow verdict would not extend this design, it would end it. Two tests hold
+  the line, including one that puts a permissive hook in front of a blocking policy.
+- **Batching is presentation, never semantics.** Every request keeps its own verdict; denying one
+  does not deny the rest; blocks never reach a person; a short or failing answer denies everything
+  rather than reading as a partial yes.
+- **Absent ≠ zero.** `cached_tokens` stays absent when a provider is silent. `AGENTS.md` requires
+  this generally; do not add a `?? 0` on the way to a view.
+- **Hooks and validation run exactly once per call.** That is the whole reason `planTurn` and
+  `executeToolCall` are split rather than policy simply being called twice.
 
 ---
 
 ## Backlog
 
-Ranked in the research report (§09). Numbering is the report's.
+Ranked in the research report §09; the numbering is the report's.
 
-- [x] **01** Fix `edit_file` to require a unique match — *done in `a8d255d`*
-- [x] **02** Reorder the prompt, then cache it — *done in `a8d255d`* (reordering + `cached_tokens` accounting; **emitting** cache directives is NOT done, see Open questions)
-- [x] **03** Read the trajectories you already record — *done in `855d4fc`*
-- [x] **04** Read AGENTS.md — *done in `a8d255d`*
-- [x] **05** Tier the context strategy — *done*; eviction order was fixed first, see above
-- [x] **06** Add hooks on top of the event spine — *done*
-- [ ] **07** Design for approval volume — **IN PROGRESS**, policy side done, agent wiring next
-- [ ] **08** Close the sandbox gap, or document the trust model
-- [ ] **09** Put a learned router behind capability intent
+- [x] **01** `edit_file` unique match — `a8d255d`
+- [x] **02** Prompt reorder + cache accounting — `a8d255d` *(partial: see Open questions)*
+- [x] **03** Trajectory diagnostics — `855d4fc`
+- [x] **04** Read `AGENTS.md` — `a8d255d`
+- [x] **05** Tier the context strategy — `2a22b42` *(history-eviction bug fixed first in `eabc459`)*
+- [x] **06** Hooks on the event spine — `c537f2d`
+- [x] **07** Approval volume — `34e79b1` + `70405d9` *(batching done; two pieces left, below)*
+- [ ] **08** Close the sandbox gap, or document the trust model — **NEXT**
+- [ ] **09** Learned router behind capability intent
 
-### DONE — history eviction kept the wrong end
+### 07 — the two pieces not done
 
-Found while starting 05, verified empirically rather than by reading. The
-history loop in `internal/context/context.go` appended oldest-first until the
-budget ran out and then broke, so **it kept the oldest turns and dropped the
-newest**. With four turns and room for two, `oldest` and `second` survived;
-`third` and `newest` were dropped.
+Batching is in. Still outstanding, both smaller than what shipped:
 
-Close to the worst possible eviction order: the agent lost the tool results it
-had just received — the thing the next step depends on — and kept the opening
-exchange it had already acted on. An agent that cannot see what its last tool
-call returned calls it again, which is how a run starts circling; `diagnose`
-would have reported that as `repeated_call` without naming the cause.
+1. **Grant expiry within a run.** There is still no notion of a grant that ages. A `yes` at step 3
+   covers nothing later (each turn is asked fresh), which is safe, but there is also no "allow for
+   this session" that would cut volume further without becoming a blanket grant. If you add one,
+   it must expire — an unexpiring grant recreates the problem this work set out to fix.
+2. **Structured evidence at the prompt.** `Request.Input` reaches the approver but nothing renders
+   a diff, a path list, or a size. The batch prompt is the right place for it now that there is one
+   prompt per turn to put it in.
 
-**Fixed.** `fitNewestFirst` keeps the tail of history and returns it
-chronologically. The subtlety is tool results: the wire format rejects a tool
-message with no matching assistant `tool_calls` before it, so a cut landing
-between the two produces a request the gateway refuses outright. The boundary
-walks back past the assistant message that owns the results, keeping less in
-order to keep what remains sendable. Tests cover: newest survives, order is
-preserved, the first kept message is never an orphaned tool result across
-seven different budgets, and a kept tool result always has its request.
+### 08 — what it means, concretely
 
-### 05 — what shipped
+`internal/envguard` scopes this harness's own credentials out of subprocesses and its doc comment
+is candid that a subprocess inherits everything else, deliberately, because `gh pr create` needs
+its token. That is credential scoping, not isolation: no filesystem or network confinement, and
+the policy engine runs in-process.
 
-`internal/context` now reduces in tiers instead of at one threshold, and reports
-which rung it reached (`Output.Tier`):
+Codex CLI ships Landlock + seccomp on Linux and Seatbelt on macOS **on by default**, so this is
+now below the field's baseline. Two legitimate answers: implement confinement for shell and MCP
+subprocesses and move policy evaluation out of process, or write down explicitly in `SECURITY.md`
+that OmniHarness assumes a trusted workspace. Silence is the only wrong answer.
 
-1. **`tool_results`** — elide the bodies of the oldest tool results, keeping the
-   messages so the assistant turns that requested them are not orphaned. The note
-   left behind names the tool and the byte count and tells the model it can call
-   again, so it is not reasoning from a gap it cannot see.
-2. **`drop_turns`** — drop whole turns, oldest first, when eliding was not enough.
-3. **`trim_prompt`** — trim the system prompt. Different in kind: the limit is too
-   small for the task, and no amount of shedding history fixes it.
+**Read `SECURITY.md` before starting**, and note `AGENTS.md`'s rule: a change that legitimately
+touches `policy.RiskAction`, budget ceilings or the loopback guard must say so explicitly in the
+PR description.
 
-`agent.contextReason` turns the tier into what the interface says, with counts.
-"Condensed" alone could not distinguish shedding a few stale payloads from
-throwing away whole turns, and those are opposite situations.
+### Deliberately not doing yet
 
-### 06 — what shipped
-
-`internal/hook`: a registry consulted at `before_tool`, `before_model` and
-`after_tool`, wired into `agent.executeToolCall` **ahead of policy**.
-
-The design rests on one property: **a hook can refuse and nothing else.** There
-is no permissive verdict in the interface, because if there were, a hook would
-be a way around the policy engine and the approval gate. Policy runs regardless
-of what hooks say; a call survives only if both let it through. Two tests pin
-this — one at the unit level, one that puts a permissive hook in front of a
-policy that blocks writes and checks the file still is not written. *Adding an
-allow verdict later would not extend this design, it would end it.*
-
-Ordering matters and is tested by its observable consequence: when a hook
-refuses, the approver is never called. An approval prompt for something that
-cannot happen is the exact shape of prompt that teaches people to approve
-without reading — which is the §07 problem, so 06 already helps it.
-
-A guard that fails denies: a panicking or hanging hook refuses the call rather
-than letting it through, because a broken guard that stays quiet means the
-interface claims a rule is enforced while nothing enforces it. Observation
-points cannot deny, since the work has already happened.
-
-**Scope deliberately not taken:** hooks are in-process Go only. No shell hooks,
-which avoids the whole question of what a subprocess inherits (see `envguard` —
-it scopes the harness's own credentials and nothing else).
-
-### 07 — in progress
-
-**Done (policy side):** `policy.EvaluateBatch` decides a whole model turn at
-once and consults a person once for everything that needs it. `BatchApprover`
-is an optional interface — an approver that does not implement it is asked one
-at a time exactly as before.
-
-Grouping is presentation only. Every request keeps its own verdict, denying one
-does not deny the rest, blocks are never softened, a call that did not need
-asking is never padded into the prompt, and a short or failing answer denies
-everything rather than being read as a partial yes.
-
-**Still to do (agent side):** `agent.executeToolCall` still evaluates one call
-at a time, so nothing calls `EvaluateBatch` yet. The wiring needs
-`executeToolCall` split so a turn can be decided before the loop runs, without
-running hooks twice — the pre-pass has to cache hook and validation outcomes,
-not just policy ones. Note the trade-off: a pre-decided call that the loop
-never reaches (budget exhausted, repeat-stall) means someone was asked about
-work that did not happen. Still better than N prompts, but worth bounding.
-
-**Then:** grant expiry within a run, and structured evidence at the prompt.
-
-### Deliberately NOT doing yet
-
-- **Self-improving harness** (HarnessFix, 6.3–18.4%) — it hill-climbs against a
-  trajectory-scored eval. `diagnose` is the start of that eval; it needs to be gating
-  before this is worth attempting.
-- **Best-of-N sampling** — the verifier half exists (`internal/evaluate`), but sampling
-  multiplies cost. Do it after cache directives land, or pay full price N times.
+- **Self-improving harness** (HarnessFix reports 6.3–18.4%) — it hill-climbs against a
+  trajectory-scored eval. `diagnose` is the beginning of that eval but does not gate anything yet.
+  Build the ruler before the thing that optimises against it.
+- **Best-of-N sampling** — the verifier half already exists (`internal/evaluate` + `internal/repair`),
+  but sampling multiplies cost, and cache directives are not emitted yet, so it would pay full
+  price N times.
 
 ---
 
-## Standing constraints (from the user, still in force)
+## Standing constraints from the user
 
-- **Never commit with a Co-Authored-By footer.** Strip GitHub's auto-appended
-  "Generated with Claude Code" from PR bodies too — it is added server-side at creation,
-  remove it with `update_pull_request` before merging.
-- Do not open a PR unless asked.
-- Do not bypass: policy risk actions, approval requirements, shell restrictions, budget
-  ceilings, loopback restrictions, credential masking, command execution safeguards.
-- Do not expose API keys, tokens or inherited environment values.
+- **Never commit with a `Co-Authored-By` footer.** Also strip GitHub's auto-appended
+  "Generated with Claude Code" from PR bodies — it is added server-side at creation, so remove it
+  with `update_pull_request` *before* merging.
+- **Do not open a PR unless asked.**
+- Do not bypass policy risk actions, approval requirements, shell restrictions, budget ceilings,
+  loopback restrictions, credential masking, or command-execution safeguards.
+- Do not expose API keys, tokens, or inherited environment values.
 - Do not silently approve what the core requires a user to approve.
-- Do not call providers directly from the TUI; do not duplicate orchestration in the
-  frontend.
-- **Do not fabricate telemetry.** Absent ≠ zero — this is why `cached_tokens` stays
-  absent when a provider is silent rather than collapsing to 0.
+- Do not call providers directly from the TUI; do not duplicate orchestration in the frontend.
+- **Do not fabricate telemetry.**
 
-## Working practices established here
+### Working practice the user asked for explicitly
 
-- Every fix gets a test that **fails when the fix is reverted**, verified by actually
-  reverting it. This caught a vacuous test once already (see Lessons).
-- Verify in the real application, not just tests — PTY harness at
-  `scratchpad/look.py` renders the npm TUI; `go test ./internal/cli/` drives the Go
-  runtime end to end.
-- Run `gofmt -l ./cmd ./internal && go vet ./... && go test ./...` and
-  `cd npm && npm run typecheck && npm test` before every commit.
+> "when working always have a handoff ready and update after EVERY SINGLE UPDATE"
+> "update everytime you even make THE SLIGHTEST change in code"
+
+So: this file changes in the **same commit** as the code it describes. When a finding is verified
+but not yet fixed, record it immediately with its status — `8112499` is the precedent, written
+before a line of the fix existed.
 
 ---
 
-## Environment gotchas
+## Environment
 
 - **Network egress is locked down.** `WebFetch` and `curl` both fail with
-  `CONNECT tunnel failed, response 403` for arbitrary domains. `WebSearch` works
-  (server-side). Research is therefore built from search summaries, not full-text reads.
-- **No `gh` CLI.** Use the GitHub MCP tools (`mcp__github__*`) for everything.
-- **Publishing is automatic.** Any push to `main` triggers `.github/workflows/publish.yml`,
-  which bumps from the **latest published npm version** (not local `package.json`) and
-  publishes via OIDC trusted publishing. No token exists anywhere. npm propagation lags
-  several minutes — read the **job log**, not the registry, to confirm.
-- `git checkout <file>` reverts uncommitted work. Back up before deliberate-break tests
-  (bitten once, see Lessons).
+  `CONNECT tunnel failed, response 403` for arbitrary domains. `WebSearch` works (server-side).
+  The research behind the backlog is therefore built from search summaries, not full-text reads.
+- **No `gh` CLI.** Use the GitHub MCP tools (`mcp__github__*`).
+- **Publishing is automatic and immediate.** Any push to `main` triggers
+  `.github/workflows/publish.yml`, which bumps from the **latest published npm version** (not local
+  `package.json`) and publishes via OIDC trusted publishing — no token exists anywhere. npm
+  propagation lags several minutes, so confirm from the **job log**, not the registry.
+  Per `AGENTS.md`: merging to `main` publishes a release; only docs, `.github/` and `_test.go`
+  changes are excluded. Nothing here is low-stakes because it looks small.
+- **The permission classifier blocks `git rebase` and some `git config` writes** as destructive.
+  Ask the user rather than routing around it.
+- `git checkout <file>` reverts uncommitted work — back up before deliberate-break testing.
 
 ---
 
-## Lessons paid for already
+## Lessons already paid for
 
-1. **A test that passes for the wrong reason.** The first npm prompt-ordering test asserted
-   where the skill list sat relative to memory — but a temp workspace has no custom skills,
-   so the line never rendered and the assertion passed vacuously. It now writes an
-   `OMNIHARNESS.md` and asserts the line is *present* before asserting where it is.
-   **Always confirm a new test fails when the fix is reverted.**
-2. **`TaskCompleted` has its own payload type**, not `TaskStateData`. Matching on the
-   wrong one made the completion rule silently match nothing.
-3. **The fake gateway repeats its last step forever**, and the task analyzer consumes
-   steps before the agent sees any. A looping run hits the turn cap and errors, so
-   `--json` emits nothing — find the session by listing, not by parsing a result.
-4. **`''.replace()` matches at position zero.** Redacting against an unset API key
-   prefixed every error in the product with `[REDACTED]`. Fixed in `628f5cd`.
+1. **A test that passes for the wrong reason.** The first npm prompt-ordering test asserted where
+   the skill list sat relative to memory — but a temp workspace has no custom skills, so the line
+   never rendered and the assertion passed vacuously. It now writes an `OMNIHARNESS.md` and asserts
+   the line is *present* before asserting where it is. This is `AGENTS.md`'s central rule, learned
+   again the hard way: **revert the fix and watch the test fail, every time.**
+2. **A deliberate break that does not compile proves nothing.** One attempt produced invalid Go and
+   silently "passed". If the break does not build, the verification did not happen.
+3. **`TaskCompleted` has its own payload type**, not `TaskStateData`. Matching the wrong one made a
+   `diagnose` rule silently match nothing.
+4. **A diagnostic that fires on every clean run is noise.** `unverified_completion` initially fired
+   on every read-and-answer task. It now requires a non-read tool call to have completed first.
+5. **The fake gateway repeats its last step forever**, and the task analyzer consumes steps before
+   the agent sees any. A looping run hits the turn cap and errors, so `--json` emits nothing — find
+   the session by listing, not by parsing a result.
+6. **`''.replace()` matches at position zero.** Redacting against an unset API key prefixed every
+   error in the product with `[REDACTED]`. Fixed in `628f5cd` (already on `main`).
 
 ---
 
-## Reference
+## Verification tools
 
-- **Research report** (3 editions, the source of the backlog):
-  https://claude.ai/artifact/5gge1j8cfVov9RXCcodZzK
-- **Architecture:** `docs/architecture.md` — the design of record, still accurate
-- **Scratchpad:** `/tmp/claude-0/-home-user-omniharness/9840077e-7d01-59da-83a6-92a9342cf8a9/scratchpad/`
-  (`look.py` is the PTY render harness; session-local, does not survive)
+- **Go end to end:** `go test ./internal/cli/` drives the real runtime against a fake gateway.
+  `internal/cli/diagnose_test.go` is the pattern for a full run → inspect trajectory test.
+- **TUI:** `npm/test/harness/tui.tsx` mounts the real interface against a fake terminal;
+  `mount({ columns })` gives screen, keyboard and event emitter.
+- **PTY render harness:** was at `scratchpad/look.py` — **session-local, now gone.** If you need to
+  render the TUI at several widths, rebuild it or use the `tui.tsx` harness. `AGENTS.md` requires
+  actually rendering any change under `npm/src/tui/`.
+
+---
 
 ## Open questions for the user
 
-- **Commit authorship.** Commits up to and including `c537f2d` are authored
-  `Claude <noreply@anthropic.com>`, so none of the work shows on the owner's
-  contribution graph. Repo and global git identity are now
-  `shipking-ai <palmettopropertybuyer@gmail.com>`, so commits from here carry
-  the owner's name. Two things remain blocked by the permission classifier:
-  changing the address to the GitHub-linked `Ship King
-  <227889443+shipking-ai@users.noreply.github.com>` (a `git config` write —
-  better because it is guaranteed to link and keeps a personal address out of
-  public history), and re-authoring the 8 unmerged commits (a rebase, blocked
-  as destructive). Merged commits must not be rewritten either way.
-
-
-- **Cache directives are not emitted.** The prompt is now *shaped* for caching and the
-  reported hit rate is *recorded*, but nothing sends `cache_control`. Whether OmniRoute
-  passes Anthropic-style cache breakpoints through its OpenAI-compatible surface is
-  unverified and cannot be checked without a live gateway.
-- **PR not opened** for `a8d255d` + `855d4fc`.
+1. **Cache directives are not emitted.** The prompt is now *shaped* for caching (volatile content
+   last) and reported hit rate is *recorded*, but nothing sends `cache_control`. Whether OmniRoute
+   passes Anthropic-style cache breakpoints through its OpenAI-compatible surface is unverified and
+   cannot be checked without a live gateway. This is the unfinished half of backlog item 02.
+2. **Commit authorship.** Commits from `34e79b1` onward are authored
+   `Ship King <227889443+shipking-ai@users.noreply.github.com>`. The **eight before it**
+   (`a8d255d` … `c537f2d`) are still `Claude <noreply@anthropic.com>`, so that work does not appear
+   on the owner's contribution graph. Re-authoring them is a rebase, which the permission classifier
+   blocks; the user approved it verbally but the block held. Needs a Bash permission rule for
+   `git rebase`. **Merged commits must not be rewritten either way.**
+3. **No PR is open** for these ten commits.
