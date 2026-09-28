@@ -13,7 +13,7 @@ Route once, run anywhere — plan, build, research, or turn a swarm loose.
 
 <br/>
 
-<img src=".github/assets/omniharness-demo.svg" alt="OmniHarness terminal — typing a task, planning it, and fanning it out across three parallel worker lanes" width="720" style="max-width:100%"/>
+<img src=".github/assets/omniharness-demo.svg" alt="OmniHarness terminal: the centred home screen, then a task planned into three steps, run by three parallel workers, and the route lens showing which provider answered" width="720" style="max-width:100%"/>
 
 </div>
 
@@ -26,6 +26,27 @@ If you use OmniRoute, generic coding agents feel slow against it — they were b
 It ships as four front-ends over one core: a terminal UI, a scriptable CLI, a browser view served by
 `omniharness serve`, and a desktop window opened by `omniharness desktop`. All of them are clients of the
 same HTTP API and the same event stream — `internal/` has no idea a browser exists.
+
+It reads the repository's own instructions. `AGENTS.md` goes into the prompt (or `CLAUDE.md` or
+`GEMINI.md` when there is none), so a repo that documents how to build and test itself is not
+rediscovered by trial.
+
+## New in 2.0
+
+- **A redesigned terminal.** A centred home screen, a composer that carries its own settings, a receipt
+  under every answer, and a framed approval dialog. See [The terminal](#the-terminal).
+- **One question per turn.** A turn that wants to write four files asks once, not four times. Every call
+  still gets its own verdict, and denying one does not deny the rest.
+- **Edits that cannot land in the wrong place.** `edit_file` refuses an `old_text` that matches more than
+  once, instead of silently editing the first match and reporting success.
+- **Long sessions keep what matters.** When the context fills, tool output is elided first, then whole
+  turns, then the prompt, and it keeps the *newest* history (it used to drop it). The status line shows
+  how full the window is.
+- **`omniharness diagnose <session>`** reads a recorded run and reports repeated calls, a tool failing over
+  and over, work declared done with nothing checking it, and risky calls that ran without approval.
+  Deterministic, and no model is called.
+- **Tighter guarantees.** With `shell_allowed = false`, evaluators no longer run scripts the model can write,
+  and the file tools refuse to write inside `.git`. See [Safety](#safety).
 
 ## Install
 
@@ -82,21 +103,22 @@ instead of permanently on screen.
 - **Tear-free streaming** via synchronized output (DECSET 2026), probed at
   startup alongside the kitty keyboard protocol.
 - **The status line is an instrument, not a sentence.** What the harness is
-  doing right now leads, alone, in the foreground — it is the only thing on that
-  row anybody reads while a turn is in flight. Set against the far edge, quietly:
-  the mode, the engine, what it is routing through, and how freely it is allowed
-  to act — `manual` reads muted, `accept edits` amber, `bypass` red. Provider,
-  model, route profile, failover chain, measured latency, tokens and spend live
-  in the **route** lens. A figure the gateway did not report is absent, never a
-  zero.
+  doing right now leads, alone, on the left — it is the only thing on that row
+  anybody reads while a turn is in flight. Against the far edge, quietly: the
+  workspace, the provider that answered once one has, and how full the context
+  window is. Provider, model, route profile, failover chain, measured latency,
+  tokens and spend live in the **route** lens. A figure the gateway did not
+  report is absent, never a zero.
 - **Tool calls read as what they did** — `$ go test ./...`, `read
   gateway/fallback.go` — one row each, in the order the work happened, with the
   outcome in the marker. A failure prints its output straight away; a success
   keeps it until `Ctrl+T` asks, which prints it below rather than reflowing
   what you have already read. Diffs render as diffs.
-- **Approvals are unmissable**: a full-width band above the composer naming the
-  exact call. `y` once · `n` deny · `a` always · a digit picks a trust scope
-  (exact command → base command → whole tool).
+- **Approvals are unmissable**: a framed dialog above the composer — the one
+  bordered thing on the screen — naming the tool, the workspace it will run in
+  and the exact call. `y` once · `n` deny · `a` always · a digit picks a trust
+  scope (exact command → base command → whole tool). A window too short for the
+  frame gets the same dialog without it, rather than a redraw that tears.
 - **Parallel work is legible.** The run view keeps a three-row digest of the
   swarm; the **agents** lens lists every worker, its state, its latest note and
   the calls it has made.
@@ -104,13 +126,13 @@ instead of permanently on screen.
   truncating it; wide adds a plan/agents rail rather than longer lines, set
   against the edge of a bounded frame — past the point where more columns buy
   more information, the extra width becomes margin instead of stretch.
-- **An opening screen that is a screen.** An untouched session names the
-  workspace at the top, then sits the mode dial, the composer and the status row
-  together on the floor of the window as one block — the dial belongs with the
-  composer, because the mode is what the next thing you type will run in. The
-  mode in force carries the composer's own mark, in the composer's own column,
-  so the dial and the surface read as one device. It goes for good at the first
-  keystroke.
+- **A home screen that is a screen.** An untouched session opens on the
+  wordmark, the composer, the mode dial and one tip, set as a single group in the
+  middle of the window, the way OpenCode and Kilo open. The mode in force
+  carries the composer's own mark, so the dial and the surface read as one
+  device. At the first task the masthead is printed into scrollback and the
+  composer drops to the floor, where it stays. A short window gives up the tip,
+  then the description, then the wordmark, before it would ever overflow.
 - **It talks like a tool.** No greeting, no sign-off, no capability list, no
   emoji. The voice rules lead the system frame in every mode — ahead of the work
   discipline, because buried behind it they were the first thing dropped — and
@@ -122,13 +144,21 @@ instead of permanently on screen.
   screens in that mode and fails on any byte above 127, because a fallback that
   leaks one Unicode character is not a fallback: it is `â€"` on a CP1252
   console.
-- **The composer is a surface.** A spine down its left edge in the mode's
-  colour, not a box and not a rule: two columns, no rows of its own, and it
-  grows with a multi-line draft. It is the one mark on the screen that says
-  *type here*.
+- **The composer is a surface.** A filled block with a spine down its left
+  edge in the mode's colour, not a box and not a rule, and it grows with a
+  multi-line draft. Its last row is the settings the next task will run with —
+  mode · engine on the left, `approvals manual` / `accept edits` / `bypass` on
+  the right in the colour of the risk — because those belong to what you are
+  about to type, not to the status line.
 - **Your task owns its turn.** The prompt you typed is set on a band across the
-  measure, so scrolling back through a long session you look for the bands and
+  window, so scrolling back through a long session you look for the bands and
   not for a caret among the tool rows.
+- **Every answer ends with a receipt.** `▣ build · auto/best-coding · via
+  anthropic · 12s` — the mode, the engine, the provider when that is news, and
+  the time when it is worth saying. Only what was measured; nothing is filled in.
+- **Code wraps like an editor wraps.** A long line in a code block breaks at a
+  space or after punctuation and hangs its continuation past the line's own
+  indent, instead of being cut mid-token.
 - **Input stays live** during a run: what you type is queued and sent the moment
   it ends.
 - `Ctrl+Y` copies the last reply over OSC 52 (works through SSH); a bell + OSC 9
@@ -215,6 +245,25 @@ Named SSE events only reach listeners that registered for them, which is why `/v
 client that guesses the vocabulary silently misses whole categories of event *and* misreads their sequence
 numbers as dropped data.
 
+## Safety
+
+The short version of [`SECURITY.md`](SECURITY.md), which is the one to read before relying on any of it.
+
+- **The policy gate decides every tool call.** A risk class set to `ask` does not run until you answer, and
+  a whole turn is decided before any of it runs, so you are asked once per turn. A short or failed answer
+  denies everything.
+- **`shell_allowed = false` means no shell**, including by way of another tool or an evaluator running a
+  script the model could have written.
+- **The file tools stay in the workspace and out of `.git`**, where a hook or config entry would be a way
+  to run code later.
+- **Hooks can refuse, never permit.** Code on the tool path (a Go API, `internal/hook`) can stop a call
+  before policy sees it; nothing can wave one through past policy.
+- **Credentials stay put.** No subprocess inherits `OMNIROUTE_API_KEY`, `OMNIROUTE_MGMT_TOKEN`,
+  `OMNIHARNESS_API_KEY` or `ROUTER_API_KEY`, and a key typed into the TUI is held in memory only.
+
+**There is no operating-system sandbox.** OmniHarness assumes a trusted workspace: what it spawns runs as
+you. For a repository you do not trust, run it in a container or VM.
+
 ## Architecture
 
 Two front ends over one core. `internal/gateway` is the **only** place that talks to OmniRoute — swap it for a direct provider or an in-process stub and the whole suite runs offline.
@@ -241,6 +290,7 @@ omniharness doctor                       # check endpoint + auth, safely
 omniharness run "fix the failing test"   # headless, current directory
 omniharness stack                        # choose the model combo
 omniharness stats                        # spend, tool use and outcomes — by model, tool and strategy
+omniharness diagnose <session>           # anti-patterns in a recorded run; no model is called
 omniharness serve                        # loopback HTTP API + the browser view
 omniharness desktop                      # the same harness in its own window
 omniharness sessions | models | stats
@@ -270,7 +320,7 @@ gofmt -l ./cmd ./internal && go vet ./... && go test ./...
 
 Every pull request runs [`ci.yml`](.github/workflows/ci.yml) — gofmt, `go vet`, the Go suite, and the TypeScript suite + build — and both checks are required to merge. That is where the Go side is gated. A push to `main` that changes shipped code then runs [`publish.yml`](.github/workflows/publish.yml), which re-runs the TypeScript suite, publishes `omniharness-cli` via npm **trusted publishing (OIDC)** — no token is stored, provenance is attached automatically — then cross-compiles the Go CLI for all six targets and attaches them to a tagged GitHub release with notes generated from that release's commits.
 
-A version number is something people depend on, so documentation, the landing page, tests and workflow edits do not cut one; a commit touching both docs and code still does. To release anyway — a corrected README inside the npm tarball, or a release that failed partway — run the workflow by hand from the Actions tab.
+A version number is something people depend on, so documentation, the landing page, tests and workflow edits do not cut one; a commit touching both docs and code still does. Each release bumps the patch from the version on npm. To start a new line — 2.0.0 was cut this way — set the version in `npm/package.json`: a version there newer than the published one is released as written. To release anyway — a corrected README inside the npm tarball, or a release that failed partway — run the workflow by hand from the Actions tab.
 
 The Go suite is hermetic: tests pin an explicit workspace, so results never depend on whether your checkout has uncommitted changes. Point a run at a different tree with `--workspace` or `OMNIHARNESS_WORKSPACE`.
 
