@@ -20,6 +20,7 @@ import (
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
 	"omniharness/internal/id"
+	"omniharness/internal/instructions"
 	"omniharness/internal/memory"
 	"omniharness/internal/model"
 	"omniharness/internal/policy"
@@ -319,25 +320,38 @@ func (o *Orchestrator) requestTaskApproval(ctx context.Context, t *task.Task) (g
 	return decision == policy.Allow, nil
 }
 
-// recallProjectInstructions loads every note an earlier task chose to
-// remember about this workspace (see the "remember" tool) and formats them
-// for composer.Input.ProjectInstructions. No Memory configured, an empty
-// store, or a read error all resolve to nil — recall is best-effort, never
-// a reason to fail a task or block on a slow store.
+// recallProjectInstructions assembles what the agent should know about this
+// workspace before it starts: the repository's own AGENTS.md, then every note
+// an earlier task chose to remember (see the "remember" tool), formatted for
+// composer.Input.ProjectInstructions.
+//
+// The file comes first because it is the repository speaking for itself —
+// checked in, reviewed, and true for everyone — while a remembered note is one
+// agent's inference from one run. When they disagree, the file should win, and
+// order is how a prompt says which one leads.
+//
+// Every part is best-effort: no Memory configured, no AGENTS.md, an empty
+// store or a read error all resolve to nothing, and none of them is a reason
+// to fail a task.
 func (o *Orchestrator) recallProjectInstructions(t *task.Task) []string {
+	var head []string
+	if doc := instructions.Read(o.deps.Workspace); doc != nil {
+		head = doc.Lines()
+	}
 	if o.deps.Memory == nil {
-		return nil
+		return head
 	}
 	rows, err := o.deps.Memory.RecallAll(o.deps.Workspace)
 	if err != nil || len(rows) == 0 {
-		return nil
+		return head
 	}
 	// Ranked and capped against this task rather than dumped wholesale:
 	// every note ever remembered used to go into every agent's prompt on
 	// every task, which buries the relevant one and is paid for on every
 	// model call. See memory.Relevant for why the ranking is lexical.
 	selected, truncated := memory.Relevant(rows, t.Spec.Prompt, memory.DefaultRecallLimit)
-	out := make([]string, 0, len(selected)+1)
+	out := make([]string, 0, len(head)+len(selected)+1)
+	out = append(out, head...)
 	for _, m := range selected {
 		out = append(out, fmt.Sprintf("[%s] %s", m.Kind, m.Content))
 	}

@@ -17,6 +17,7 @@ import (
 	composer "omniharness/internal/context"
 	"omniharness/internal/event"
 	"omniharness/internal/gateway"
+	"omniharness/internal/hook"
 	"omniharness/internal/id"
 	"omniharness/internal/model"
 	"omniharness/internal/policy"
@@ -212,6 +213,11 @@ type Deps struct {
 	ModelSel *model.Selector
 	Tools    *tools.Registry
 	Policy   *policy.Engine
+	// Hooks are consulted before a tool call reaches policy. They can refuse
+	// and nothing else: a hook standing aside is not an approval, and policy
+	// runs whatever they say. Nil means no hooks are configured and none of
+	// this is paid for.
+	Hooks    *hook.Registry
 	Composer *composer.Composer
 	Roles    map[Role]RoleConfig
 	// VisionModels are the provider/model refs that accept image input. Not
@@ -529,9 +535,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		// the history to continue coherently.
 		a.Transcript = append(a.Transcript, msg)
 
-		// Execute tool calls.
+		// Decide the whole turn before running any of it, so a person is
+		// interrupted once for everything that needs them rather than once per
+		// call. Hooks and validation run here, exactly once each.
+		//
+		// A call the loop below never reaches — budget exhausted, or a repeat
+		// stall — will have been approved for work that then does not happen.
+		// That is the cost of asking once instead of six times, and it is the
+		// cheaper of the two.
 		a.setLifecycle(LifecycleActing, task.StatusRunning, "acting")
-		for _, tc := range msg.ToolCalls {
+		planned := a.planTurn(runCtx, msg.ToolCalls, roleCfg)
+		for _, p := range planned {
+			tc := p.tc
 			if reason := a.overBudget(); reason != "" {
 				a.setLifecycle(LifecycleFailed, task.StatusFailed, reason)
 				return fmt.Errorf("%s", reason)
@@ -548,7 +563,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			obs := nudge
 			if obs == "" {
-				obs = a.executeToolCall(runCtx, tc, roleCfg)
+				obs = a.executeToolCall(runCtx, p)
 				stale, exhausted := a.repeats.record(tc, obs)
 				if exhausted {
 					reason := a.repeats.staleReason()
@@ -614,7 +629,11 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 		return nil, err
 	}
 	if out.Condensed {
-		a.publish(&event.ContextData{Reason: "history condensed at token limit"})
+		// Name the rung. "Condensed" alone cannot distinguish a run that shed
+		// a few stale tool payloads from one that is throwing away whole turns
+		// — and the second is a run in trouble while the first is the system
+		// working. A reader who cannot tell them apart tunes neither.
+		a.publish(&event.ContextData{Reason: contextReason(out)})
 	}
 
 	a.setLifecycle(LifecycleThinking, task.StatusRunning, "thinking")
@@ -653,11 +672,20 @@ func (a *Agent) callModel(ctx context.Context, toolSpecs []gateway.ToolSpec, rol
 	if a.deps.Budget != nil {
 		a.deps.Budget.AddTokens(usage.PromptTokens+usage.CompletionTokens, cost)
 	}
+	// What the provider served from its prompt cache, when it says. An agent
+	// loop re-sends the same frame every turn, so this is the difference
+	// between paying for it once and paying for it once per step — and a
+	// number nobody can see is a number nobody tunes.
+	var cachedIn int64
+	if d := usage.PromptTokensDetails; d != nil {
+		cachedIn = d.CachedTokens
+	}
 	a.publish(&event.ModelRespondedData{
 		// modelRef, not a.Model: a routed vision turn runs on a different
 		// model, and the reply must be attributed to the one that produced it.
 		Model: modelRef, ResolvedModel: resp.Model, TaskID: a.TaskID, AgentID: a.ID,
-		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CostUSD: cost, Latency: latency,
+		TokensIn: usage.PromptTokens, TokensOut: usage.CompletionTokens, CachedIn: cachedIn,
+		CostUSD: cost, Latency: latency,
 	})
 	_ = a.recordModelCall(req, resp, latency, nil)
 	return resp, nil
@@ -687,52 +715,150 @@ func (a *Agent) recordModelCall(req gateway.ChatRequest, resp *gateway.ChatRespo
 	})
 }
 
-// executeToolCall runs one tool call through policy and returns the
-// observation string fed back to the model.
-func (a *Agent) executeToolCall(ctx context.Context, tc gateway.ToolCall, roleCfg RoleConfig) string {
-	name := tc.Function.Name
-	args, err := tools.DecodeArgs(tc.Function.Arguments)
+// plannedCall is one tool call taken as far as it can go without running it:
+// resolved, checked against the role, validated, put past the hooks, and given
+// a policy verdict.
+//
+// It exists so a whole model turn can be decided before any of it executes.
+// The alternative — deciding each call as the loop reaches it — is what
+// produced one approval prompt per call, and prompt volume is what stops
+// people reading prompts.
+type plannedCall struct {
+	tc   gateway.ToolCall
+	tool tools.Tool
+	spec tools.Spec
+	args map[string]any
+	// refused is the observation to feed the model when this call died before
+	// policy: unknown tool, out of role reach, malformed arguments, or a hook
+	// refusing it. Non-empty means do not run and do not ask anyone.
+	refused string
+	// decision is policy's verdict, valid only when refused is empty.
+	decision policy.Decision
+	// decisionErr is why policy could not decide.
+	decisionErr error
+}
+
+// planTurn resolves every call in a model turn and decides them together.
+//
+// Hooks and validation run exactly once per call, here — which is the reason
+// the planning and the running are split rather than the loop simply calling
+// policy twice. Whatever survives to need a human is put in front of them in
+// one interruption instead of one per call.
+func (a *Agent) planTurn(ctx context.Context, calls []gateway.ToolCall, roleCfg RoleConfig) []plannedCall {
+	planned := make([]plannedCall, 0, len(calls))
+	var (
+		reqs []policy.Request
+		at   []int
+	)
+
+	for _, tc := range calls {
+		p := plannedCall{tc: tc}
+		name := tc.Function.Name
+
+		args, err := tools.DecodeArgs(tc.Function.Arguments)
+		if err != nil {
+			p.refused = "tool arguments error: " + err.Error()
+			planned = append(planned, p)
+			continue
+		}
+		p.args = args
+
+		tool, ok := a.deps.Tools.Get(name)
+		if !ok {
+			p.refused = fmt.Sprintf("error: unknown tool %q", name)
+			planned = append(planned, p)
+			continue
+		}
+		p.tool = tool
+		p.spec = tool.Spec()
+
+		// Role reach: by name, or by any capability the tool declares. This
+		// mirrors toolSpecs exactly — a model can only be offered what it may
+		// call — but is re-checked here because a model can name a tool it was
+		// never offered.
+		if !roleCfg.AllowsTool(p.spec) {
+			p.refused = fmt.Sprintf("error: tool %q is not allowed for role %s", name, a.Role)
+			planned = append(planned, p)
+			continue
+		}
+
+		a.publish(&event.ToolRequestedData{
+			Tool: name, Input: text.Clip(tc.Function.Arguments, 200), Risk: string(p.spec.Risk), AgentID: a.ID,
+		})
+
+		// Validate before policy, not after: a malformed call is the model's
+		// mistake to fix, and putting it in front of a human approver asks
+		// them to sanction an action that was never coherent. It also matters
+		// most for external tools, whose arguments otherwise reach a foreign
+		// process unchecked.
+		if err := tools.ValidateInput(p.spec, args); err != nil {
+			a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Error: err.Error()})
+			_ = a.recordToolCall(name, "failed", p.spec.Risk, 0, err.Error())
+			p.refused = toolErrorMessage(name, err, "")
+			planned = append(planned, p)
+			continue
+		}
+
+		// Hooks run before policy, not after. A rule that was always going to
+		// refuse this call should refuse it before a human is asked to
+		// sanction it — an approval prompt for something that cannot happen is
+		// the exact shape of prompt that teaches people to approve without
+		// reading.
+		//
+		// Standing aside is not approval. Policy runs next regardless, and the
+		// call survives only if both let it through.
+		if err := a.deps.Hooks.Run(ctx, hook.Call{
+			Point: hook.BeforeTool, Tool: name, Args: args, Risk: string(p.spec.Risk),
+			AgentID: a.ID, TaskID: a.TaskID,
+		}); err != nil {
+			a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied", Error: err.Error()})
+			_ = a.recordToolCall(name, "denied", p.spec.Risk, 0, err.Error())
+			p.refused = fmt.Sprintf("tool %s was refused: %v", name, err)
+			planned = append(planned, p)
+			continue
+		}
+
+		at = append(at, len(planned))
+		reqs = append(reqs, policy.Request{
+			Tool: name, Input: args, Risk: p.spec.Risk, AgentID: a.ID, Effects: p.spec.Effects,
+		})
+		p.decision = policy.Block // until policy says otherwise
+		planned = append(planned, p)
+	}
+
+	if len(reqs) == 0 {
+		return planned
+	}
+	decisions, err := a.deps.Policy.EvaluateBatch(ctx, reqs)
 	if err != nil {
-		return "tool arguments error: " + err.Error()
+		// A batch that could not be decided denies every call in it. Leaving
+		// them at Block is the safe direction, and each carries the reason.
+		for _, i := range at {
+			planned[i].decisionErr = err
+		}
+		return planned
 	}
-
-	tool, ok := a.deps.Tools.Get(name)
-	if !ok {
-		return fmt.Sprintf("error: unknown tool %q", name)
+	for i, d := range decisions {
+		planned[at[i]].decision = d
 	}
-	spec := tool.Spec()
+	return planned
+}
 
-	// Role reach: by name, or by any capability the tool declares. This
-	// mirrors toolSpecs exactly — a model can only be offered what it may
-	// call — but is re-checked here because a model can name a tool it was
-	// never offered.
-	if !roleCfg.AllowsTool(spec) {
-		return fmt.Sprintf("error: tool %q is not allowed for role %s", name, a.Role)
+// executeToolCall runs one planned call and returns the observation string fed
+// back to the model.
+func (a *Agent) executeToolCall(ctx context.Context, p plannedCall) string {
+	if p.refused != "" {
+		return p.refused
 	}
+	name := p.tc.Function.Name
+	tool, spec, args := p.tool, p.spec, p.args
 
-	a.publish(&event.ToolRequestedData{
-		Tool: name, Input: text.Clip(tc.Function.Arguments, 200), Risk: string(spec.Risk), AgentID: a.ID,
-	})
-
-	// Validate before policy, not after: a malformed call is the model's
-	// mistake to fix, and putting it in front of a human approver asks them
-	// to sanction an action that was never coherent. It also matters most for
-	// external tools, whose arguments otherwise reach a foreign process
-	// unchecked.
-	if err := tools.ValidateInput(spec, args); err != nil {
-		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "failed", Error: err.Error()})
-		_ = a.recordToolCall(name, "failed", spec.Risk, 0, err.Error())
-		return toolErrorMessage(name, err, "")
+	if p.decisionErr != nil {
+		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied", Error: p.decisionErr.Error()})
+		_ = a.recordToolCall(name, "denied", spec.Risk, 0, p.decisionErr.Error())
+		return fmt.Sprintf("tool %s was denied by policy: %v", name, p.decisionErr)
 	}
-
-	req := policy.Request{Tool: name, Input: args, Risk: spec.Risk, AgentID: a.ID, Effects: spec.Effects}
-	decision, err := a.deps.Policy.EvaluateAndExecute(ctx, req)
-	if err != nil {
-		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied", Error: err.Error()})
-		_ = a.recordToolCall(name, "denied", spec.Risk, 0, err.Error())
-		return fmt.Sprintf("tool %s was denied by policy: %v", name, err)
-	}
-	if decision != policy.Allow {
+	if p.decision != policy.Allow {
 		a.publish(&event.ToolFinishedData{Tool: name, AgentID: a.ID, Status: "denied"})
 		_ = a.recordToolCall(name, "denied", spec.Risk, 0, "denied by policy")
 		return fmt.Sprintf("tool %s was denied by policy", name)
@@ -962,4 +1088,26 @@ func (a *Agent) flushPendingImages() *gateway.Message {
 			Summary: fmt.Sprintf("attached %d image(s) for %s to look at", len(refs), viewer)})
 	}
 	return &gateway.Message{Role: "user", Content: b.String(), Images: refs}
+}
+
+// contextReason describes what composition had to give up, in the terms the
+// ladder uses. It reports counts because "two results elided" and "eleven
+// turns dropped" are different situations and the number is what separates
+// them.
+func contextReason(out composer.Output) string {
+	switch out.Tier {
+	case composer.TierToolResults:
+		return fmt.Sprintf("context: elided %d stale tool result(s) to stay under the token limit", out.Elided)
+	case composer.TierDropTurns:
+		if out.Elided > 0 {
+			return fmt.Sprintf("context: elided %d tool result(s) and dropped %d older turn(s)", out.Elided, out.Dropped)
+		}
+		return fmt.Sprintf("context: dropped %d older turn(s) to stay under the token limit", out.Dropped)
+	case composer.TierTrimPrompt:
+		// Different in kind from the rungs above: no amount of shedding
+		// history fixes it.
+		return "context: the task alone exceeds the token limit — the system prompt was trimmed"
+	default:
+		return "history condensed at token limit"
+	}
 }

@@ -113,6 +113,12 @@ export interface HeightInput {
   readonly composerLines: number;
   /** Whether an approval banner is on screen. */
   readonly approval: boolean;
+  /**
+   * Rows the approval dialog actually occupies, when known. The dialog grows
+   * with the command it shows and the scopes it offers, so a constant under-
+   * reserved it; {@link APPROVAL_ROWS} is only the fallback.
+   */
+  readonly approvalRows?: number;
   /** Whether an overlay (palette, model picker) is open. */
   readonly overlay: boolean;
   /** Rows the lens body would like, if given the room. */
@@ -155,6 +161,16 @@ const APPROVAL_ROWS = 5;
 export const STREAM_FLOOR = 2;
 
 /**
+ * Whether a dialog of `dialog` rows fits beside the chrome, the composer and
+ * the streaming floor, with the one spare row. {@link plan} always reserves the
+ * floor, so a dialog that does not fit here makes the live region taller than
+ * the window rather than squeezing anything else.
+ */
+export function approvalFits(rows: number, composer: number, dialog: number): boolean {
+  return Math.floor(rows) - 1 - CHROME_ROWS - Math.max(1, Math.floor(composer)) - dialog - STREAM_FLOOR >= 0;
+}
+
+/**
  * Decide what fits. Order of sacrifice, least useful first: the lens body
  * yields to the streaming floor, and an open overlay takes what the lens would
  * have had, because an overlay is what the user is looking at.
@@ -162,7 +178,8 @@ export const STREAM_FLOOR = 2;
 export function plan(input: HeightInput): HeightPlan {
   const rows = Math.max(8, Math.floor(input.rows));
   const composer = Math.max(1, Math.floor(input.composerLines));
-  const free = Math.max(0, rows - CHROME_ROWS - composer - (input.approval ? APPROVAL_ROWS : 0));
+  const approval = input.approval ? Math.max(0, Math.floor(input.approvalRows ?? APPROVAL_ROWS)) : 0;
+  const free = Math.max(0, rows - CHROME_ROWS - composer - approval);
 
   if (input.overlay) {
     // An overlay is modal: it gets the body, and streaming keeps only its floor
@@ -196,4 +213,23 @@ function openingPad(input: HeightInput, rows: number, composer: number): number 
   // masthead actually printed: too short merely looks like the old layout,
   // while too tall corrupts the scrollback.
   return Math.max(0, rows - 1 - used);
+}
+
+/**
+ * Blank rows printed once, into scrollback, between the masthead and the first
+ * turn, so the conversation grows upward from the composer instead of hanging
+ * under the header with the input floating mid-window.
+ *
+ * This is what makes the input sit at the foot of the window from the first
+ * reply on — the arrangement every tool in the lookbook above 13 points uses —
+ * without the alternate screen, which would give up real scrollback. Unlike the
+ * opening pad it is printed output, not part of the live region, so it cannot
+ * push the live frame past the viewport: an overestimate scrolls the masthead
+ * off the top a few rows early, an underestimate leaves a smaller gap. It errs
+ * short anyway, by the rows the first entry and the live stream will take.
+ */
+export function anchorRows(rows: number, printed: number, composer: number): number {
+  const firstEntry = 2;
+  return Math.max(0, Math.floor(rows) - 1 - Math.max(0, printed) - Math.max(1, composer)
+    - CHROME_ROWS - STREAM_FLOOR - firstEntry);
 }

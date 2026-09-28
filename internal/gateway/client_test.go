@@ -283,3 +283,62 @@ func TestChatReportsTheModelThatActuallyAnswered(t *testing.T) {
 			resp.Model, "anthropic/claude-sonnet-5")
 	}
 }
+
+// --- prompt cache accounting -------------------------------------------------
+
+// An agent loop re-sends the same frame every turn, so what the provider
+// served from cache is the difference between paying for that frame once and
+// paying for it once per step. It is read off the reply, never inferred.
+func TestChatReadsCachedPromptTokens(t *testing.T) {
+	_, c := fakeOmniRoute(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{
+				"prompt_tokens": 4000, "completion_tokens": 20, "total_tokens": 4020,
+				"prompt_tokens_details": map[string]any{"cached_tokens": 3600},
+			},
+		})
+	})
+	resp, err := c.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Usage.PromptTokensDetails == nil {
+		t.Fatal("cached token detail was dropped")
+	}
+	if got := resp.Usage.PromptTokensDetails.CachedTokens; got != 3600 {
+		t.Fatalf("cached tokens = %d, want 3600", got)
+	}
+}
+
+// A provider that says nothing about caching must leave the field absent, not
+// report zero — the two mean different things, and a surface that renders an
+// unreported value as a 0% hit rate is inventing a measurement.
+func TestChatLeavesCacheDetailAbsentWhenProviderIsSilent(t *testing.T) {
+	_, c := fakeOmniRoute(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"index":         0,
+				"message":       map[string]any{"role": "assistant", "content": "ok"},
+				"finish_reason": "stop",
+			}},
+			"usage": map[string]any{"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105},
+		})
+	})
+	resp, err := c.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Usage.PromptTokensDetails != nil {
+		t.Fatalf("expected no cache detail, got %+v", resp.Usage.PromptTokensDetails)
+	}
+	if resp.Usage.PromptTokens != 100 {
+		t.Fatalf("prompt tokens = %d", resp.Usage.PromptTokens)
+	}
+}

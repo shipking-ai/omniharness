@@ -21,12 +21,19 @@ import { millis } from '../format/units.js';
 import { Gutter, Marker, joinMeta, type MarkerState } from './atoms.js';
 import { Output, Plain, Prose, wrap } from './prose.js';
 import { printsOutputInline } from '../state/selectors.js';
+import { modeColor } from './composer.js';
+import type { AgentMode } from '../../types/index.js';
 import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { Entry, ToolRecord } from '../state/types.js';
 
 export interface EntryProps {
   readonly entry: Entry;
   readonly width: number;
+  /**
+   * Columns a full-width band may span: the whole frame, not just the reading
+   * measure. Only the user's own task uses it. Text still wraps at `width`.
+   */
+  readonly span?: number;
   readonly theme: Theme;
   readonly glyphs: Glyphs;
 }
@@ -51,7 +58,7 @@ const ERROR_PREVIEW_ROWS = 8;
  */
 const WORTH_TIMING_MS = 1000;
 
-export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): React.ReactElement {
+export function TranscriptEntry({ entry, width, span, theme, glyphs }: EntryProps): React.ReactElement {
   switch (entry.kind) {
     case 'user': {
       // The task owns its turn. Everything below it — narrative, calls,
@@ -60,8 +67,13 @@ export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): Re
       // colour were not enough to find them among the tool rows, which carry
       // markers and colour of their own; the band is, and it costs no rows.
       //
-      // Each line is padded to the measure so the band is a rectangle rather
-      // than a ragged right edge, and the marker sits inside it.
+      // Each line is padded to the frame so the band is a rectangle rather
+      // than a ragged right edge, and the marker sits inside it. It spans the
+      // frame and not only the reading measure: stopping at the measure left a
+      // band that ended two thirds of the way across a wide window, which read
+      // as a rendering fault rather than a design (Codex and Gemini CLI run
+      // theirs edge to edge). The words still wrap at the measure.
+      const band = Math.max(width, span ?? width);
       const lines = wrap(entry.text, Math.max(8, width - 4));
       return <Box flexDirection="column" marginTop={1}>
         {lines.map((line, index) => (
@@ -70,30 +82,43 @@ export function TranscriptEntry({ entry, width, theme, glyphs }: EntryProps): Re
             backgroundColor={theme.surface}
             color={theme.accent}
             bold
-          >{` ${index === 0 ? glyphs.caret : ' '} ${line} `.padEnd(width)}</Text>
+          >{` ${index === 0 ? glyphs.caret : ' '} ${line} `.padEnd(band)}</Text>
         ))}
       </Box>;
     }
 
     case 'assistant': {
-      // What this turn cost, once it is over. The status line counts the clock
-      // up while a turn runs and then loses it; a reader scrolling back through
-      // a long session has no way to tell a turn that took two seconds from one
-      // that took four minutes. Wall time only — tokens and spend are measured
-      // per session rather than per turn, and splitting a session total across
-      // turns would be inventing the split.
+      // The receipt that closes a turn: which mode ran it, what answered, and
+      // how long it took. Every tool that looks finished ends a turn this way
+      // (OpenCode's "▣ Build · model · 4.4s", Claude Code's "Crunched for");
+      // without it one reply runs into the next task with nothing to say the
+      // work is over. Only the reply that closes a turn has a mode, so the
+      // narrative written between tool calls gets no receipt.
+      //
+      // Wall time only — tokens and spend are measured per session rather than
+      // per turn, and splitting a session total across turns would be
+      // inventing the split. Under a second is not worth a reading.
       const meta = joinMeta([
+        entry.mode,
+        entry.model,
         entry.showRoute === true && entry.provider !== undefined ? `via ${entry.provider}` : undefined,
         entry.showRoute === true && entry.fallback === true ? 'failover' : undefined,
-        entry.showRoute === true ? entry.model : undefined,
         entry.tookMs !== undefined && entry.tookMs >= WORTH_TIMING_MS ? millis(entry.tookMs) : undefined,
         entry.compression !== undefined
           ? `${Math.round(entry.compression.savedFraction * 100)}% context saved`
           : undefined,
       ], glyphs.dot);
+      const receipt = entry.mode !== undefined && meta !== '';
       return <Box flexDirection="column" marginTop={1}>
         <Prose ascii={glyphs.ascii} text={entry.text} width={width} />
-        {meta !== '' ? <Text color={theme.muted}>{clip(meta, width)}</Text> : null}
+        {receipt
+          ? <Box marginTop={1}>
+              <Text>
+                <Text color={modeColor(entry.mode as AgentMode, theme)}>{glyphs.receipt} </Text>
+                <Text color={theme.muted}>{clip(meta, Math.max(8, width - 2))}</Text>
+              </Text>
+            </Box>
+          : meta !== '' ? <Text color={theme.muted}>{clip(meta, width)}</Text> : null}
       </Box>;
     }
 

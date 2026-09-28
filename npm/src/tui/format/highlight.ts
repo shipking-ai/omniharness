@@ -84,20 +84,53 @@ export function highlightCode(code: readonly string[], lang: string | undefined,
   const out: MarkdownSegment[][] = [];
   for (const line of code) {
     let segments: MarkdownSegment[] = can ? highlightGeneric(line, l) : [{ text: line, color: 'cyan' }];
-    // Hard-slice overlong lines, splitting segment text by character.
-    while (segments.reduce((n, s) => n + s.text.length, 0) > width && segments.length > 0) {
-      const row: MarkdownSegment[] = [];
-      let remaining = width;
-      let i = 0;
-      while (i < segments.length && remaining > 0) {
-        const seg = segments[i];
-        if (seg.text.length <= remaining) { row.push(seg); remaining -= seg.text.length; i += 1; }
-        else { row.push({ ...seg, text: seg.text.slice(0, remaining) }); segments[i] = { ...seg, text: seg.text.slice(remaining) }; remaining = 0; }
-      }
-      segments = segments.slice(i);
-      out.push(row);
+    // An overlong line wraps the way an editor soft-wraps: at a space or after
+    // punctuation when there is one in the back half of the row, and with the
+    // continuation indented past the line's own indentation. Cut at exactly
+    // the width, `argv.includes('--verbose')` came out as a row ending in
+    // "--verbose" and a row starting "') };" that read as a new line of code.
+    const lead = /^\s*/.exec(line)?.[0].length ?? 0;
+    const hang = Math.min(lead + 2, Math.floor(width / 2));
+    let room = width;
+    let first = true;
+    while (length(segments) > room && segments.length > 0) {
+      const [row, rest] = splitAt(segments, breakPoint(segments.map((seg) => seg.text).join(''), room));
+      out.push(first ? row : [{ text: ' '.repeat(hang) }, ...row]);
+      segments = rest;
+      first = false;
+      room = Math.max(1, width - hang);
     }
-    out.push(segments.length > 0 ? segments : [{ text: '', color: 'cyan' }]);
+    const tail = segments.length > 0 ? segments : [{ text: '', color: 'cyan' }];
+    out.push(first ? tail : [{ text: ' '.repeat(hang) }, ...tail]);
   }
   return out;
+}
+
+const length = (segments: readonly MarkdownSegment[]): number => segments.reduce((n, s) => n + s.text.length, 0);
+
+/** Where to cut `text` so the head fits in `room`: after the last break
+ *  character in the back half of the row, else at exactly `room`. */
+function breakPoint(text: string, room: number): number {
+  for (let i = room; i > Math.floor(room / 2); i -= 1) {
+    const char = text[i - 1];
+    if (char !== undefined && /[\s,;({[]/.test(char)) return i;
+  }
+  return room;
+}
+
+/** Split styled segments at a character offset. */
+function splitAt(segments: readonly MarkdownSegment[], at: number): [MarkdownSegment[], MarkdownSegment[]] {
+  const head: MarkdownSegment[] = [];
+  const tail: MarkdownSegment[] = [];
+  let seen = 0;
+  for (const seg of segments) {
+    if (seen >= at) tail.push(seg);
+    else if (seen + seg.text.length <= at) head.push(seg);
+    else {
+      head.push({ ...seg, text: seg.text.slice(0, at - seen) });
+      tail.push({ ...seg, text: seg.text.slice(at - seen) });
+    }
+    seen += seg.text.length;
+  }
+  return [head, tail];
 }

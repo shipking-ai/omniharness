@@ -96,9 +96,9 @@ func (n *Native) Register(r *Registry) error {
 			"path":    map[string]any{"type": "string", "description": "path to write"},
 			"content": map[string]any{"type": "string", "description": "full file content"},
 		}, "path", "content"), n.writeFile),
-		n.tool("edit_file", "Replace one exact substring in a file with new text.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
+		n.tool("edit_file", "Replace one exact, unique substring in a file with new text. old_text must appear exactly once — include surrounding lines to make it unique.", RiskMedium, caps(CapWriteFiles), schema(map[string]any{
 			"path":     map[string]any{"type": "string", "description": "path to edit"},
-			"old_text": map[string]any{"type": "string", "description": "exact text to replace"},
+			"old_text": map[string]any{"type": "string", "description": "exact text to replace, unique within the file"},
 			"new_text": map[string]any{"type": "string", "description": "replacement text"},
 		}, "path", "old_text", "new_text"), n.editFile),
 		n.tool("list_dir", "List entries in a directory.", RiskLow, caps(CapReadFiles), schema(map[string]any{
@@ -283,6 +283,83 @@ func confine(root, p string) error {
 	return nil
 }
 
+// refuseGitDir stops the file tools writing inside a git directory.
+//
+// git runs commands named in a repository's own config: core.fsmonitor on a
+// plain `git status`, diff.external on `git diff`, filter drivers on both. A
+// model that can write .git/config can therefore turn the next git call into
+// any command it likes — an approved `git status` from the git tool, or the
+// harness's own diff check — and the person approving sees `git status`, not
+// the config. Nothing an agent is asked to do needs to write inside .git; the
+// git tool is the way to change a repository.
+//
+// Reading is still allowed. The check runs on both the path as given and the
+// path with symlinks resolved, so a workspace file linked into .git is caught
+// too, and it matches every spelling a filesystem treats as ".git".
+//
+// Only components below the workspace root are judged, so a workspace that
+// itself lives under some directory named .git still works. With no root
+// configured, the whole path is.
+func refuseGitDir(tool, root, p string) error {
+	candidates := []string{p}
+	if real, err := resolveDeepest(p); err == nil {
+		candidates = append(candidates, real)
+	}
+	var bases []string
+	if root != "" {
+		if abs, err := filepath.Abs(root); err == nil {
+			bases = append(bases, abs)
+			if real, err := resolveDeepest(abs); err == nil {
+				bases = append(bases, real)
+			}
+		}
+	}
+	for _, c := range candidates {
+		rels := []string{c}
+		if len(bases) > 0 {
+			rels = rels[:0]
+			for _, base := range bases {
+				rel, err := filepath.Rel(base, c)
+				if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					rels = append(rels, rel)
+				}
+			}
+		}
+		for _, rel := range rels {
+			for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+				if isGitDirName(part) {
+					return &Error{
+						Kind: ErrInvalidInput,
+						Tool: tool,
+						Message: fmt.Sprintf("refusing to write %s: it is inside a .git directory, where git "+
+							"reads commands it will run; use the git tool to change the repository", p),
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// isGitDirName reports whether one path component would open a .git
+// directory on some filesystem git runs on: any case (macOS and Windows fold
+// it), trailing dots and spaces and an NTFS stream suffix (Windows drops
+// them), the 8.3 short name, and the zero-width characters HFS+ ignores.
+func isGitDirName(part string) bool {
+	if i := strings.IndexByte(part, ':'); i >= 0 {
+		part = part[:i]
+	}
+	part = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 0x200c && r <= 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x206a && r <= 0x206f, r == 0xfeff:
+			return -1
+		}
+		return r
+	}, part)
+	part = strings.TrimRight(part, ". ")
+	return strings.EqualFold(part, ".git") || strings.EqualFold(part, "git~1")
+}
+
 func (n *Native) readFile(ctx context.Context, in map[string]any) (Result, error) {
 	p, err := n.resolvePath(in)
 	if err != nil {
@@ -301,6 +378,9 @@ func (n *Native) readFile(ctx context.Context, in map[string]any) (Result, error
 func (n *Native) writeFile(ctx context.Context, in map[string]any) (Result, error) {
 	p, err := n.resolvePath(in)
 	if err != nil {
+		return Result{}, err
+	}
+	if err := refuseGitDir("write_file", n.WorkspaceRoot, p); err != nil {
 		return Result{}, err
 	}
 	content, err := StringArg(in, "content")
@@ -323,6 +403,9 @@ func (n *Native) editFile(ctx context.Context, in map[string]any) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
+	if err := refuseGitDir("edit_file", n.WorkspaceRoot, p); err != nil {
+		return Result{}, err
+	}
 	oldText, err := StringArg(in, "old_text")
 	if err != nil {
 		return Result{}, err
@@ -336,10 +419,30 @@ func (n *Native) editFile(ctx context.Context, in map[string]any) (Result, error
 		return Result{}, err
 	}
 	s := string(b)
-	idx := strings.Index(s, oldText)
-	if idx < 0 {
-		return Result{}, fmt.Errorf("old_text not found in %s", p)
+	// An edit must name exactly one place. Replacing the first of several
+	// matches silently edits the wrong line and reports success, which is the
+	// worst outcome available here: the model is told the edit landed, so it
+	// moves on, and the real defect surfaces later somewhere else entirely.
+	//
+	// The count goes in the error because it is what the model needs to fix
+	// the call — it says "widen old_text" without the model having to re-read
+	// the file to discover why.
+	switch n := strings.Count(s, oldText); {
+	case n == 0:
+		return Result{}, &Error{
+			Kind:    ErrInvalidInput,
+			Tool:    "edit_file",
+			Message: fmt.Sprintf("old_text not found in %s", p),
+		}
+	case n > 1:
+		return Result{}, &Error{
+			Kind: ErrInvalidInput,
+			Tool: "edit_file",
+			Message: fmt.Sprintf("old_text appears %d times in %s — include surrounding lines so it matches "+
+				"exactly once, or use write_file to replace the whole file", n, p),
+		}
 	}
+	idx := strings.Index(s, oldText)
 	s = s[:idx] + newText + s[idx+len(oldText):]
 	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
 		return Result{}, err

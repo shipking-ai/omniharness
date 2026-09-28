@@ -180,14 +180,26 @@ const statusRow = (screen: string): string => {
   return rows.at(-2) ?? '';
 };
 
+/**
+ * The composer's settings row — mode, engine, approvals — the last row of the
+ * composer. Found by its shape, the spine and then the approvals setting at the
+ * right, because the home screen puts the composer mid-window rather than
+ * directly above the status line.
+ */
+const settingsRow = (screen: string): string => {
+  const rows = screen.split('\n').map((line) => line.trimEnd());
+  return rows.filter((line) => /^\s*[┃|] .*\bapprovals \S+$/.test(line)).at(-1) ?? '';
+};
+
 test('a narrow terminal drops secondary metadata instead of truncating it', async () => {
   const wide = await mount({ columns: 100, model: 'auto/coding' });
   const narrow = await mount({ columns: 56, model: 'auto/coding' });
   try {
-    assert.match(statusRow(wide.screen()), /auto\/coding/, 'a normal terminal names the engine');
-    const row = statusRow(narrow.screen());
-    assert.match(row, /manual/, 'the narrow status line still says how approvals are handled');
+    assert.match(settingsRow(wide.screen()), /auto\/coding/, 'a normal terminal names the engine');
+    const row = settingsRow(narrow.screen());
+    assert.match(row, /approvals manual/, 'a narrow composer still says how approvals are handled');
     assert.ok(!row.includes('auto/coding'), 'the engine name is dropped, not squeezed in');
+    assert.ok(!statusRow(narrow.screen()).includes('auto/coding'), 'nor moved to the status line');
   } finally {
     wide.unmount();
     narrow.unmount();
@@ -411,36 +423,54 @@ test('a reply keeps the paragraph breaks it was written with', async () => {
 
 // --- the opening state -----------------------------------------------------
 
-test('an untouched session fills the window instead of sitting above a void', async () => {
+test('the home screen centres its group in the window, both ways', async () => {
+  // OpenCode's and Kilo's arrangement: the mark, the composer and the tip as
+  // one group in the middle of the window, with the status and hint rows on
+  // the floor. 100 columns: a 96-column frame after the two-column gutters.
   const app = await mount({ columns: 100, rows: 30 });
   await app.settle(60);
-  const rows = app.live().split('\n');
-  const composer = rows.findIndex((line) => line.includes('describe the work'));
-  assert.ok(composer >= 0, 'the composer is on screen');
-  // The command surface sits on the floor of the window: the status line and
-  // the hint line are all that follow it.
-  const after = rows.slice(composer + 1).filter((line) => line.trim() !== '');
-  assert.equal(after.length, 2, `only the status and hint rows follow the composer, got ${JSON.stringify(after)}`);
-  assert.ok(composer >= 12, `the composer is near the foot of a 30-row window, not at row ${composer}`);
-  app.unmount();
+  try {
+    // Ink ends a frame with a newline, which is not a row.
+    const rows = app.live().replace(/\n$/, '').split('\n');
+    const status = rows.findIndex((line) => /^\s*ready\b/.test(line));
+    assert.equal(status, rows.length - 2, 'the status line is the second-last row');
+    const first = rows.findIndex((line) => line.trim() !== '');
+    const last = rows.slice(0, status).map((line) => line.trim() !== '').lastIndexOf(true);
+    const above = first;
+    const below = status - last - 1;
+    assert.ok(above >= 3, `the group does not sit on the ceiling (${above} rows above it)`);
+    assert.ok(Math.abs(above - below) <= 2, `the group is centred: ${above} rows above, ${below} below`);
+
+    // Across: the mark's middle, and the composer's, at the frame's middle.
+    const middle = 2 + 96 / 2;
+    const mark = rows.find((line) => line.includes('█▀▀█')) ?? '';
+    const markLeft = mark.length - mark.trimStart().length;
+    assert.ok(Math.abs(markLeft + 27 - middle) <= 1, `the mark starts at column ${markLeft}`);
+    const composer = rows.find((line) => line.includes('describe the work')) ?? '';
+    const spine = composer.search(/[┃|]/);
+    assert.ok(Math.abs(spine + 36 - middle) <= 1, `the 72-column composer starts at column ${spine}`);
+
+    // And it is the only masthead: the printed one waits for the first task.
+    const mastheads = app.screen().split('\n').filter((line) => /OMNIHARNESS\s+\S/.test(line));
+    assert.equal(mastheads.length, 1, `one masthead on the home screen, not ${mastheads.length}`);
+  } finally {
+    app.unmount();
+  }
 });
 
 test('the opening screen names the modes and marks the one in force', async () => {
   const app = await mount({ columns: 100, rows: 30, mode: 'research' });
   await app.settle(60);
   const rows = app.live().split('\n');
-  for (const mode of ['plan', 'build', 'research', 'crazy']) {
-    assert.ok(rows.some((line) => line.includes(mode)), `${mode} is offered`);
-  }
-  const current = rows.find((line) => line.includes('research')) ?? '';
-  // The mode in force is marked with the composer's own spine, in the same
-  // column as the composer's, so the two read as one device.
-  assert.match(current.trimStart(), /^[|┃]/, 'the mode in force carries the command surface mark');
-  const others = rows.filter((line) => /^\s+(plan|build|crazy)\s/.test(line));
-  assert.equal(others.length, 3, 'the other three are listed');
-  for (const line of others) {
-    assert.ok(!/^[|┃]/.test(line.trimStart()), `only one mode is marked, not ${JSON.stringify(line)}`);
-  }
+  const dial = rows.find((line) => /\bplan\b.*\bbuild\b.*\bresearch\b.*\bcrazy\b/.test(line));
+  assert.ok(dial !== undefined, 'all four modes are offered, on one row');
+  // The mode in force carries the composer's own spine directly in front of
+  // it, so the two read as one device; no other mode does.
+  assert.match(dial, /[|┃]research\b/, 'the mode in force carries the command surface mark');
+  assert.equal((dial.match(/[|┃]/g) ?? []).length, 1, `only one mode is marked, not ${JSON.stringify(dial)}`);
+  // And the one in force says what it does, on the row under the choices.
+  const next = rows[rows.indexOf(dial) + 1] ?? '';
+  assert.match(next, /read and explain/, 'the mode in force is described');
   app.unmount();
 });
 
@@ -482,11 +512,14 @@ test('the status line leads with what is happening and does not repeat the masth
   // a turn is in flight, so it leads and it is the only thing on the left. The
   // mode is a setting and sits with the other settings.
   assert.match(row, /^\s*ready\b/, 'the phase leads');
-  assert.match(row, /build .* auto\/coding/, 'the mode is grouped with the engine, not set against the phase');
+  assert.ok(!/\bbuild\b|auto\/coding/.test(row), 'the settings of the next task are not repeated on the status line');
+  assert.match(settingsRow(app.live()), /build .* auto\/coding/, 'the mode is grouped with the engine, in the composer');
 
   // The masthead used to carry the engine, the mode and the permission as well,
-  // three rows above the status line that carries all three live.
-  const masthead = app.screen().split('\n').slice(0, 3).join('\n');
+  // a few rows above the composer that carries all three live. It ends at the
+  // line naming the product, under the wordmark.
+  const screenRows = app.screen().split('\n');
+  const masthead = screenRows.slice(0, screenRows.findIndex((line) => line.includes('OMNIHARNESS')) + 1).join('\n');
   assert.match(masthead, /OMNIHARNESS/);
   assert.match(masthead, /\/srv\/p/);
   for (const live of ['auto/coding', 'build', 'manual']) {

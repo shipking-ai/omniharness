@@ -501,3 +501,202 @@ func TestAbsolutePathInsideTheWorkspaceIsAllowed(t *testing.T) {
 		t.Errorf("absolute in-workspace path was blocked: %s", reason)
 	}
 }
+
+// --- batching what a person is asked ------------------------------------------
+
+// countingApprover records how many times a person was interrupted, and how
+// many actions each interruption covered.
+type countingApprover struct {
+	prompts int
+	sizes   []int
+	grant   func(r Request) bool
+}
+
+func (c *countingApprover) RequestApproval(_ context.Context, r Request, _ string) (bool, error) {
+	c.prompts++
+	c.sizes = append(c.sizes, 1)
+	return c.grant(r), nil
+}
+
+func (c *countingApprover) RequestApprovalBatch(_ context.Context, rs []Request, reasons []string) ([]bool, error) {
+	c.prompts++
+	c.sizes = append(c.sizes, len(rs))
+	if len(reasons) != len(rs) {
+		return nil, errors.New("reasons and requests must line up")
+	}
+	out := make([]bool, len(rs))
+	for i, r := range rs {
+		out[i] = c.grant(r)
+	}
+	return out, nil
+}
+
+func writeReq(path string) Request {
+	return Request{Tool: "write_file", Risk: tools.RiskHigh, Input: map[string]any{"path": path}}
+}
+
+// Six writes in one model turn produced six prompts, one after another, each
+// identical in shape and each answered alone. Nobody reads the sixth. Asked
+// together they are a decision someone can actually make.
+func TestABatchAsksOnceNotOncePerCall(t *testing.T) {
+	ap := &countingApprover{grant: func(Request) bool { return true }}
+	e := NewEngine(defaultCfg(), ap)
+
+	reqs := []Request{writeReq("a.go"), writeReq("b.go"), writeReq("c.go"), writeReq("d.go"), writeReq("e.go"), writeReq("f.go")}
+	out, err := e.EvaluateBatch(context.Background(), reqs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ap.prompts != 1 {
+		t.Fatalf("a person was interrupted %d times for one turn's work", ap.prompts)
+	}
+	if ap.sizes[0] != 6 {
+		t.Fatalf("the prompt covered %d actions, want all 6 shown together", ap.sizes[0])
+	}
+	for i, d := range out {
+		if d != Allow {
+			t.Fatalf("request %d = %v, want Allow", i, d)
+		}
+	}
+}
+
+// Grouping is presentation. Every request still gets its own verdict, and
+// denying one must not deny the rest — otherwise batching would quietly turn
+// a single objection into a blanket refusal.
+func TestBatchVerdictsArePerRequest(t *testing.T) {
+	ap := &countingApprover{grant: func(r Request) bool {
+		p, _ := r.Input["path"].(string)
+		return p != "secrets.env"
+	}}
+	e := NewEngine(defaultCfg(), ap)
+
+	out, err := e.EvaluateBatch(context.Background(), []Request{
+		writeReq("a.go"), writeReq("secrets.env"), writeReq("b.go"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Decision{Allow, Block, Allow}
+	for i := range want {
+		if out[i] != want[i] {
+			t.Fatalf("verdicts = %v, want %v", out, want)
+		}
+	}
+}
+
+// Calls that never needed asking must not be dragged into the prompt: putting
+// a read in front of a person alongside six writes is the padding that makes
+// the writes stop registering.
+func TestOnlyCallsThatNeedAskingAreAsked(t *testing.T) {
+	ap := &countingApprover{grant: func(Request) bool { return true }}
+	e := NewEngine(defaultCfg(), ap)
+
+	out, err := e.EvaluateBatch(context.Background(), []Request{
+		{Tool: "read_file", Risk: tools.RiskLow},
+		writeReq("a.go"),
+		{Tool: "list_dir", Risk: tools.RiskLow},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ap.prompts != 1 || ap.sizes[0] != 1 {
+		t.Fatalf("prompts=%d sizes=%v — only the write needed asking", ap.prompts, ap.sizes)
+	}
+	if out[0] != Allow || out[2] != Allow {
+		t.Fatalf("low-risk calls should be allowed without asking: %v", out)
+	}
+}
+
+// A batch of nothing-to-ask interrupts no one.
+func TestNoPromptWhenNothingNeedsApproval(t *testing.T) {
+	ap := &countingApprover{grant: func(Request) bool { return true }}
+	e := NewEngine(defaultCfg(), ap)
+	if _, err := e.EvaluateBatch(context.Background(), []Request{
+		{Tool: "read_file", Risk: tools.RiskLow},
+		{Tool: "search", Risk: tools.RiskLow},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ap.prompts != 0 {
+		t.Fatalf("interrupted %d times with nothing to decide", ap.prompts)
+	}
+}
+
+// An approver that cannot take a batch is asked one at a time — the behaviour
+// that existed before this did, unchanged.
+func TestPlainApproverIsStillAskedOneAtATime(t *testing.T) {
+	var prompts int
+	e := NewEngine(defaultCfg(), ApproverFunc(func(context.Context, Request, string) (bool, error) {
+		prompts++
+		return true, nil
+	}))
+	out, err := e.EvaluateBatch(context.Background(), []Request{writeReq("a.go"), writeReq("b.go")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompts != 2 {
+		t.Fatalf("prompts = %d, want one per call for a non-batch approver", prompts)
+	}
+	if out[0] != Allow || out[1] != Allow {
+		t.Fatalf("verdicts = %v", out)
+	}
+}
+
+// A short answer is not a partial yes. If an approver returns fewer verdicts
+// than it was asked about, everything stays denied — the alternative is that
+// a truncated or malformed reply silently authorises work.
+type shortApprover struct{ Approver }
+
+func (shortApprover) RequestApproval(context.Context, Request, string) (bool, error) {
+	return false, nil
+}
+func (shortApprover) RequestApprovalBatch(_ context.Context, rs []Request, _ []string) ([]bool, error) {
+	return []bool{true}, nil // answers one, was asked about several
+}
+
+func TestShortAnswerDeniesEverything(t *testing.T) {
+	e := NewEngine(defaultCfg(), shortApprover{})
+	out, err := e.EvaluateBatch(context.Background(), []Request{writeReq("a.go"), writeReq("b.go"), writeReq("c.go")})
+	if err == nil {
+		t.Fatal("a mismatched answer should be an error, not a partial approval")
+	}
+	for i, d := range out {
+		if d != Block {
+			t.Fatalf("request %d = %v after a short answer; everything must stay denied", i, d)
+		}
+	}
+}
+
+// A failing approver denies rather than allows.
+func TestApproverErrorDeniesTheBatch(t *testing.T) {
+	e := NewEngine(defaultCfg(), ApproverFunc(func(context.Context, Request, string) (bool, error) {
+		return false, errors.New("the prompt could not be shown")
+	}))
+	out, err := e.EvaluateBatch(context.Background(), []Request{writeReq("a.go")})
+	if err == nil {
+		t.Fatal("expected the error to surface")
+	}
+	if out[0] != Block {
+		t.Fatalf("a call whose approval failed must not proceed, got %v", out[0])
+	}
+}
+
+// Blocks stay blocked: batching changes who is asked and how often, never what
+// policy decides.
+func TestBatchingDoesNotSoftenBlocks(t *testing.T) {
+	ap := &countingApprover{grant: func(Request) bool { return true }}
+	e := NewEngine(defaultCfg(), ap)
+	out, err := e.EvaluateBatch(context.Background(), []Request{
+		{Tool: "rm", Risk: tools.RiskCritical},
+		writeReq("a.go"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0] != Block {
+		t.Fatalf("a critical call was softened by batching: %v", out[0])
+	}
+	if ap.sizes[0] != 1 {
+		t.Fatalf("a blocked call should never reach a person: prompt covered %d", ap.sizes[0])
+	}
+}

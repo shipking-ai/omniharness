@@ -71,6 +71,72 @@ func TestReadWriteEditFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing old_text")
 	}
+	if got := KindOf(err); got != ErrInvalidInput {
+		t.Fatalf("a missing old_text is the model's to fix, so it must be invalid_input, got %q", got)
+	}
+}
+
+// An edit names one place. Replacing the first of several matches edits the
+// wrong line and reports success, so the model is told it landed and moves on
+// — the defect then surfaces somewhere else entirely, long after the trail is
+// cold. Refusing is the only safe answer.
+func TestEditFileRefusesAmbiguousMatch(t *testing.T) {
+	dir := t.TempDir()
+	r := newTestRegistry(t, dir)
+
+	const before = "count = 0\nreset()\ncount = 0\n"
+	if _, err := mustTool(t, r, "write_file").Run(context.Background(), map[string]any{
+		"path": "m.go", "content": before,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := mustTool(t, r, "edit_file").Run(context.Background(), map[string]any{
+		"path": "m.go", "old_text": "count = 0", "new_text": "count = 1",
+	})
+	if err == nil {
+		t.Fatal("two matches must be refused, not silently applied to the first")
+	}
+	if got := KindOf(err); got != ErrInvalidInput {
+		t.Fatalf("the model can fix this by widening old_text, so it is invalid_input, got %q", got)
+	}
+	// The count is what lets the model fix the call without re-reading the file.
+	if !strings.Contains(err.Error(), "2 times") {
+		t.Fatalf("the error must say how many matches there were, got %q", err)
+	}
+
+	b, _ := os.ReadFile(filepath.Join(dir, "m.go"))
+	if string(b) != before {
+		t.Fatalf("a refused edit must not touch the file, got %q", b)
+	}
+
+	// Widening the match until it is unique is the documented way out, and it
+	// has to actually work.
+	if _, err := mustTool(t, r, "edit_file").Run(context.Background(), map[string]any{
+		"path": "m.go", "old_text": "reset()\ncount = 0", "new_text": "reset()\ncount = 1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(filepath.Join(dir, "m.go"))
+	if string(b) != "count = 0\nreset()\ncount = 1\n" {
+		t.Fatalf("the second occurrence should have been the one edited, got %q", b)
+	}
+}
+
+// Overlapping occurrences still count as more than one place.
+func TestEditFileCountsOverlappingText(t *testing.T) {
+	dir := t.TempDir()
+	r := newTestRegistry(t, dir)
+	if _, err := mustTool(t, r, "write_file").Run(context.Background(), map[string]any{
+		"path": "o.txt", "content": "aaaa",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mustTool(t, r, "edit_file").Run(context.Background(), map[string]any{
+		"path": "o.txt", "old_text": "aa", "new_text": "b",
+	}); err == nil {
+		t.Fatal("\"aa\" is not a unique place in \"aaaa\"")
+	}
 }
 
 func TestWorkspaceConfinement(t *testing.T) {
