@@ -5,10 +5,10 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 
 | | |
 |---|---|
-| **Branch** | `claude/inspiring-hypatia-wx35s3` |
+| **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
-| **Head** | `70405d9` — pushed, working tree clean |
-| **Unmerged commits** | 10 |
+| **Head** | see `git log -1`; this file is committed with every change |
+| **Unmerged commits** | 12 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
@@ -75,7 +75,8 @@ Ranked in the research report §09; the numbering is the report's.
 - [x] **05** Tier the context strategy — `2a22b42` *(history-eviction bug fixed first in `eabc459`)*
 - [x] **06** Hooks on the event spine — `c537f2d`
 - [x] **07** Approval volume — `34e79b1` + `70405d9` *(batching done; two pieces left, below)*
-- [ ] **08** Close the sandbox gap, or document the trust model — **NEXT**
+- [ ] **08** Close the sandbox gap, or document the trust model — **IN PROGRESS**; found a
+  live hole first, see *08 — verified finding* below. Waiting on the user's choice of fix.
 - [ ] **09** Learned router behind capability intent
 
 ### 07 — the two pieces not done
@@ -89,6 +90,32 @@ Batching is in. Still outstanding, both smaller than what shipped:
 2. **Structured evidence at the prompt.** `Request.Input` reaches the approver but nothing renders
    a diff, a path list, or a size. The batch prompt is the right place for it now that there is one
    prompt per turn to put it in.
+
+### 08 — verified finding, NOT FIXED YET
+
+**`shell_allowed = false` does not mean no shell.** Found while mapping every subprocess spawn site
+for 08. `SECURITY.md` lists "`shell_allowed = false` means no shell, including by way of another
+tool" as a guarantee. It does not hold:
+
+- `internal/evaluate` runs `npm test`, `npm run build`, `npm run lint`, `go test`, `cargo build`,
+  `cargo test` and `pytest` in the workspace after **every software task**
+  (`Registry.ForTask`, `orchestrator.evaluate`). None of it passes through `policy`, and nothing
+  reads `ShellAllowed` outside `policy.go:141`.
+- `write_file` is `medium` → `allow` by default. So a model writes
+  `package.json` with `"scripts":{"test":"<anything>"}` and the evaluator runs it via `sh -c`.
+  No prompt at all. Same shape via a `_test.go` file, `build.rs`, or `conftest.py`.
+- **Reproduced end to end**, default config, through `omniharness run --headless`:
+  fake gateway writes that `package.json` with `"test":"touch PWNED"`; after the run, `PWNED`
+  exists and the log shows `evaluate: npm-test -> PASS`. The repro was a throwaway test in
+  `internal/cli` (drive `run` like `diagnose_test.go`, one `write_file` step then `"fixed"`,
+  prompt `"fix the build script in this package"` so the keyword analyzer picks SOFTWARE);
+  not committed because it fails by design until fixed.
+
+Fix options put to the user (touches the policy guarantee, so it is their call per `AGENTS.md`):
+(A) evaluators that execute workspace-defined code are skipped with `NEEDS_REVIEW` when
+`shell_allowed = false`; (B) route them through the policy gate as an execute-code request so
+they need approval; (C) change the guarantee in `SECURITY.md` instead. Whichever lands, the repro
+becomes a committed test and must be watched to fail on the unfixed code.
 
 ### 08 — what it means, concretely
 
