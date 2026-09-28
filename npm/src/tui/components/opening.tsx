@@ -15,6 +15,12 @@
  *
  * Everything on it is read from the running session and the same command table
  * the palette uses; there is no second copy of the mode list to drift.
+ *
+ * It is set as one row of choices with the current one lit, the way Crush and
+ * OpenCode show an agent picker, rather than as a four-row table: a table this
+ * close to the composer read as part of the transcript. Under it, one tip, the
+ * device OpenCode and Kilo use to make a first screen feel inhabited. Every tip
+ * names a command that exists, from the same registry the palette reads.
  */
 
 import React from 'react';
@@ -27,8 +33,8 @@ import type { Glyphs, Theme } from '../theme/tokens.js';
 import type { AgentMode } from '../../types/index.js';
 import type { SessionState } from '../state/types.js';
 
-/** Column the descriptions start in. Wide enough for the longest mode name. */
-const NAME_WIDTH = 10;
+/** Column the choices start in, after the "mode" label. */
+const LABEL = 6;
 
 /** The modes, in the order the registry declares them, with their one-liners. */
 export function modeLines(): readonly { mode: AgentMode; hint: string }[] {
@@ -40,10 +46,35 @@ export function modeLines(): readonly { mode: AgentMode; hint: string }[] {
     }));
 }
 
+/**
+ * One line each, and each names something that exists. The set is small on
+ * purpose: a tip rotation is only pleasant while it is short enough that every
+ * tip is worth reading, and each one here is a key or command the rest of the
+ * screen never mentions.
+ */
+export function tips(): readonly string[] {
+  const named = (name: string): boolean => COMMANDS.some((command) => command.name === name);
+  return [
+    named('resume') ? '/resume <name> picks up a saved conversation' : undefined,
+    named('attach') ? '/attach <files> adds files to the next task' : undefined,
+    named('find') ? '/find <text> searches everything said in this session' : undefined,
+    `${KEY_LABEL.palette} lists every command, with its key`,
+    'Shift+Tab changes how much the agent may do without asking',
+  ].filter((tip): tip is string => tip !== undefined);
+}
+
+/** The same tip for the same workspace, so a screen does not change on reload. */
+export function tipFor(workspace: string): string {
+  const all = tips();
+  let hash = 0;
+  for (const char of workspace) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return all[hash % all.length] ?? '';
+}
+
 /** Rows {@link Opening} draws, so the height plan can place the gap under it. */
 export function openingRows(_session: SessionState): number {
-  // A leading gap, the heading, a breathing row under it, one row per mode.
-  return modeLines().length + 3;
+  // The row of modes, its description, a breathing row, the tip.
+  return 4;
 }
 
 export function Opening({
@@ -55,50 +86,47 @@ export function Opening({
   rows: number; theme: Theme; glyphs: Glyphs;
 }): React.ReactElement | null {
   // Budgeted like every other section, because a short window is a real window:
-  // at eight rows the full panel made the live region taller than the viewport,
-  // which is the one thing that corrupts Ink's redraw. The rhythm rows go
-  // first, then the heading, then the list shortens, then it is gone.
-  const all = modeLines();
+  // the tip goes first, then its breathing row, then the description; the row
+  // of modes is the last thing to leave.
   const budget = Math.max(0, Math.floor(rows));
-  if (budget < 2) return null;
-  const lead = budget >= all.length + 2 ? 1 : 0;
-  const heading = budget - lead > all.length;
-  const breathe = budget - lead - (heading ? 1 : 0) > all.length;
-  const modes = all.slice(0, budget - lead - (heading ? 1 : 0) - (breathe ? 1 : 0));
-  if (modes.length === 0) return null;
+  if (budget < 1) return null;
+  const all = modeLines();
+  const current = all.find(({ mode }) => mode === session.mode);
+  const color = modeColor(session.mode, theme);
+  const tip = tipFor(session.workspace);
+  const label = 'mode';
+  // The key hint is the first thing to go when the row is tight, and the row
+  // is truncated rather than wrapped past that: a wrapped dial is a fifth row
+  // the height plan did not reserve, which is how Ink's redraw tears.
+  const choices = all.reduce((sum, { mode }, index) => sum + (index > 0 ? 2 : 0) + 1 + mode.length, 0);
+  const key = `   ${KEY_LABEL.cycleMode}`;
+  const showKey = LABEL + choices + key.length <= width;
 
-  return <Box flexDirection="column" marginTop={lead}>
-    {/* The key sits beside the label it belongs to rather than against the far
-        margin. Pushed to the edge it was stranded sixty columns from the word
-        it explains, with nothing in between — alignment for its own sake. */}
-    {heading
-      ? <Text>
-          <Text color={theme.muted} bold>MODE</Text>
-          <Text color={theme.muted} dimColor>{'   '}{KEY_LABEL.cycleMode} cycles</Text>
-        </Text>
+  return <Box flexDirection="column">
+    <Text wrap="truncate-end">
+      <Text color={theme.muted}>{label.padEnd(LABEL)}</Text>
+      {all.map(({ mode }, index) => {
+        const on = mode === session.mode;
+        return <Text key={mode}>
+          {index > 0 ? <Text color={theme.muted}>{'  '}</Text> : null}
+          <Text color={on ? modeColor(mode, theme) : theme.muted} bold={on}>
+            {on ? `${glyphs.spine}` : ' '}{mode}
+          </Text>
+        </Text>;
+      })}
+      {showKey ? <Text color={theme.muted} dimColor>{key}</Text> : null}
+    </Text>
+    {budget >= 2 && current !== undefined
+      ? <Text color={theme.muted}>{' '.repeat(LABEL)}{clip(current.hint, Math.max(8, width - LABEL))}</Text>
       : null}
-    {breathe ? <Box height={1} /> : null}
-    {modes.map(({ mode, hint }) => {
-      const current = mode === session.mode;
-      // The mode in force is marked with the composer's own spine, in the
-      // composer's own colour, in the same column. Two marks, one meaning: this
-      // is the mode, and that is the prompt it runs. It makes the selection
-      // unmistakable without a border, a box, or a second colour — and it is
-      // the one thing on the opening screen that ties the dial to the surface
-      // underneath it.
-      return <Text key={mode}>
-        <Text color={current ? modeColor(mode, theme) : theme.muted} bold={current}>
-          {current ? `${glyphs.spine} ` : '  '}
-        </Text>
-        <Text color={current ? modeColor(mode, theme) : theme.muted} bold={current}>
-          {mode.padEnd(NAME_WIDTH)}
-        </Text>
-        {/* Three levels down the column, and none of them is a box: the mode in
-            force is bright, the rest are muted, the descriptions dimmer still. */}
-        <Text color={current ? theme.text : theme.muted} dimColor={!current}>
-          {clip(hint, Math.max(8, width - NAME_WIDTH - 2))}
-        </Text>
-      </Text>;
-    })}
+    {budget >= 4 && tip !== ''
+      ? <Box marginTop={1}>
+          <Text>
+            <Text color={color}>{glyphs.running} </Text>
+            <Text color={theme.muted} bold>Tip</Text>
+            <Text color={theme.muted}>{'  '}{clip(tip, Math.max(8, width - 7))}</Text>
+          </Text>
+        </Box>
+      : null}
   </Box>;
 }

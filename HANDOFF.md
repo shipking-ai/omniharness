@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 17 |
+| **Unmerged commits** | 18 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 674 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 463 npm tests (from 459) |
+| **Tests** | 674 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 477 npm tests (from 459) |
 
 ---
 
@@ -37,9 +37,10 @@ Read this top to bottom and you have everything; nothing here depends on a previ
   the npm TUI: https://claude.ai/artifact/6JP56nnobyqaJM4ErEKDPb
   Verified bugs from it, **not fixed**: the Go TUI (`internal/tui`) draws each final answer twice
   (once truncated, once full), prints raw markdown, and its prompt reads `> >`. The npm TUI renders
-  well; its gaps are layout (composer not pinned to the bottom, empty start screen, no end-of-turn
-  line) and wording (the status line says "via OmniRoute" and "manual"). The capture rig lived in the
-  session scratchpad and is gone; the page's method section says how to rebuild it.
+  well; its gaps were layout (composer not pinned to the bottom, empty start screen, no end-of-turn
+  line) and wording (the status line says "via OmniRoute" and "manual"). **All four are addressed by
+  the npm TUI redesign below.** The capture rig lived in the session scratchpad and is gone; the
+  page's method section says how to rebuild it.
 
 A pleasing loop worth knowing: commit `a8d255d` taught OmniHarness to read `AGENTS.md`, so when
 the harness is pointed at this repository it now reads the same instructions you just did.
@@ -76,6 +77,36 @@ version by actually reverting the fix.
   this generally; do not add a `?? 0` on the way to a view.
 - **Hooks and validation run exactly once per call.** That is the whole reason `planTurn` and
   `executeToolCall` are split rather than policy simply being called twice.
+
+### npm TUI redesign (`feat(tui)`, after `10204a2`)
+
+Asked for as "combine a little of all the TUI you researched". What came from where:
+
+| piece | borrowed from | where |
+|---|---|---|
+| Gradient block wordmark, dropped below 54 columns and in ASCII | OpenCode, Crush, Qwen Code | `format/wordmark.ts`, `components/banner.tsx` |
+| Mode dial as one row of choices + one rotating tip | Crush/OpenCode agent picker, OpenCode/Kilo tips | `components/opening.tsx` |
+| Filled composer carrying mode · model · approvals | OpenCode, Codex | `components/composer.tsx` |
+| Status line: phase left, `~/workspace · context N%` right | Gemini CLI, Pi | `components/statusline.tsx` |
+| Full-width filled band for the user's message | Codex, OpenCode | `components/transcript.tsx` |
+| `▣ mode · model · via X · time` receipt on the final reply only | OpenCode, Claude Code, Nanocoder | `transcript.tsx`, `state/reducer.ts` (`mode` on the entry) |
+| Framed approval dialog naming tool + workspace, numbered scopes | Crush, Mistral Vibe | `components/approval.tsx` |
+| Composer stays at the foot after the first turn (a one-time spacer printed into `<Static>`) | Codex, Gemini CLI | `layout/frame.ts` `anchorRows`, `app.tsx` |
+
+"via OmniRoute" no longer appears before any routing decision; "manual" now reads "approvals
+manual" in the composer. Nothing fabricated: the receipt shows only what was measured.
+
+Found and fixed while testing: the framed dialog is 3 rows taller than the old banner, and `plan`
+always reserves the stream floor, so at 14 rows a pending approval drew 22 rows (Ink then clears
+and reprints the whole transcript). `approvalFits` now drops the frame and breathing row when the
+full dialog would not fit. Also the mode dial wrapped at 50 columns (a row the plan did not
+reserve); it now drops its key hint, then truncates.
+
+Tests: `npm/test/tui-redesign.test.ts` (14). **All 11 deliberate breaks were caught**: letters
+drawn alike, wordmark forced on, key hint forced on, dial truncation removed, receipt `mode`
+dropped, band at reading width, spacer zeroed, `approvalRows` ignored, compact never chosen,
+workspace dropped from the dialog, `tildePath` prefix without `/`. Rendered in a real xterm.js +
+pty at 120, 80, 50 columns, 16 rows, and ASCII.
 
 ---
 
@@ -244,8 +275,10 @@ before a line of the fix existed.
   `internal/cli/diagnose_test.go` is the pattern for a full run → inspect trajectory test.
 - **TUI:** `npm/test/harness/tui.tsx` mounts the real interface against a fake terminal;
   `mount({ columns })` gives screen, keyboard and event emitter.
-- **PTY render harness:** was at `scratchpad/look.py` — **session-local, now gone.** If you need to
-  render the TUI at several widths, rebuild it or use the `tui.tsx` harness. `AGENTS.md` requires
+- **PTY render harness:** xterm.js + node-pty + Playwright rig with a fake OpenAI/Anthropic server
+  (`FAKE_TOOL=1` makes it request a shell call, for approval captures). Built in the session
+  scratchpad — **session-local, gone with the container.** The lookbook's method section describes
+  it; otherwise use the `tui.tsx` harness. `AGENTS.md` requires
   actually rendering any change under `npm/src/tui/`.
 
 ---

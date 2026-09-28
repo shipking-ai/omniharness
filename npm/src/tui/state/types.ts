@@ -176,6 +176,14 @@ export type Entry =
        * how long each turn actually took in the scrollback.
        */
       readonly tookMs?: number;
+      /**
+       * The mode the turn ran in, set on the reply that closes a turn and on
+       * nothing else. Its presence is what marks a reply as final: the
+       * narrative a model writes before a tool call is also an assistant entry,
+       * and a receipt under every one of those would put chrome between each
+       * step of the work.
+       */
+      readonly mode?: AgentMode;
     }
   | { readonly kind: 'reasoning'; readonly id: string; readonly at: number; readonly text: string }
   | { readonly kind: 'tool'; readonly id: string; readonly at: number; readonly tool: ToolRecord }

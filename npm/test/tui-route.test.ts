@@ -18,12 +18,11 @@ const metricsWith = (over: Partial<OmniRouteMetrics>): Partial<OmniRouteMetrics>
 
 test('the status line shows the provider only once the gateway has named one', async () => {
   const app = await mount({ columns: 100, run: () => new Promise<never>(() => { /* running */ }) });
-  // Before any decision the only thing the client knows about the path is the
-  // router it is addressed to, so that is all it may say. Naming the router is
-  // not naming a provider: no provider, model or vendor may appear until the
-  // gateway has reported one.
+  // Before any decision the client knows nothing about the path worth saying:
+  // no provider, model or vendor may appear until the gateway has reported
+  // one, and the route is not named at all rather than named as the plumbing.
   const opening = app.screen();
-  assert.match(opening, /via OmniRoute/, 'the route identity is the router until a decision lands');
+  assert.ok(!/\bvia\b/.test(opening), 'no route is named before a decision lands');
   for (const invented of ['anthropic', 'openai', 'claude', 'gpt', 'gemini', 'mistral']) {
     assert.ok(!opening.toLowerCase().includes(invented), `nothing claims ${invented} before the gateway does`);
   }
@@ -32,9 +31,9 @@ test('the status line shows the provider only once the gateway has named one', a
   app.emit({ type: 'route', fallback: false, attempts: 0, provider: 'anthropic' });
   await app.settle();
   assert.match(app.screen(), /via anthropic/);
-  assert.ok(
-    !app.live().includes('via OmniRoute'),
-    'the resolved provider replaces the router, it does not join it',
+  assert.equal(
+    app.live().split('\n').filter((line) => /\bvia\b/.test(line)).length, 1,
+    'the resolved provider is named once, on the status line',
   );
   app.unmount();
 });

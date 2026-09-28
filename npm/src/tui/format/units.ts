@@ -7,6 +7,7 @@
  * free, and an unmeasured latency disappears instead of reading as instant.
  */
 
+import { homedir } from 'node:os';
 import { activeGlyphs } from '../theme/tokens.js';
 
 /** Tokens read the way they are spoken: exact while small, then thousands. */
@@ -72,6 +73,17 @@ export function since(iso: string, now: number = Date.now()): string {
  * Shorten a path from the left, keeping the end. The tail identifies the
  * project; the head is usually a home directory nobody needs to read again.
  */
+/**
+ * A path the way the person thinks of it: their home directory is `~`.
+ * Every other terminal tool writes it this way, and a full `/home/name/...` on
+ * the first screen spends a third of the row on a prefix nobody reads.
+ */
+export function tildePath(value: string, home: string = homedir()): string {
+  if (home === '' || home === '/') return value;
+  if (value === home) return '~';
+  return value.startsWith(`${home}/`) ? `~${value.slice(home.length)}` : value;
+}
+
 export function shortPath(value: string, width: number): string {
   if (width <= 1) return value.slice(-Math.max(1, width));
   if (value.length <= width) return value;

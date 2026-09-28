@@ -13,8 +13,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { clip } from '../format/clip.js';
-import { meterBar, joinMeta } from './atoms.js';
-import { modeColor } from './composer.js';
+import { joinMeta } from './atoms.js';
+import { shortPath, tildePath } from '../format/units.js';
 import { KEY_LABEL } from '../input/keymap.js';
 import { PERMISSION_LABEL } from '../runtime/controller.js';
 import { phaseLabel, routeSummary, runElapsed, contextUse, unseenOutput } from '../state/selectors.js';
@@ -53,68 +53,50 @@ export function permissionTone(state: AppState, theme: Theme): { label: string; 
   return { label: PERMISSION_LABEL.ask, color: theme.muted };
 }
 
-/**
- * What the work is going through. Before the gateway has decided anything, the
- * honest answer is the router itself — it is what the request is addressed to.
- * Once a decision comes back, the provider it actually chose replaces it.
- */
-export function routeIdentity(state: AppState): string {
-  const resolved = routeSummary(state);
-  return resolved === undefined ? 'via OmniRoute' : `via ${resolved}`;
-}
-
 export function StatusLine({ state, width, band, theme, glyphs, windows, now }: StatusProps): React.ReactElement {
   const busy = state.phase !== 'idle';
   const attention = state.phase === 'awaiting-approval';
 
+  // Context in words, the way Gemini CLI and Pi write it, rather than a dithered
+  // bar: a six-cell meter at one percent is six cells of noise, and the number
+  // was already beside it. It takes the warning colours as it fills.
   const meter = contextUse(state, windows);
-  const context = meter === undefined
-    ? undefined
-    : `${meterBar(meter.fraction, 6, glyphs)} ${Math.round(meter.fraction * 100)}%`;
+  const context = meter === undefined ? undefined : `context ${Math.round(meter.fraction * 100)}%`;
   const contextColor = meter === undefined ? theme.muted
     : meter.zone === 'danger' ? theme.error
     : meter.zone === 'warn' ? theme.warn
     : theme.muted;
 
-  const permission = permissionTone(state, theme);
-
   // What is happening now leads, on its own, in the foreground: it is the one
-  // thing on this row anybody reads while a turn is in flight. The mode used to
-  // lead it as a bold coloured chip, which put the least volatile fact on the
-  // row in the most prominent position and made the phase look like its
-  // footnote. The mode is settings — it belongs with the other settings.
+  // thing on this row anybody reads while a turn is in flight.
   const phase = joinMeta([phaseLabel(state, now), runElapsed(state, now)], glyphs.dot);
   const leftWidth = phase.length + (busy ? 2 : 0);
 
-  // Narrow keeps only what changes what the next keystroke does; the engine and
-  // the route are a lens away and are dropped whole rather than truncated.
+  // Where, and through what. The mode, model and approval setting are the
+  // settings of the next task and live in the composer now; this row is the
+  // session's surroundings. The route is named only once the gateway has
+  // actually chosen a provider — before that, "via OmniRoute" described the
+  // plumbing, not anything the user could act on. Narrow keeps only the context.
+  const resolved = routeSummary(state);
   const right = band === 'narrow'
-    ? state.session.mode
-    : joinMeta([state.session.mode, state.session.model, routeIdentity(state)], glyphs.dot);
+    ? undefined
+    : joinMeta([
+        tildePath(state.session.workspace),
+        resolved === undefined ? undefined : `via ${resolved}`,
+      ], glyphs.dot);
 
   const room = Math.max(6, width - leftWidth - 2);
   const metaRoom = context === undefined ? room : Math.max(4, room - context.length - 3);
-  // Engine, then route, then how freely it is allowed to act: the right-hand
-  // group reads outward from what is answering to what it is permitted to do,
-  // so an elevated permission lands at the edge in its own colour instead of
-  // sitting next to the phase, where it read as part of the phase.
-  const permissionRoom = Math.max(0, metaRoom - (right?.length ?? 0) - 3);
-  const showPermission = permission.label !== '' && permissionRoom >= permission.label.length;
 
   return <Box flexDirection="row" justifyContent="space-between" width={width}>
     <Text color={attention ? theme.attention : busy ? theme.text : theme.muted} bold={attention}>
       {busy ? `${attention ? glyphs.attention : glyphs.running} ` : ''}{phase}
     </Text>
     <Text>
-      <Text color={theme.muted}>{right !== undefined ? clip(right, metaRoom) : ''}</Text>
-      {showPermission
-        ? <Text color={permission.color}>
-            <Text color={theme.muted}>{right !== undefined ? ` ${glyphs.dot} ` : ''}</Text>{permission.label}
-          </Text>
-        : null}
+      <Text color={theme.muted}>{right !== undefined && right !== '' ? shortPath(right, metaRoom) : ''}</Text>
       {context !== undefined
         ? <Text color={contextColor}>
-            {right !== undefined || showPermission ? ` ${glyphs.dot} ` : ''}{context}
+            {right !== undefined && right !== '' ? ` ${glyphs.dot} ` : ''}{context}
           </Text>
         : null}
     </Text>

@@ -162,6 +162,7 @@ export function reduce(state: AppState, action: Action): AppState {
         at: action.at,
         text: action.text,
         showRoute: routeIsNews(state, action.provider, action.model, action.fallback),
+        mode: state.session.mode,
         ...(state.runStartedAt !== undefined && action.at > state.runStartedAt
           ? { tookMs: action.at - state.runStartedAt }
           : {}),

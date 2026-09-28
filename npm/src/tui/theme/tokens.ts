@@ -103,6 +103,8 @@ export interface Glyphs {
   readonly selected: string;
   readonly meterFull: string;
   readonly meterEmpty: string;
+  /** Leads the one-line receipt under a finished reply. */
+  readonly receipt: string;
 }
 
 const UNICODE: Glyphs = {
@@ -127,6 +129,7 @@ const UNICODE: Glyphs = {
   selected: '›',
   meterFull: '█',
   meterEmpty: '░',
+  receipt: '▣',
 };
 
 const ASCII: Glyphs = {
@@ -151,6 +154,7 @@ const ASCII: Glyphs = {
   selected: '>',
   meterFull: '#',
   meterEmpty: '.',
+  receipt: '#',
 };
 
 export function glyphs(env: Record<string, string | undefined> = process.env): Glyphs {

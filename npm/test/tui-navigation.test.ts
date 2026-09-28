@@ -99,10 +99,13 @@ test('Shift+Tab cycles how approvals are handled', async () => {
 
 test('crazy mode reports bypass however the permission setting is left', async () => {
   const app = await mount({ columns: 100, mode: 'crazy', permissionMode: 'ask' });
-  // The status line is the middle of the three chrome rows that close a frame.
+  // How freely the agent may act is a setting of the next task, so it sits in
+  // the composer's settings row: the last row of the composer, directly above
+  // the status and hint rows that close the frame.
   const rows = app.live().split('\n').map((line) => line.trim()).filter((line) => line !== '');
-  const status = rows.at(-2) ?? '';
-  assert.match(status, /bypass/, 'the status line does not claim approvals are still being asked for');
+  const settings = rows.at(-3) ?? '';
+  assert.match(settings, /approvals bypass/, 'the composer does not claim approvals are still being asked for');
+  assert.ok(!settings.includes('manual'), 'crazy mode is never reported as the safe default');
   app.unmount();
 });
 
