@@ -8,7 +8,7 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 14 |
+| **Unmerged commits** | 15 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
@@ -25,6 +25,12 @@ Read this top to bottom and you have everything; nothing here depends on a previ
   `internal/budget`, or `internal/cli/serve.go`. Several of the commits below touch `policy`.
 - **Research report** — the source of the ranked backlog, 3 editions:
   https://claude.ai/artifact/5gge1j8cfVov9RXCcodZzK
+- **Terminal Agents Census** (28 Sep 2026): every terminal coding agent found (437 entries, 40 read
+  at the source), compared on sandboxing, approvals, routing and TUI stack, with evidence for 07, 08
+  and 09: https://claude.ai/artifact/U13nvZ2pEHHf2z5r3cix8V
+  It corrects the research report in two places. The "GPT-5.5 38/37/18 across Codex, OpenCode,
+  OpenClaw" figure is not in arXiv 2608.26218, which it was attributed to. And Gemini CLI is not
+  retired: only its consumer tier moved to Antigravity CLI. Neither changes the backlog.
 
 A pleasing loop worth knowing: commit `a8d255d` taught OmniHarness to read `AGENTS.md`, so when
 the harness is pointed at this repository it now reads the same instructions you just did.
