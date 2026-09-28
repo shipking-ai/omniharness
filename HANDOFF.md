@@ -8,11 +8,11 @@ Read this top to bottom and you have everything; nothing here depends on a previ
 | **Branch** | `claude/vigilant-goldberg-n3koai` (fast-forwarded from `claude/inspiring-hypatia-wx35s3`, which is now stale — work here) |
 | **Base** | `main` @ `cca9b4b` (PR #126 merged; base has not moved since) |
 | **Head** | see `git log -1`; this file is committed with every change |
-| **Unmerged commits** | 19 |
+| **Unmerged commits** | 20 |
 | **Open PR** | none. *The user has not asked for one — do not open one unasked.* |
 | **Published** | `omniharness-cli@0.1.122`. Nothing on this branch is released yet. |
 | **Gate** | green: `gofmt`, `go vet`, `go test ./...`, `npm run typecheck`, `npm test` |
-| **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 479 npm tests (from 459) |
+| **Tests** | 682 Go test functions (`grep -rhc "^func Test" --include=*_test.go internal cmd`; 598 at branch start) · 480 npm tests (from 459) |
 
 ---
 
@@ -132,9 +132,11 @@ deliberate breaks were caught.** The miss was a `resultShown` guard in `taskDone
 flow can't reach, so it was deleted rather than kept untested. Rendered in the xterm.js rig:
 the Go TUI answer at 120 columns, the npm TUI at 50.
 
-Still open: the npm opening screen has an intentional gap between the masthead and the mode dial
-(the command surface sits at the foot). Moving the dial under the masthead is a small change if
-the user prefers it; they have not said.
+The user then asked for the mode dial to go under the masthead (next commit): the opening gap now
+sits between the tip and the composer, and the dial has one breathing row under the masthead
+(`openingRows` 4 → 5; that row is dropped first in a short window). Test: *the mode dial sits
+under the masthead*. With the gap put back above the dial, it fails ("15 rows under the
+masthead"). Rendered at 120 and 50 columns and at 12 rows.
 
 ---
 

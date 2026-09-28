@@ -73,8 +73,9 @@ export function tipFor(workspace: string): string {
 
 /** Rows {@link Opening} draws, so the height plan can place the gap under it. */
 export function openingRows(_session: SessionState): number {
-  // The row of modes, its description, a breathing row, the tip.
-  return 4;
+  // A breathing row under the masthead, the row of modes, its description, a
+  // breathing row, the tip.
+  return 5;
 }
 
 export function Opening({
@@ -86,8 +87,8 @@ export function Opening({
   rows: number; theme: Theme; glyphs: Glyphs;
 }): React.ReactElement | null {
   // Budgeted like every other section, because a short window is a real window:
-  // the tip goes first, then its breathing row, then the description; the row
-  // of modes is the last thing to leave.
+  // the space under the masthead goes first, then the tip and its breathing
+  // row, then the description; the row of modes is the last thing to leave.
   const budget = Math.max(0, Math.floor(rows));
   if (budget < 1) return null;
   const all = modeLines();
@@ -102,7 +103,8 @@ export function Opening({
   const key = `   ${KEY_LABEL.cycleMode}`;
   const showKey = LABEL + choices + key.length <= width;
 
-  return <Box flexDirection="column">
+  const lead = budget >= 5 ? 1 : 0;
+  return <Box flexDirection="column" marginTop={lead}>
     <Text wrap="truncate-end">
       <Text color={theme.muted}>{label.padEnd(LABEL)}</Text>
       {all.map(({ mode }, index) => {
@@ -116,10 +118,10 @@ export function Opening({
       })}
       {showKey ? <Text color={theme.muted} dimColor>{key}</Text> : null}
     </Text>
-    {budget >= 2 && current !== undefined
+    {budget - lead >= 2 && current !== undefined
       ? <Text color={theme.muted}>{' '.repeat(LABEL)}{clip(current.hint, Math.max(8, width - LABEL))}</Text>
       : null}
-    {budget >= 4 && tip !== ''
+    {budget - lead >= 4 && tip !== ''
       ? <Box marginTop={1}>
           <Text>
             <Text color={color}>{glyphs.running} </Text>

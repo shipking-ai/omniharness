@@ -67,6 +67,23 @@ test('an ASCII terminal gets the name in letters, not the block mark', async () 
 
 // --- the opening dial ------------------------------------------------------
 
+test('the mode dial sits under the masthead, and the composer alone on the floor', async () => {
+  const app = await mount({ columns: 100, rows: 30 });
+  await app.settle(60);
+  try {
+    const rows = rowsOf(app.screen());
+    const mast = rows.findIndex((line) => /OMNIHARNESS\s+\S/.test(line));
+    const dial = rows.findIndex((line) => /\bmode\s+plan\b/.test(line));
+    const tip = rows.findIndex((line) => /\bTip\b/.test(line));
+    const prompt = rows.findIndex((line) => line.includes('describe the work'));
+    assert.ok(mast >= 0 && dial > mast, 'the dial follows the masthead');
+    assert.ok(dial - mast <= 2, `the dial is ${dial - mast} rows under the masthead, not across a gap`);
+    assert.ok(prompt - tip >= 8, `the gap is between the tip and the composer (${prompt - tip} rows)`);
+  } finally {
+    app.unmount();
+  }
+});
+
 test('the mode dial names its key wherever the key fits', async () => {
   const app = await mount({ columns: 80, rows: 30 });
   await app.settle(60);
