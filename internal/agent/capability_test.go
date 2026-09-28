@@ -220,7 +220,7 @@ func TestInvalidToolCallIsRejectedBeforePolicy(t *testing.T) {
 	var missing gateway.ToolCall
 	missing.Function.Name = "read_file"
 	missing.Function.Arguments = `{}`
-	out := ag.executeToolCall(context.Background(), missing, DefaultRoles()[RoleImplementer])
+	out := planAndRun(ag, context.Background(), missing)
 
 	if asked != 0 {
 		t.Errorf("the approver was consulted %d time(s) for a call that could not run", asked)
@@ -239,7 +239,7 @@ func TestInvalidToolCallIsRejectedBeforePolicy(t *testing.T) {
 	var valid gateway.ToolCall
 	valid.Function.Name = "list_dir"
 	valid.Function.Arguments = `{"path":"."}`
-	_ = ag.executeToolCall(context.Background(), valid, DefaultRoles()[RoleImplementer])
+	_ = planAndRun(ag, context.Background(), valid)
 	if asked == 0 {
 		t.Error("a valid call never reached the approver")
 	}
@@ -294,4 +294,15 @@ func toolCallFor(id, name string) gateway.ToolCall {
 	tc.Function.Name = name
 	tc.Function.Arguments = "{}"
 	return tc
+}
+
+// planAndRun puts one call through the same two steps the agent loop uses:
+// plan the turn, then run what the plan allows. Tests that exercise a single
+// call go through both so they test the path the product takes.
+func planAndRun(ag *Agent, ctx context.Context, tc gateway.ToolCall) string {
+	planned := ag.planTurn(ctx, []gateway.ToolCall{tc}, DefaultRoles()[RoleImplementer])
+	if len(planned) == 0 {
+		return ""
+	}
+	return ag.executeToolCall(ctx, planned[0])
 }
